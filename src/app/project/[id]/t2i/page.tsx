@@ -8,7 +8,7 @@ import {
   Loader2, ChevronRight, ChevronDown, Wand2,
   Plus, Edit3, BookImage,
 } from 'lucide-react'
-import type { Scene, PromptAttempt, SatisfactionScore } from '@/types'
+import type { Scene, PromptAttempt, SatisfactionScore, Asset } from '@/types'
 import Link from 'next/link'
 import Badge from '@/components/ui/Badge'
 import SatisfactionRating from '@/components/ui/SatisfactionRating'
@@ -28,7 +28,7 @@ interface AttemptNodeProps {
   onScore: (outputId: string, score: SatisfactionScore) => void
   onArchive: (outputId: string) => void
   onSendToReference: (outputId: string) => void
-  referenceAssets: RefImage[]
+  referenceAssets: Asset[]
   depth?: number
 }
 
