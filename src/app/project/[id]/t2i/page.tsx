@@ -608,24 +608,4 @@ export default function T2IPage() {
       {genError && (
         <div className="mx-6 mt-3 px-4 py-3 rounded-xl text-xs flex items-start gap-2 flex-shrink-0"
           style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171' }}>
-          <span className="flex-1 font-mono break-all">{genError}</span>
-          <button onClick={() => setGenError(null)} className="opacity-60 hover:opacity-100 shrink-0">✕</button>
-        </div>
-      )}
-
-      {/* 씬 트리 */}
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-4xl mx-auto">
-          <SceneTreeView
-            scenes={scenes}
-            completedScenes={completedScenes}
-            onToggleComplete={handleToggleComplete}
-            renderScene={renderSceneContent}
-            expandedSceneId={expandedScene}
-            onExpandScene={setExpandedScene}
-          />
-        </div>
-      </div>
-    </div>
-  )
-}
+          <span className="flex-1 font-mono break-all">{genError
