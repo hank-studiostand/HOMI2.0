@@ -113,6 +113,7 @@ interface SceneTreeViewProps {
   renderScene: (scene: Scene) => ReactNode
   expandedSceneId?: string | null
   onExpandScene?: (sceneId: string | null) => void
+  pipelineChips?: (scene: Scene) => ReactNode
 }
 
 export default function SceneTreeView({
@@ -122,6 +123,7 @@ export default function SceneTreeView({
   renderScene,
   expandedSceneId,
   onExpandScene,
+  pipelineChips,
 }: SceneTreeViewProps) {
   const tree = buildTree(scenes)
   const [expandedSeqs, setExpandedSeqs] = useState<Set<string>>(new Set(tree.map(t => t.seq)))
@@ -176,6 +178,7 @@ export default function SceneTreeView({
                 <span className="text-sm flex-1 truncate" style={{ color: 'var(--text-primary)' }}>
                   {scene.title}
                 </span>
+                {pipelineChips?.(scene)}
                 {onToggleComplete && (
                   <CompleteButton completed={isCompleted} onClick={() => onToggleComplete(scene.id)} />
                 )}
@@ -264,6 +267,7 @@ export default function SceneTreeView({
                           <span className="text-sm flex-1 truncate" style={{ color: 'var(--text-secondary)' }}>
                             {scene.title}
                           </span>
+                          {pipelineChips?.(scene)}
                           {onToggleComplete && (
                             <CompleteButton completed={isCompleted} onClick={() => onToggleComplete(scene.id)} />
                           )}
@@ -329,6 +333,7 @@ export default function SceneTreeView({
                               <span className="text-xs flex-1 truncate" style={{ color: 'var(--text-secondary)' }}>
                                 {scene.title}
                               </span>
+                              {pipelineChips?.(scene)}
                               {onToggleComplete && (
                                 <CompleteButton completed={isCompleted} onClick={() => onToggleComplete(scene.id)} />
                               )}
