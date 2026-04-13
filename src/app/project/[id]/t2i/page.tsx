@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useParams } from 'next/navigation'
 import {
   Loader2, ChevronRight, ChevronDown, Wand2,
-  Plus, Edit3, BookImage,
+  Plus, Edit3, BookImage, ImagePlus, X,
 } from 'lucide-react'
 import type { Scene, PromptAttempt, SatisfactionScore, Asset } from '@/types'
 import Link from 'next/link'
@@ -20,6 +20,81 @@ import SceneReferencePicker, {
 import { pushToast } from '@/components/ui/GenerationToast'
 import { sendGenerationNotification, getNotificationsEnabled, getSlackWebhookUrl } from '@/lib/notifications'
 import { cn } from '@/lib/utils'
+
+// ── 레퍼런스 이미지 선택 UI ────────────────────────────────────────
+interface RefImage { id: string; url: string; name: string }
+
+function ReferenceImagePicker({
+  available,
+  selected,
+  onToggle,
+}: {
+  available: RefImage[]
+  selected: Set<string>
+  onToggle: (id: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  if (available.length === 0) return null
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-all hover:bg-white/10"
+        style={{
+          color: selected.size > 0 ? '#818cf8' : 'var(--text-muted)',
+          border: `1px solid ${selected.size > 0 ? 'rgba(99,102,241,0.5)' : 'var(--border)'}`,
+        }}>
+        <ImagePlus size={12} />
+        {selected.size > 0 ? `레퍼런스 ${selected.size}장 선택됨` : '레퍼런스 이미지 추가'}
+      </button>
+
+      {open && (
+        <div className="mt-2 p-3 rounded-xl border" style={{ background: 'var(--surface-3)', borderColor: 'var(--border)' }}>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[11px] font-medium" style={{ color: 'var(--text-muted)' }}>
+              레퍼런스 이미지 선택 (최대 3장)
+            </p>
+            <button onClick={() => setOpen(false)}>
+              <X size={12} style={{ color: 'var(--text-muted)' }} />
+            </button>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {available.map(img => {
+              const isSel = selected.has(img.id)
+              const isDisabled = !isSel && selected.size >= 3
+              return (
+                <button
+                  key={img.id}
+                  type="button"
+                  disabled={isDisabled}
+                  onClick={() => onToggle(img.id)}
+                  className={cn(
+                    'relative rounded-lg overflow-hidden aspect-square transition-all',
+                    isDisabled ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:opacity-90',
+                  )}
+                  style={{
+                    outline: isSel ? '2px solid #818cf8' : '2px solid transparent',
+                    outlineOffset: '2px',
+                  }}>
+                  <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
+                  {isSel && (
+                    <div className="absolute inset-0 flex items-center justify-center"
+                      style={{ background: 'rgba(99,102,241,0.35)' }}>
+                      <span className="text-white text-xs font-bold">✓</span>
+                    </div>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── AttemptNode (이미지 시도 하나) ────────────────────────────────
 interface AttemptNodeProps {
