@@ -7,7 +7,7 @@ import {
   ExternalLink, Info, Webhook,
 } from 'lucide-react'
 import {
-  getSlackWebhookUrl, setSlackWebhookUrl,
+  getMessageSquareWebhookUrl, setMessageSquareWebhookUrl,
   getNotificationsEnabled, setNotificationsEnabled,
   requestNotificationPermission,
 } from '@/lib/notifications'
@@ -56,15 +56,15 @@ export default function SettingsPage() {
   const [notifsEnabled, setNotifsEnabled]       = useState(false)
   const [browserPermission, setBrowserPermission] = useState<NotificationPermission>('default')
 
-  // Slack ?¤ì •
-  const [slackUrl, setSlackUrl]                 = useState('')
-  const [slackSaved, setSlackSaved]             = useState(false)
-  const [slackTesting, setSlackTesting]         = useState(false)
-  const [slackTestResult, setSlackTestResult]   = useState<'ok' | 'fail' | null>(null)
+  // MessageSquare ?¤ì •
+  const [MessageSquareUrl, setMessageSquareUrl]                 = useState('')
+  const [MessageSquareSaved, setMessageSquareSaved]             = useState(false)
+  const [MessageSquareTesting, setMessageSquareTesting]         = useState(false)
+  const [MessageSquareTestResult, setMessageSquareTestResult]   = useState<'ok' | 'fail' | null>(null)
 
   useEffect(() => {
     setNotifsEnabled(getNotificationsEnabled(projectId))
-    setSlackUrl(getSlackWebhookUrl(projectId))
+    setMessageSquareUrl(getMessageSquareWebhookUrl(projectId))
     if (typeof window !== 'undefined' && 'Notification' in window) {
       setBrowserPermission(Notification.permission)
     }
@@ -82,31 +82,31 @@ export default function SettingsPage() {
     setNotificationsEnabled(projectId, val)
   }
 
-  function handleSaveSlack() {
-    setSlackWebhookUrl(projectId, slackUrl.trim())
-    setSlackSaved(true)
-    setSlackTestResult(null)
-    setTimeout(() => setSlackSaved(false), 2000)
+  function handleSaveMessageSquare() {
+    setMessageSquareWebhookUrl(projectId, MessageSquareUrl.trim())
+    setMessageSquareSaved(true)
+    setMessageSquareTestResult(null)
+    setTimeout(() => setMessageSquareSaved(false), 2000)
   }
 
-  async function handleTestSlack() {
-    const url = slackUrl.trim()
+  async function handleTestMessageSquare() {
+    const url = MessageSquareUrl.trim()
     if (!url) return
-    setSlackTesting(true)
-    setSlackTestResult(null)
+    setMessageSquareTesting(true)
+    setMessageSquareTestResult(null)
     try {
       await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text: ':white_check_mark: *AI ?ìƒ ?‘ì—…?????ŒìŠ¤???Œë¦¼*\nSlack ?°ë™???•ìƒ?ìœ¼ë¡??¤ì •?˜ì—ˆ?µë‹ˆ??',
+          text: ':white_check_mark: *AI ?ìƒ ?‘ì—…?????ŒìŠ¤???Œë¦¼*\nMessageSquare ?°ë™???•ìƒ?ìœ¼ë¡??¤ì •?˜ì—ˆ?µë‹ˆ??',
         }),
       })
-      setSlackTestResult('ok')
+      setMessageSquareTestResult('ok')
     } catch {
-      setSlackTestResult('fail')
+      setMessageSquareTestResult('fail')
     } finally {
-      setSlackTesting(false)
+      setMessageSquareTesting(false)
     }
   }
 
@@ -176,23 +176,23 @@ export default function SettingsPage() {
             )}
           </Section>
 
-          {/* ?€?€ Slack ?¹í›… ?€?€ */}
-          <Section title="Slack ?Œë¦¼ ?°ë™" icon={Webhook}>
+          {/* ?€?€ MessageSquare ?¹í›… ?€?€ */}
+          <Section title="MessageSquare ?Œë¦¼ ?°ë™" icon={Webhook}>
             <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              Slack ?¸ì»¤ë°??¹í›… URL???±ë¡?˜ë©´ ?ì„± ?„ë£Œ/?¤íŒ¨ ???ë™?¼ë¡œ ë©”ì‹œì§€ë¥?ë³´ëƒ…?ˆë‹¤.
+              MessageSquare ?¸ì»¤ë°??¹í›… URL???±ë¡?˜ë©´ ?ì„± ?„ë£Œ/?¤íŒ¨ ???ë™?¼ë¡œ ë©”ì‹œì§€ë¥?ë³´ëƒ…?ˆë‹¤.
             </p>
 
             {/* ?¹í›… URL ?…ë ¥ */}
             <div className="space-y-2">
               <label className="text-[11px] font-medium" style={{ color: 'var(--text-muted)' }}>
-                Slack ?¸ì»¤ë°??¹í›… URL
+                MessageSquare ?¸ì»¤ë°??¹í›… URL
               </label>
               <div className="flex gap-2">
                 <input
                   type="url"
-                  value={slackUrl}
-                  onChange={e => { setSlackUrl(e.target.value); setSlackSaved(false); setSlackTestResult(null) }}
-                  placeholder="https://hooks.slack.com/services/..."
+                  value={MessageSquareUrl}
+                  onChange={e => { setMessageSquareUrl(e.target.value); setMessageSquareSaved(false); setMessageSquareTestResult(null) }}
+                  placeholder="https://hooks.MessageSquare.com/services/..."
                   className="flex-1 px-3 py-2 rounded-lg text-xs"
                   style={{
                     background: 'var(--surface-3)',
@@ -204,32 +204,32 @@ export default function SettingsPage() {
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={handleSaveSlack}
-                  disabled={!slackUrl.trim()}
+                  onClick={handleSaveMessageSquare}
+                  disabled={!MessageSquareUrl.trim()}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-40"
                   style={{ background: 'var(--accent)', color: 'white' }}
                 >
-                  {slackSaved
+                  {MessageSquareSaved
                     ? <><CheckCircle2 size={12} /> ?€?¥ë¨</>
                     : <><Save size={12} /> ?€??/>
                   }
                 </button>
 
                 <button
-                  onClick={handleTestSlack}
-                  disabled={!slackUrl.trim() || slackTesting}
+                  onClick={handleTestMessageSquare}
+                  disabled={!MessageSquareUrl.trim() || MessageSquareTesting}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all disabled:opacity-40 hover-surface"
                   style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
                 >
-                  {slackTesting ? '?„ì†¡ ì¤?..' : '?ŒìŠ¤???„ì†¡'}
+                  {MessageSquareTesting ? '?„ì†¡ ì¤?..' : '?ŒìŠ¤???„ì†¡'}
                 </button>
 
-                {slackTestResult === 'ok' && (
+                {MessageSquareTestResult === 'ok' && (
                   <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--success)' }}>
                     <CheckCircle2 size={12} /> ?„ì†¡ ?±ê³µ
                   </span>
                 )}
-                {slackTestResult === 'fail' && (
+                {MessageSquareTestResult === 'fail' && (
                   <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--danger)' }}>
                     <AlertCircle size={12} /> ?„ì†¡ ?¤íŒ¨
                   </span>
@@ -244,20 +244,20 @@ export default function SettingsPage() {
             >
               <Info size={12} className="shrink-0 mt-0.5" style={{ color: 'var(--text-muted)' }} />
               <div style={{ color: 'var(--text-muted)' }}>
-                <p className="font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Slack ?¹í›… ?¤ì • ë°©ë²•</p>
+                <p className="font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>MessageSquare ?¹í›… ?¤ì • ë°©ë²•</p>
                 <ol className="space-y-0.5 list-decimal list-inside">
-                  <li>Slack ?Œí¬?¤í˜?´ìŠ¤ ????ê´€ë¦????¸ì»¤ë°??¹í›… ê²€??ë°?ì¶”ê?</li>
+                  <li>MessageSquare ?Œí¬?¤í˜?´ìŠ¤ ????ê´€ë¦????¸ì»¤ë°??¹í›… ê²€??ë°?ì¶”ê?</li>
                   <li>ì±„ë„ ? íƒ ???¹í›… URL ë³µì‚¬</li>
                   <li>???…ë ¥ì°½ì— ë¶™ì—¬?£ê¸° ???€??/li>
                 </ol>
                 <a
-                  href="https://api.slack.com/messaging/webhooks"
+                  href="https://api.MessageSquare.com/messaging/webhooks"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-1 mt-2 hover:underline"
                   style={{ color: 'var(--accent)' }}
                 >
-                  <ExternalLink size={10} /> Slack ê³µì‹ ë¬¸ì„œ ë³´ê¸°
+                  <ExternalLink size={10} /> MessageSquare ê³µì‹ ë¬¸ì„œ ë³´ê¸°
                 </a>
               </div>
             </div>
