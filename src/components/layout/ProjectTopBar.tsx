@@ -129,7 +129,6 @@ function MemberAvatar({
         className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white ring-2 shrink-0"
         style={{
           background: member.color,
-          ringColor: 'var(--background)',
           outline: '2px solid var(--background)',
         }}
       >
@@ -471,19 +470,10 @@ function MembersOnPagePill({
   return (
     <div
       className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px]"
-      style={{
-        background: 'var(--accent-subtle)',
-        border: '1px solid var(--accent)',
-        color: 'var(--accent)',
-      }}
+      style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }}
     >
-      <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--accent)' }} />
-      <span>
-        {samePageMembers.length === 1
-          ? `${samePageMembers[0].name.split(/[\s@]/)[0]} 작업 중`
-          : `${samePageMembers.length}명 여기 있음`
-        }
-      </span>
+      <Users size={10} />
+      <span>이 페이지에 {samePageMembers.length}명</span>
     </div>
   )
 }
