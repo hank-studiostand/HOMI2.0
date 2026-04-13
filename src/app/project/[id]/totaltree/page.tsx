@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils'
 
 // ── 타입 ─────────────────────────────────────────────────────────
 
-interface SceneData extends Scene {
+interface SceneData extends Omit<Scene, 'settings' | 'master_prompt'> {
   master_prompt?: { content: string; negative_prompt: string; version: number } | null
   settings?: Record<string, any>
   referenceAssets: { id: string; url: string; name: string }[]
@@ -502,21 +502,4 @@ export default function TotalTreePage() {
           <div className="flex flex-col items-center justify-center h-full text-center">
             <Layers size={28} className="mb-3" style={{ color: 'var(--text-muted)' }} />
             <p className="text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>씬이 없습니다</p>
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>씬 분류 단계에서 씬을 생성하면 표시됩니다</p>
-          </div>
-        ) : (
-          <div className="max-w-full">
-            <SceneTreeView
-              scenes={baseScenes}
-              completedScenes={completedScenes}
-              onToggleComplete={handleToggleComplete}
-              renderScene={renderSceneContent}
-              expandedSceneId={expandedScene}
-              onExpandScene={setExpandedScene}
-            />
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>씬 �
