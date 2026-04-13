@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import {
-  Bell, BellOff, Slack, Save, CheckCircle2, AlertCircle,
+  Bell, BellOff, MessageSquare, Save, CheckCircle2, AlertCircle,
   ExternalLink, Info, Webhook,
 } from 'lucide-react'
 import {
