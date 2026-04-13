@@ -1,0 +1,171 @@
+@import "tailwindcss";
+
+/* ── Notion-style Design System ─────────────────────────── */
+
+/* DARK theme (default) */
+:root, [data-theme="dark"] {
+  --bg:           #191919;
+  --background:   #191919;
+  --surface:      #202020;
+  --surface-2:    #252525;
+  --surface-3:    #2f2f2f;
+  --surface-hover:#2a2a2a;
+  --border:       #373737;
+  --border-light: #2e2e2e;
+  --accent:       #7c6aff;
+  --accent-hover: #6a58e8;
+  --accent-subtle:rgba(124,106,255,0.12);
+  --text-primary: #e3e3e0;
+  --text-secondary:#9b9a97;
+  --text-muted:   #6b6b6b;
+  --text-on-accent:#ffffff;
+
+  /* functional */
+  --success:      #4ade80;
+  --success-bg:   rgba(74,222,128,0.1);
+  --warning:      #fbbf24;
+  --warning-bg:   rgba(251,191,36,0.1);
+  --danger:       #f87171;
+  --danger-bg:    rgba(248,113,113,0.1);
+  --info:         #60a5fa;
+  --info-bg:      rgba(96,165,250,0.1);
+
+  color-scheme: dark;
+}
+
+/* LIGHT theme */
+[data-theme="light"] {
+  --bg:           #ffffff;
+  --background:   #ffffff;
+  --surface:      #f7f6f3;
+  --surface-2:    #efefef;
+  --surface-3:    #e5e4e2;
+  --surface-hover:#f0efe9;
+  --border:       #e3e2de;
+  --border-light: #eeede9;
+  --accent:       #7c6aff;
+  --accent-hover: #6a58e8;
+  --accent-subtle:rgba(124,106,255,0.1);
+  --text-primary: #37352f;
+  --text-secondary:#6f6e69;
+  --text-muted:   #9b9a97;
+  --text-on-accent:#ffffff;
+
+  /* functional */
+  --success:      #16a34a;
+  --success-bg:   rgba(22,163,74,0.08);
+  --warning:      #d97706;
+  --warning-bg:   rgba(217,119,6,0.08);
+  --danger:       #dc2626;
+  --danger-bg:    rgba(220,38,38,0.08);
+  --info:         #2563eb;
+  --info-bg:      rgba(37,99,235,0.08);
+
+  color-scheme: light;
+}
+
+/* ── Reset ──────────────────────────────────────────────── */
+* { box-sizing: border-box; padding: 0; margin: 0; }
+
+html, body {
+  background: var(--background);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  height: 100%;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scrollbar ──────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── Notion-style components ──────────────────────────────*/
+
+/* Notion-style block hover */
+.notion-block {
+  border-radius: 4px;
+  transition: background 0.1s;
+}
+.notion-block:hover { background: var(--surface-hover); }
+
+/* Attempt tree connector line */
+.attempt-tree-line {
+  border-left: 2px solid var(--border);
+  margin-left: 20px;
+  padding-left: 20px;
+}
+
+/* Card hover */
+.prompt-card { transition: border-color 0.15s, box-shadow 0.15s; }
+.prompt-card:hover { border-color: var(--accent); }
+
+/* Asset grid */
+.asset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+/* Notion-style divider */
+.notion-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 8px 0;
+}
+
+/* Fade-in animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fadeIn 0.15s ease-out; }
+
+/* Notion page header style */
+.page-icon {
+  font-size: 28px;
+  line-height: 1;
+  margin-bottom: 8px;
+  user-select: none;
+}
+
+/* Notion-style input */
+.notion-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1.5px solid var(--border);
+  border-radius: 0;
+  padding: 6px 2px;
+  color: var(--text-primary);
+  width: 100%;
+  transition: border-color 0.15s;
+  outline: none;
+}
+.notion-input:focus { border-color: var(--accent); }
+
+/* Notion-style tag/badge */
+.n-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Notion-style hover utility - works in both light and dark modes */
+.hover-surface:hover { background: var(--surface-hover) !important; }
+.hover-surface-2:hover { background: var(--surface-2) !important; }
+
+/* Smooth theme transition */
+*, *::before, *::after {
+  transition-property: background-color, border-color, color;
+  transition-duration: 0.15s;
+  transition-timing-function: ease;
+}
+/* But don't apply transition to everything (performance) */
+svg, img, video { transition: none !important; }

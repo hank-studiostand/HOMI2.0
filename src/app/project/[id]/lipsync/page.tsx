@@ -1,0 +1,117 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { useParams } from 'next/navigation'
+import { Loader2, Upload, ChevronRight } from 'lucide-react'
+import AttemptTree from '@/components/prompt/AttemptTree'
+import type { PromptAttempt, SatisfactionScore } from '@/types'
+import Link from 'next/link'
+import Badge from '@/components/ui/Badge'
+
+export default function LipsyncPage() {
+  const { id: projectId } = useParams<{ id: string }>()
+  const [videos, setVideos] = useState<any[]>([])
+  const [attempts, setAttempts] = useState<Record<string, PromptAttempt[]>>({})
+  const [audioFiles, setAudioFiles] = useState<Record<string, string>>({})
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const supabase = createClient()
+
+  useEffect(() => { fetchData() }, [projectId])
+
+  async function fetchData() {
+    const { data: videoAssets } = await supabase
+      .from('assets').select('*').eq('project_id', projectId)
+      .in('type', ['i2v']).eq('archived', true).order('created_at', { ascending: false })
+    setVideos(videoAssets ?? [])
+    setLoading(false)
+  }
+
+  async function uploadAudio(videoId: string, file: File) {
+    setUploading(true)
+    const path = `${projectId}/audio/${Date.now()}.${file.name.split('.').pop()}`
+    const { data } = await supabase.storage.from('assets').upload(path, file)
+    if (data) {
+      const { data: { publicUrl } } = supabase.storage.from('assets').getPublicUrl(path)
+      setAudioFiles(prev => ({ ...prev, [videoId]: publicUrl }))
+    }
+    setUploading(false)
+  }
+
+  async function newAttempt(sceneId: string, prompt: string, parentId?: string) {
+    const audioUrl = audioFiles[sceneId]
+    const videoAsset = videos.find(v => v.id === sceneId)
+
+    const { data: attempt } = await supabase.from('prompt_attempts').insert({
+      scene_id: sceneId, parent_id: parentId ?? null,
+      type: 'lipsync', prompt, engine: 'synclabs',
+      status: 'generating', depth: parentId ? 1 : 0,
+    }).select().single()
+
+    if (attempt) {
+      await fetch('/api/lipsync/generate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attemptId: attempt.id, videoUrl: videoAsset?.url, audioUrl, projectId, sceneId }),
+      })
+      fetchData()
+    }
+  }
+
+  if (loading) return <div className="flex items-center justify-center h-full"><Loader2 size={24} className="animate-spin text-zinc-600" /></div>
+
+  return (
+    <div className="h-full flex flex-col">
+      <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+        <div>
+          <h1 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>립싱크</h1>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>영상에 음성을 합성하세요</p>
+        </div>
+        <Link href={`/project/${projectId}/archive`}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white"
+          style={{ background: 'var(--accent)' }}>
+          아카이브 <ChevronRight size={15} />
+        </Link>
+      </div>
+
+      <div className="flex-1 overflow-auto p-6">
+        <div className="max-w-4xl mx-auto space-y-4">
+          {videos.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 text-center">
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>아카이빙된 I2V 영상이 없습니다</p>
+              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>I2V 단계에서 영상을 아카이빙하면 여기에 나타납니다</p>
+            </div>
+          ) : (
+            videos.map(video => (
+              <div key={video.id} className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
+                <div className="p-4" style={{ background: 'var(--surface)' }}>
+                  <div className="flex items-center gap-3 mb-3">
+                    <Badge variant="accent">영상</Badge>
+                    <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{video.name}</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <video src={video.url} className="w-32 h-20 object-cover rounded-lg" controls muted />
+                    <div className="flex-1">
+                      <label className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer w-fit"
+                        style={{ background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+                        <Upload size={14} />
+                        {uploading ? '업로드중...' : audioFiles[video.id] ? '✓ 음성 업로드됨' : '음성 파일 업로드 (MP3/WAV)'}
+                        <input type="file" accept="audio/*" className="hidden"
+                          onChange={e => e.target.files?.[0] && uploadAudio(video.id, e.target.files[0])} />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                <div className="p-4 border-t" style={{ borderColor: 'var(--border)', background: 'var(--background)' }}>
+                  <AttemptTree sceneId={video.id} attempts={attempts[video.id] ?? []} type="lipsync"
+                    onNewAttempt={newAttempt}
+                    onScore={async () => {}} onArchive={async () => {}} />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
