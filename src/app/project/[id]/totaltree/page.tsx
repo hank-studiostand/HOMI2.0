@@ -502,4 +502,25 @@ export default function TotalTreePage() {
           <div className="flex flex-col items-center justify-center h-full text-center">
             <Layers size={28} className="mb-3" style={{ color: 'var(--text-muted)' }} />
             <p className="text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>씬이 없습니다</p>
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>씬 �
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>씬 편집기에서 씬을 추가하세요</p>
+          </div>
+        ) : (
+          <div className="max-w-7xl mx-auto">
+            <SceneTreeView
+              scenes={baseScenes}
+              completedScenes={completedScenes}
+              onToggleComplete={handleToggleComplete}
+              renderScene={renderSceneContent}
+              expandedSceneId={expandedScene}
+              onExpandScene={setExpandedScene}
+              pipelineChips={(scene: Scene) => {
+                const sd = scenes.find(s => s.id === scene.id)
+                return sd ? <PipelineChips scene={sd} /> : null
+              }}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
