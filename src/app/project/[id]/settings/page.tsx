@@ -7,12 +7,12 @@ import {
   ExternalLink, Info, Webhook,
 } from 'lucide-react'
 import {
-  getMessageSquareWebhookUrl, setMessageSquareWebhookUrl,
+  getSlackWebhookUrl, setSlackWebhookUrl,
   getNotificationsEnabled, setNotificationsEnabled,
   requestNotificationPermission,
 } from '@/lib/notifications'
 
-// ?�?� ?�션 ?�퍼 ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
+// ── 섹션 래퍼 ───────────────────────────────────────────────────────────────
 function Section({
   title, icon: Icon, children,
 }: {
@@ -32,7 +32,7 @@ function Section({
   )
 }
 
-// ?�?� ?��? ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
+// ── 토글 ─────────────────────────────────────────────────────────────────────
 function Toggle({ enabled, onChange }: { enabled: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
@@ -48,23 +48,21 @@ function Toggle({ enabled, onChange }: { enabled: boolean; onChange: (v: boolean
   )
 }
 
-// ?�?� 메인 ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
+// ── 메인 ─────────────────────────────────────────────────────────────────────
 export default function SettingsPage() {
   const { id: projectId } = useParams<{ id: string }>()
 
-  // ?�림 ?�정
   const [notifsEnabled, setNotifsEnabled]       = useState(false)
   const [browserPermission, setBrowserPermission] = useState<NotificationPermission>('default')
 
-  // MessageSquare ?�정
-  const [MessageSquareUrl, setMessageSquareUrl]                 = useState('')
-  const [MessageSquareSaved, setMessageSquareSaved]             = useState(false)
-  const [MessageSquareTesting, setMessageSquareTesting]         = useState(false)
-  const [MessageSquareTestResult, setMessageSquareTestResult]   = useState<'ok' | 'fail' | null>(null)
+  const [slackUrl, setSlackUrl]                 = useState('')
+  const [slackSaved, setSlackSaved]             = useState(false)
+  const [slackTesting, setSlackTesting]         = useState(false)
+  const [slackTestResult, setSlackTestResult]   = useState<'ok' | 'fail' | null>(null)
 
   useEffect(() => {
     setNotifsEnabled(getNotificationsEnabled(projectId))
-    setMessageSquareUrl(getMessageSquareWebhookUrl(projectId))
+    setSlackUrl(getSlackWebhookUrl(projectId))
     if (typeof window !== 'undefined' && 'Notification' in window) {
       setBrowserPermission(Notification.permission)
     }
@@ -82,63 +80,61 @@ export default function SettingsPage() {
     setNotificationsEnabled(projectId, val)
   }
 
-  function handleSaveMessageSquare() {
-    setMessageSquareWebhookUrl(projectId, MessageSquareUrl.trim())
-    setMessageSquareSaved(true)
-    setMessageSquareTestResult(null)
-    setTimeout(() => setMessageSquareSaved(false), 2000)
+  function handleSaveSlack() {
+    setSlackWebhookUrl(projectId, slackUrl.trim())
+    setSlackSaved(true)
+    setSlackTestResult(null)
+    setTimeout(() => setSlackSaved(false), 2000)
   }
 
-  async function handleTestMessageSquare() {
-    const url = MessageSquareUrl.trim()
+  async function handleTestSlack() {
+    const url = slackUrl.trim()
     if (!url) return
-    setMessageSquareTesting(true)
-    setMessageSquareTestResult(null)
+    setSlackTesting(true)
+    setSlackTestResult(null)
     try {
       await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text: ':white_check_mark: *AI ?�상 ?�업?????�스???�림*\nMessageSquare ?�동???�상?�으�??�정?�었?�니??',
+          text: ':white_check_mark: *AI 영상 협업툴 — 테스트 알림*\nSlack 연동이 정상적으로 설정되었습니다!',
         }),
       })
-      setMessageSquareTestResult('ok')
+      setSlackTestResult('ok')
     } catch {
-      setMessageSquareTestResult('fail')
+      setSlackTestResult('fail')
     } finally {
-      setMessageSquareTesting(false)
+      setSlackTesting(false)
     }
   }
 
   const permissionLabel: Record<NotificationPermission, string> = {
-    granted:  '?�용??,
-    denied:   '차단??(브라?��? ?�정?�서 변�?',
-    default:  '미설??,
+    granted:  '허용됨',
+    denied:   '차단됨 (브라우저 설정에서 변경)',
+    default:  '미설정',
   }
 
   return (
     <div className="h-full flex flex-col">
-      {/* ?�더 */}
       <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
         <div>
-          <h1 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>?�로?�트 ?�정</h1>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>?�림 �??�동 ?�정</p>
+          <h1 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>프로젝트 설정</h1>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>알림 및 연동 설정</p>
         </div>
       </div>
 
-      {/* 컨텐�?*/}
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-xl mx-auto space-y-5">
 
-          {/* ?�?� 브라?��? ?�림 ?�?� */}
-          <Section title="브라?��? ?�림" icon={Bell}>
+          {/* ── 브라우저 알림 ── */}
+          <Section title="브라우저 알림" icon={Bell}>
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-1">
                 <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                  ?��?지/?�상 ?�성???�료?�거???�패?�면 브라?��? ?�림??받습?�다.
+                  이미지/영상 생성이 완료되거나 실패하면 브라우저 알림을 받습니다.
                 </p>
                 <div className="flex items-center gap-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                  <span>?�재 권한:</span>
+                  <span>현재 권한:</span>
                   <span
                     style={{
                       color: browserPermission === 'granted' ? 'var(--success)'
@@ -160,7 +156,7 @@ export default function SettingsPage() {
               >
                 <AlertCircle size={13} className="shrink-0 mt-0.5" />
                 <span>
-                  브라?��?가 ?�림??차단?�습?�다. 브라?��? 주소�????�물???�이�????�림 ???�용?�로 변경해주세??
+                  브라우저가 알림을 차단했습니다. 브라우저 주소줄 자물쇠 아이콘에서 알림을 허용으로 변경해주세요.
                 </span>
               </div>
             )}
@@ -171,28 +167,27 @@ export default function SettingsPage() {
                 style={{ background: 'var(--success-bg)', border: '1px solid var(--success)', color: 'var(--success)' }}
               >
                 <CheckCircle2 size={13} />
-                <span>?�성 ?�료 ??브라?��? ?�림??받습?�다.</span>
+                <span>생성 완료 시 브라우저 알림을 받습니다.</span>
               </div>
             )}
           </Section>
 
-          {/* ?�?� MessageSquare ?�훅 ?�?� */}
-          <Section title="MessageSquare ?�림 ?�동" icon={Webhook}>
+          {/* ── Slack 웹훅 ── */}
+          <Section title="Slack 알림 연동" icon={Webhook}>
             <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              MessageSquare ?�커�??�훅 URL???�록?�면 ?�성 ?�료/?�패 ???�동?�로 메시지�?보냅?�다.
+              Slack 인커밍 웹훅 URL을 등록하면 생성 완료/실패 시 자동으로 메시지를 보냅니다.
             </p>
 
-            {/* ?�훅 URL ?�력 */}
             <div className="space-y-2">
               <label className="text-[11px] font-medium" style={{ color: 'var(--text-muted)' }}>
-                MessageSquare ?�커�??�훅 URL
+                Slack 인커밍 웹훅 URL
               </label>
               <div className="flex gap-2">
                 <input
                   type="url"
-                  value={MessageSquareUrl}
-                  onChange={e => { setMessageSquareUrl(e.target.value); setMessageSquareSaved(false); setMessageSquareTestResult(null) }}
-                  placeholder="https://hooks.MessageSquare.com/services/..."
+                  value={slackUrl}
+                  onChange={e => { setSlackUrl(e.target.value); setSlackSaved(false); setSlackTestResult(null) }}
+                  placeholder="https://hooks.slack.com/services/..."
                   className="flex-1 px-3 py-2 rounded-lg text-xs"
                   style={{
                     background: 'var(--surface-3)',
@@ -204,91 +199,88 @@ export default function SettingsPage() {
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={handleSaveMessageSquare}
-                  disabled={!MessageSquareUrl.trim()}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-40"
+                  onClick={handleSaveSlack}
+                  disabled={!slackUrl.trim()}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all disabled:opacity-40"
                   style={{ background: 'var(--accent)', color: 'white' }}
                 >
-                  {MessageSquareSaved
-                    ? <><CheckCircle2 size={12} /> ?�?�됨</>
-                    : <><Save size={12} /> ?�??/>
+                  {slackSaved
+                    ? <><CheckCircle2 size={12} /> 저장됨</>
+                    : <><Save size={12} /> 저장</>
                   }
                 </button>
 
                 <button
-                  onClick={handleTestMessageSquare}
-                  disabled={!MessageSquareUrl.trim() || MessageSquareTesting}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all disabled:opacity-40 hover-surface"
+                  onClick={handleTestSlack}
+                  disabled={!slackUrl.trim() || slackTesting}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs transition-all disabled:opacity-40 hover-surface"
                   style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
                 >
-                  {MessageSquareTesting ? '?�송 �?..' : '?�스???�송'}
+                  {slackTesting ? '전송 중...' : '테스트 전송'}
                 </button>
 
-                {MessageSquareTestResult === 'ok' && (
+                {slackTestResult === 'ok' && (
                   <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--success)' }}>
-                    <CheckCircle2 size={12} /> ?�송 ?�공
+                    <CheckCircle2 size={12} /> 전송 성공
                   </span>
                 )}
-                {MessageSquareTestResult === 'fail' && (
+                {slackTestResult === 'fail' && (
                   <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--danger)' }}>
-                    <AlertCircle size={12} /> ?�송 ?�패
+                    <AlertCircle size={12} /> 전송 실패
                   </span>
                 )}
               </div>
             </div>
 
-            {/* 가?�드 */}
             <div
               className="flex items-start gap-2 p-3 rounded-lg text-xs"
               style={{ background: 'var(--surface-3)', border: '1px solid var(--border)' }}
             >
               <Info size={12} className="shrink-0 mt-0.5" style={{ color: 'var(--text-muted)' }} />
               <div style={{ color: 'var(--text-muted)' }}>
-                <p className="font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>MessageSquare ?�훅 ?�정 방법</p>
+                <p className="font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Slack 웹훅 설정 방법</p>
                 <ol className="space-y-0.5 list-decimal list-inside">
-                  <li>MessageSquare ?�크?�페?�스 ????관�????�커�??�훅 검??�?추�?</li>
-                  <li>채널 ?�택 ???�훅 URL 복사</li>
-                  <li>???�력창에 붙여?�기 ???�??/li>
+                  <li>Slack 워크스페이스 &rarr; 앱 관리 &rarr; 인커밍 웹훅 검색 및 추가</li>
+                  <li>채널 선택 &rarr; 웹훅 URL 복사</li>
+                  <li>위 입력창에 붙여넣기 후 저장</li>
                 </ol>
                 <a
-                  href="https://api.MessageSquare.com/messaging/webhooks"
+                  href="https://api.slack.com/messaging/webhooks"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-1 mt-2 hover:underline"
                   style={{ color: 'var(--accent)' }}
                 >
-                  <ExternalLink size={10} /> MessageSquare 공식 문서 보기
+                  <ExternalLink size={10} /> Slack 공식 문서 보기
                 </a>
               </div>
             </div>
           </Section>
 
-          {/* ?�?� ?�림 미리보기 ?�?� */}
-          <Section title="?�림 미리보기" icon={Bell}>
+          {/* ── 알림 미리보기 ── */}
+          <Section title="알림 미리보기" icon={Bell}>
             <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              ?�성 ?�료 ???�래?� 같�? ?�림???�시?�니??
+              생성 완료 시 아래와 같은 알림이 표시됩니다.
             </p>
             <div className="space-y-2">
-              {/* ?�공 ?�시 */}
               <div
                 className="flex items-center gap-3 p-3 rounded-xl"
                 style={{ background: 'var(--success-bg)', border: '1px solid var(--success)' }}
               >
                 <CheckCircle2 size={16} style={{ color: 'var(--success)' }} />
                 <div>
-                  <p className="text-xs font-medium" style={{ color: 'var(--success)' }}>?��?지 ?�성 ?�료 ????1</p>
-                  <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>결과�??�인?�보?�요.</p>
+                  <p className="text-xs font-medium" style={{ color: 'var(--success)' }}>이미지 생성 완료 — 씬 1</p>
+                  <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>결과를 확인해보세요.</p>
                 </div>
               </div>
-              {/* ?�패 ?�시 */}
               <div
                 className="flex items-center gap-3 p-3 rounded-xl"
                 style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger)' }}
               >
                 <AlertCircle size={16} style={{ color: 'var(--danger)' }} />
                 <div>
-                  <p className="text-xs font-medium" style={{ color: 'var(--danger)' }}>?�상 ?�성 ?�패 ????2</p>
-                  <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>?�성 �??�류가 발생?�습?�다.</p>
+                  <p className="text-xs font-medium" style={{ color: 'var(--danger)' }}>영상 생성 실패 — 씬 2</p>
+                  <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>프롬프트를 확인 후 다시 시도해주세요.</p>
                 </div>
               </div>
             </div>
