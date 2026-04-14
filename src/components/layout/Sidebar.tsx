@@ -240,4 +240,13 @@ export default function Sidebar({ projectId, projectName }: SidebarProps) {
             className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-[13px] transition-all"
             style={{ color: 'var(--text-secondary)' }}
             onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-hover)')}
-            onMouse
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >
+            <LogOut size={14} className="opacity-70" />
+            <span>로그아웃</span>
+          </button>
+        </form>
+      </div>
+    </aside>
+  )
+}
