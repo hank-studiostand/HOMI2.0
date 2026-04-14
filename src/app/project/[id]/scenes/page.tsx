@@ -418,18 +418,24 @@ export default function ScenesPage() {
         </div>
         <div className="flex-1 overflow-auto p-4">
           <div className="grid grid-cols-3 gap-3">
-            {libraryAssets
-              .filter(a => a.tags?.includes(pickerOpen.category))
-              .concat(
-                rootAssets
-                  .filter(a => a.category === pickerOpen.category)
-                  .flatMap(a => a.reference_image_urls?.map((url, idx) => ({
-                    id: `root-${a.id}-${idx}`,
-                    url,
-                    name: `${a.name} #${idx + 1}`,
-                    tags: [a.category],
-                  })) ?? [])
-              )
+            {([
+              ...libraryAssets
+                .filter(a => a.tags?.includes(pickerOpen.category))
+                .map(a => ({
+                  id: a.id,
+                  url: a.url,
+                  name: a.name,
+                  thumbnail_url: a.thumbnail_url ?? a.url,
+                })),
+              ...rootAssets
+                .filter(a => a.category === pickerOpen.category)
+                .flatMap(a => (a.reference_image_urls ?? []).map((url, idx) => ({
+                  id: `root-${a.id}-${idx}`,
+                  url,
+                  name: `${a.name} #${idx + 1}`,
+                  thumbnail_url: url,
+                }))),
+            ] as Array<{ id: string; url: string; name: string; thumbnail_url: string }>)
               .map(asset => (
                 <button
                   key={asset.id}
