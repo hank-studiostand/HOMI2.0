@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Film, Users, Clock, Layers } from 'lucide-react'
+import { Plus, Film, Users, Clock, Layers, LogOut } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 
 export default async function DashboardPage() {
@@ -45,12 +45,23 @@ export default async function DashboardPage() {
             <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>프로젝트</h1>
             <p className="text-sm mt-0.5" style={{ color: 'var(--text-secondary)' }}>{user.email}</p>
           </div>
-          <Link href="/dashboard/new"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
-            style={{ background: 'var(--accent)' }}>
-            <Plus size={16} /> 새 프로젝트
-          </Link>
-        </div>
+         <div className="flex items-center gap-2">
+  <Link href="/dashboard/new"
+    className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
+    style={{ background: 'var(--accent)' }}>
+    <Plus size={16} /> 새 프로젝트
+  </Link>
+  <form action="/api/auth/signout" method="post">
+    <button
+      type="submit"
+      className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all hover:opacity-80"
+      style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+    >
+      <LogOut size={14} /> 로그아웃
+    </button>
+  </form>
+</div>
+</div>
 
         {/* Projects Grid */}
         {projects.length === 0 ? (
