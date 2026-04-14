@@ -14,14 +14,15 @@ export interface RefSelection {
   character: Set<string>
   space:     Set<string>
   object:    Set<string>
+  misc:      Set<string>
 }
 
 export function emptyRefSelection(): RefSelection {
-  return { character: new Set(), space: new Set(), object: new Set() }
+  return { character: new Set(), space: new Set(), object: new Set(), misc: new Set() }
 }
 
 export function totalRefCount(sel: RefSelection): number {
-  return sel.character.size + sel.space.size + sel.object.size
+  return sel.character.size + sel.space.size + sel.object.size + sel.misc.size
 }
 
 export function allSelectedUrls(sel: RefSelection, assets: Asset[]): string[] {
@@ -29,6 +30,7 @@ export function allSelectedUrls(sel: RefSelection, assets: Asset[]): string[] {
     ...Array.from(sel.character),
     ...Array.from(sel.space),
     ...Array.from(sel.object),
+    ...Array.from(sel.misc),
   ]
   return assets.filter(a => allIds.includes(a.id)).map(a => a.url)
 }
@@ -132,6 +134,7 @@ export default function SceneReferencePicker({
     character: referenceAssets.filter(a => a.tags.includes('character')),
     space:     referenceAssets.filter(a => a.tags.includes('space')),
     object:    referenceAssets.filter(a => a.tags.includes('object')),
+    misc:      referenceAssets.filter(a => a.tags.includes('misc') || (!a.tags.includes('character') && !a.tags.includes('space') && !a.tags.includes('object'))),
   }
 
   function toggle(category: Exclude<RefCategory, 'all'>, id: string) {
@@ -182,7 +185,7 @@ export default function SceneReferencePicker({
         {/* 카테고리별 미니 카운트 */}
         {total > 0 && (
           <div className="flex items-center gap-1 ml-1">
-            {(['character', 'space', 'object'] as const).map(cat => {
+            {(['character', 'space', 'object', 'misc'] as const).map(cat => {
               const cnt = selection[cat].size
               if (!cnt) return null
               const meta = getCategoryMeta(cat)

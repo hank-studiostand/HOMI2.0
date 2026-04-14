@@ -394,13 +394,22 @@ export default function AssetsPage() {
     setUploading(true)
     const categoryTag: string[] = category === 'all' ? [] : [category]
 
-    for (const file of Array.from(files)) {
-      const ext  = file.name.split('.').pop()
-      const path = `${projectId}/ref_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-      const { data: uploaded } = await supabase.storage.from('assets').upload(path, file)
-      if (uploaded) {
+    try {
+      for (const file of Array.from(files)) {
+        const ext  = file.name.split('.').pop() || 'png'
+        const path = `${projectId}/ref_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+        const { data: uploaded, error: storageErr } = await supabase.storage.from('assets').upload(path, file)
+        if (storageErr) {
+          console.error('[asset upload] storage error:', storageErr)
+          alert(`스토리지 업로드 실패: ${storageErr.message}`)
+          continue
+        }
+        if (!uploaded) {
+          console.error('[asset upload] no upload data returned')
+          continue
+        }
         const { data: { publicUrl } } = supabase.storage.from('assets').getPublicUrl(path)
-        await supabase.from('assets').insert({
+        const { error: insertErr } = await supabase.from('assets').insert({
           project_id: projectId,
           type:       'reference',
           name:       file.name,
@@ -408,10 +417,18 @@ export default function AssetsPage() {
           tags:       categoryTag,
           metadata:   { file_size: file.size, mime_type: file.type },
         })
+        if (insertErr) {
+          console.error('[asset upload] DB insert error:', insertErr)
+          alert(`DB 저장 실패: ${insertErr.message}`)
+        }
       }
+    } catch (e: any) {
+      console.error('[asset upload] exception:', e)
+      alert(`업로드 중 예외 발생: ${e?.message ?? e}`)
+    } finally {
+      setUploading(false)
+      fetchAssets()
     }
-    setUploading(false)
-    fetchAssets()
   }
 
   async function scoreAsset(id: string, score: number) {
