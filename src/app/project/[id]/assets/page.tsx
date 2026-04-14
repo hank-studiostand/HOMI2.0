@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation'
 import {
   Upload, Search, ChevronRight, Loader2, User2,
   MapPin, Package, Image as ImageIcon, Tag, Download,
-  Archive, Trash2, X, Check, FolderOpen,
+  Archive, Trash2, X, Check, FolderOpen, MoreHorizontal, Clipboard,
 } from 'lucide-react'
 import type { Asset } from '@/types'
 import Link from 'next/link'
@@ -15,7 +15,7 @@ import SatisfactionRating from '@/components/ui/SatisfactionRating'
 
 // ─── 카테고리 정의 ────────────────────────────────────────────────────────────
 
-export type RefCategory = 'all' | 'character' | 'space' | 'object'
+export type RefCategory = 'all' | 'character' | 'space' | 'object' | 'misc'
 
 export const REF_CATEGORIES = [
   {
@@ -58,6 +58,16 @@ export const REF_CATEGORIES = [
     tag:      'object',
     desc:     '소품·오브제·아이템 레퍼런스',
   },
+  {
+    key:      'misc'      as RefCategory,
+    label:    '기타',
+    icon:     MoreHorizontal,
+    color:    '#a78bfa',
+    bg:       'rgba(167,139,250,0.1)',
+    border:   'rgba(167,139,250,0.35)',
+    tag:      'misc',
+    desc:     '분류되지 않은 기타 레퍼런스',
+  },
 ] as const
 
 // ─── 카테고리 헬퍼 ────────────────────────────────────────────────────────────
@@ -66,7 +76,7 @@ export function getAssetCategory(asset: Asset): RefCategory {
   if (asset.tags.includes('character')) return 'character'
   if (asset.tags.includes('space'))     return 'space'
   if (asset.tags.includes('object'))    return 'object'
-  return 'all'
+  return 'misc'
 }
 
 export function getCategoryMeta(cat: RefCategory) {
@@ -195,10 +205,10 @@ function AssetCard({
           size="sm"
           onChange={score => onScore?.(asset.id, score)}
         />
-        {asset.tags.filter(t => !['character', 'space', 'object'].includes(t)).length > 0 && (
+        {asset.tags.filter(t => !['character', 'space', 'object', 'misc'].includes(t)).length > 0 && (
           <div className="flex flex-wrap gap-1">
             {asset.tags
-              .filter(t => !['character', 'space', 'object'].includes(t))
+              .filter(t => !['character', 'space', 'object', 'misc'].includes(t))
               .map(tag => (
                 <span key={tag} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px]"
                   style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }}>
@@ -317,6 +327,34 @@ export default function AssetsPage() {
 
   useEffect(() => { fetchAssets() }, [projectId])
 
+  // 클립보드 붙여넣기 → 현재 활성 탭 카테고리로 업로드
+  useEffect(() => {
+    function onPaste(e: ClipboardEvent) {
+      if (!e.clipboardData) return
+      const el = e.target as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+
+      const files: File[] = []
+      for (const item of Array.from(e.clipboardData.items)) {
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
+          const f = item.getAsFile()
+          if (f) {
+            const ext = f.type.split('/')[1] ?? 'png'
+            const renamed = new File([f], f.name && f.name !== 'image.png' ? f.name : `clipboard_${Date.now()}.${ext}`, { type: f.type })
+            files.push(renamed)
+          }
+        }
+      }
+      if (files.length > 0) {
+        e.preventDefault()
+        const targetCat: RefCategory = activeTab === 'all' ? 'misc' : activeTab
+        uploadFiles(files, targetCat)
+      }
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [activeTab, projectId])
+
   async function fetchAssets() {
     const { data } = await supabase
       .from('assets')
@@ -334,6 +372,7 @@ export default function AssetsPage() {
     character: assets.filter(a => a.tags.includes('character')).length,
     space:     assets.filter(a => a.tags.includes('space')).length,
     object:    assets.filter(a => a.tags.includes('object')).length,
+    misc:      assets.filter(a => a.tags.includes('misc') || (!a.tags.includes('character') && !a.tags.includes('space') && !a.tags.includes('object'))).length,
   }
 
   // 필터링
@@ -344,14 +383,16 @@ export default function AssetsPage() {
 
     const matchCat = activeTab === 'all'
       ? true
-      : a.tags.includes(activeTab)
+      : activeTab === 'misc'
+        ? (a.tags.includes('misc') || (!a.tags.includes('character') && !a.tags.includes('space') && !a.tags.includes('object')))
+        : a.tags.includes(activeTab)
 
     return matchSearch && matchCat
   })
 
   async function uploadFiles(files: FileList | File[], category: RefCategory) {
     setUploading(true)
-    const categoryTag = category === 'all' ? [] : [category]
+    const categoryTag: string[] = category === 'all' ? [] : [category]
 
     for (const file of Array.from(files)) {
       const ext  = file.name.split('.').pop()
@@ -412,8 +453,12 @@ export default function AssetsPage() {
           <h1 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
             레퍼런스 라이브러리
           </h1>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-            캐릭터 · 공간 · 오브제별로 레퍼런스를 관리하세요
+          <p className="text-xs mt-0.5 flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+            <span>캐릭터 · 공간 · 오브제 · 기타별로 레퍼런스를 관리하세요</span>
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px]"
+              style={{ background: 'var(--surface-3)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
+              <Clipboard size={9} /> Ctrl+V로 붙여넣기
+            </span>
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -544,14 +589,14 @@ export default function AssetsPage() {
             {activeTab === 'all' ? (
               <div className="space-y-8">
                 {REF_CATEGORIES.slice(1).map(cat => {
-                  const catAssets = filtered.filter(a => a.tags.includes(cat.key as string))
-                  const uncatAssets = cat.key === 'character'
-                    ? filtered.filter(a => !a.tags.includes('character') && !a.tags.includes('space') && !a.tags.includes('object'))
-                    : []
+                  const catAssets = cat.key === 'misc'
+                    ? filtered.filter(a => a.tags.includes('misc') || (!a.tags.includes('character') && !a.tags.includes('space') && !a.tags.includes('object')))
+                    : filtered.filter(a => a.tags.includes(cat.key as string))
+                  const uncatAssets: typeof filtered = []
 
-                  const toShow = cat.key === 'character' ? [...catAssets] : catAssets
+                  const toShow = catAssets
 
-                  if (toShow.length === 0 && cat.key !== 'character') return null
+                  if (toShow.length === 0) return null
 
                   const Icon = cat.icon
                   return (
@@ -602,8 +647,8 @@ export default function AssetsPage() {
                         </div>
                       )}
 
-                      {/* 분류 안된 레퍼런스 (캐릭터 섹션에만) */}
-                      {cat.key === 'character' && uncatAssets.length > 0 && (
+                      {/* 분류 안된 레퍼런스 (legacy) */}
+                      {false && cat.key === 'character' && uncatAssets.length > 0 && (
                         <div className="mt-6">
                           <p className="text-[11px] mb-2" style={{ color: 'var(--text-muted)' }}>
                             분류 안 된 레퍼런스 ({uncatAssets.length})
@@ -659,3 +704,4 @@ export default function AssetsPage() {
     </div>
   )
 }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   

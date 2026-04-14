@@ -643,34 +643,77 @@ export default function I2VPage() {
           {/* 소스 이미지 선택 */}
           <div>
             <p className="text-xs font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
-              1. 소스 이미지 선택 <span style={{ color: 'var(--text-muted)' }}>(T2I 아카이브)</span>
+              1. 소스 이미지 선택 <span style={{ color: 'var(--text-muted)' }}>(T2I 아카이브 또는 레퍼런스 라이브러리)</span>
             </p>
-            {sourceImages.length > 0 ? (
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {sourceImages.map(img => (
-                  <button key={img.id}
-                    onClick={() => setSelectedSource(prev => ({ ...prev, [scene.id]: img.url }))}
-                    className="shrink-0 relative w-20 h-20 rounded-xl overflow-hidden transition-all"
-                    style={{
-                      border: `2px solid ${selectedSource[scene.id] === img.url ? '#818cf8' : 'transparent'}`,
-                      boxShadow: selectedSource[scene.id] === img.url ? '0 0 0 3px rgba(99,102,241,0.25)' : 'none',
-                    }}>
-                    <img src={img.thumbnail_url ?? img.url} className="w-full h-full object-cover" alt="" />
-                    {selectedSource[scene.id] === img.url && (
-                      <div className="absolute inset-0 flex items-center justify-center"
-                        style={{ background: 'rgba(99,102,241,0.3)' }}>
-                        <CheckCircle2 size={18} className="text-white" />
-                      </div>
-                    )}
-                  </button>
-                ))}
+            {(sourceImages.length > 0 || referenceAssets.length > 0) ? (
+              <div className="space-y-3">
+                {sourceImages.length > 0 && (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-muted)' }}>T2I 아카이브</p>
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {sourceImages.map(img => (
+                        <button key={img.id}
+                          onClick={() => setSelectedSource(prev => ({ ...prev, [scene.id]: img.url }))}
+                          className="shrink-0 relative w-20 h-20 rounded-xl overflow-hidden transition-all"
+                          style={{
+                            border: `2px solid ${selectedSource[scene.id] === img.url ? '#818cf8' : 'transparent'}`,
+                            boxShadow: selectedSource[scene.id] === img.url ? '0 0 0 3px rgba(99,102,241,0.25)' : 'none',
+                          }}>
+                          <img src={img.thumbnail_url ?? img.url} className="w-full h-full object-cover" alt="" />
+                          {selectedSource[scene.id] === img.url && (
+                            <div className="absolute inset-0 flex items-center justify-center"
+                              style={{ background: 'rgba(99,102,241,0.3)' }}>
+                              <CheckCircle2 size={18} className="text-white" />
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {referenceAssets.length > 0 && (() => {
+                  const groups: { key: string; label: string; color: string; items: Asset[] }[] = [
+                    { key: 'character', label: '캐릭터', color: '#818cf8', items: referenceAssets.filter(a => a.tags?.includes('character')) },
+                    { key: 'space',     label: '공간',   color: '#34d399', items: referenceAssets.filter(a => a.tags?.includes('space')) },
+                    { key: 'object',    label: '오브제', color: '#fb923c', items: referenceAssets.filter(a => a.tags?.includes('object')) },
+                    { key: 'misc',      label: '기타',   color: '#a78bfa', items: referenceAssets.filter(a => a.tags?.includes('misc') || (!a.tags?.includes('character') && !a.tags?.includes('space') && !a.tags?.includes('object'))) },
+                  ].filter(g => g.items.length > 0)
+                  return (
+                    <div className="space-y-2">
+                      {groups.map(g => (
+                        <div key={g.key}>
+                          <p className="text-[10px] uppercase tracking-wider mb-1.5" style={{ color: g.color }}>레퍼런스 · {g.label}</p>
+                          <div className="flex gap-2 overflow-x-auto pb-1">
+                            {g.items.map(img => (
+                              <button key={img.id}
+                                onClick={() => setSelectedSource(prev => ({ ...prev, [scene.id]: img.url }))}
+                                className="shrink-0 relative w-20 h-20 rounded-xl overflow-hidden transition-all"
+                                style={{
+                                  border: `2px solid ${selectedSource[scene.id] === img.url ? g.color : 'transparent'}`,
+                                  boxShadow: selectedSource[scene.id] === img.url ? `0 0 0 3px ${g.color}40` : 'none',
+                                }}>
+                                <img src={img.thumbnail_url ?? img.url} className="w-full h-full object-cover" alt="" />
+                                {selectedSource[scene.id] === img.url && (
+                                  <div className="absolute inset-0 flex items-center justify-center"
+                                    style={{ background: `${g.color}4D` }}>
+                                    <CheckCircle2 size={18} className="text-white" />
+                                  </div>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })()}
               </div>
             ) : (
               <div className="flex items-center gap-2 p-3 rounded-lg"
                 style={{ background: 'var(--surface-3)', border: '1px solid var(--border)' }}>
                 <Film size={14} style={{ color: 'var(--text-muted)' }} />
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  T2I 단계에서 만족도 4점 이상 이미지를 아카이빙하면 여기에 표시됩니다
+                  T2I 아카이브 이미지나 에셋 라이브러리의 레퍼런스를 사용할 수 있습니다
                 </p>
               </div>
             )}
@@ -795,3 +838,4 @@ export default function I2VPage() {
     </div>
   )
 }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
