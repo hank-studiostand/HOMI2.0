@@ -305,4 +305,36 @@ export default function SceneReferencePicker({
                   const cat = getAssetCategory(asset)
                   const catMeta = getCategoryMeta(cat)
                   return (
-                    <div key={asset.id}
+                    <div
+                      key={asset.id}
+                      className="relative rounded overflow-hidden"
+                      style={{
+                        width: 40,
+                        height: 40,
+                        border: `1.5px solid ${catMeta.color}`,
+                      }}
+                      title={`${catMeta.label} · ${asset.name}`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={asset.url}
+                        alt={asset.name}
+                        className="w-full h-full object-cover"
+                      />
+                      <span
+                        className="absolute bottom-0 right-0 text-[8px] font-bold px-1 leading-tight"
+                        style={{ background: catMeta.color, color: 'white' }}
+                      >
+                        {i + 1}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}

@@ -397,4 +397,19 @@ export default function SceneTreeView({
                               {onToggleComplete && (
                                 <CompleteButton completed={isCompleted} onClick={() => onToggleComplete(scene.id)} />
                               )}
-                    
+                            </button>
+                            {isExpanded && !isCompleted && renderScene(scene)}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
