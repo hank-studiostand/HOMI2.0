@@ -691,4 +691,42 @@ async function uploadFiles(files: FileList | File[], category: RefCategory) {
                                 onDownload={id => {
                                   const a = assets.find(x => x.id === id)
                                   if (a) { const link = document.createElement('a'); link.href = a.url; link.download = a.name; link.click() }
-     
+                                }}
+                                selectable
+                                selected={selected.has(asset.id)}
+                                onSelect={toggleSelect}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                {filtered.map(asset => (
+                  <AssetCard
+                    key={asset.id}
+                    asset={asset}
+                    onScore={scoreAsset}
+                    onToggleArchive={toggleArchive}
+                    onDelete={deleteAsset}
+                    onDownload={id => {
+                      const a = assets.find(x => x.id === id)
+                      if (a) { const link = document.createElement('a'); link.href = a.url; link.download = a.name; link.click() }
+                    }}
+                    selectable
+                    selected={selected.has(asset.id)}
+                    onSelect={toggleSelect}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
