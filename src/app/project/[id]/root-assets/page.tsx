@@ -4,9 +4,9 @@ import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useParams } from 'next/navigation'
 import {
-  Upload, Loader2, User2, MapPin, Package, MoreHorizontal, Plus, X, Trash2, Edit2,
+  Upload, Loader2, User2, MapPin, Package, MoreHorizontal, Plus, X, Trash2, Edit2, Library,
 } from 'lucide-react'
-import type { RootAssetSeed, RootAssetCategory } from '@/types'
+import type { RootAssetSeed, RootAssetCategory, Asset } from '@/types'
 import { cn } from '@/lib/utils'
 
 const CATEGORIES = [
@@ -20,16 +20,21 @@ function RootAssetCard({
   seed,
   onDelete,
   onUpdate,
+  projectId,
 }: {
   seed: RootAssetSeed
   onDelete: (id: string) => void
   onUpdate: (id: string, updates: Partial<RootAssetSeed>) => void
+  projectId: string
 }) {
   const [isEditing, setIsEditing] = useState(false)
   const [name, setName] = useState(seed.name)
   const [desc, setDesc] = useState(seed.description ?? '')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+  const [showLibraryPicker, setShowLibraryPicker] = useState(false)
+  const [libraryAssets, setLibraryAssets] = useState<Asset[]>([])
+  const [loadingLibrary, setLoadingLibrary] = useState(false)
   const supabase = createClient()
 
   async function handleUploadImage(file: File) {
@@ -72,6 +77,30 @@ function RootAssetCard({
   function handleRemoveImage(url: string) {
     const newUrls = seed.reference_image_urls.filter(u => u !== url)
     onUpdate(seed.id, { reference_image_urls: newUrls })
+  }
+
+  async function openLibraryPicker() {
+    setLoadingLibrary(true)
+    try {
+      const { data } = await supabase
+        .from('assets')
+        .select('*')
+        .eq('project_id', projectId)
+        .eq('type', 'reference')
+        .contains('tags', [seed.category])
+      setLibraryAssets(data ?? [])
+    } catch (e) {
+      console.error('Failed to load library assets:', e)
+    } finally {
+      setLoadingLibrary(false)
+      setShowLibraryPicker(true)
+    }
+  }
+
+  function handleSelectFromLibrary(asset: Asset) {
+    const newUrls = [...(seed.reference_image_urls ?? []), asset.url]
+    onUpdate(seed.id, { reference_image_urls: newUrls })
+    setShowLibraryPicker(false)
   }
 
   return (
@@ -149,20 +178,65 @@ function RootAssetCard({
 
       {/* 액션 */}
       {!isEditing && (
-        <div className="flex gap-1">
+        <div className="space-y-1">
+          <div className="flex gap-1">
+            <button
+              onClick={() => setIsEditing(true)}
+              className="flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-xs border hover:bg-opacity-70"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+            >
+              <Edit2 size={12} /> 수정
+            </button>
+            <button
+              onClick={() => onDelete(seed.id)}
+              className="flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-xs border border-red-500/30 text-red-500 hover:bg-red-500/10"
+            >
+              <Trash2 size={12} /> 삭제
+            </button>
+          </div>
           <button
-            onClick={() => setIsEditing(true)}
-            className="flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-xs border hover:bg-opacity-70"
+            onClick={openLibraryPicker}
+            className="w-full flex items-center justify-center gap-1 px-2 py-1 rounded text-xs border hover:bg-opacity-70"
             style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
           >
-            <Edit2 size={12} /> 수정
+            <Library size={12} /> 라이브러리에서 불러오기
           </button>
-          <button
-            onClick={() => onDelete(seed.id)}
-            className="flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-xs border border-red-500/30 text-red-500 hover:bg-red-500/10"
-          >
-            <Trash2 size={12} /> 삭제
-          </button>
+        </div>
+      )}
+
+      {/* 라이브러리 픽커 모달 */}
+      {showLibraryPicker && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 rounded-lg max-w-2xl w-full max-h-[80vh] flex flex-col" style={{ background: 'var(--background)' }}>
+            <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
+              <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>라이브러리에서 선택</h3>
+              <button onClick={() => setShowLibraryPicker(false)}><X size={16} /></button>
+            </div>
+            <div className="flex-1 overflow-auto p-4">
+              {loadingLibrary ? (
+                <div className="flex items-center justify-center h-32">
+                  <Loader2 size={20} className="animate-spin" style={{ color: 'var(--text-muted)' }} />
+                </div>
+              ) : libraryAssets.length === 0 ? (
+                <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>이 카테고리의 레퍼런스가 없습니다</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-3">
+                  {libraryAssets.map(asset => (
+                    <button
+                      key={asset.id}
+                      onClick={() => handleSelectFromLibrary(asset)}
+                      className="relative aspect-square rounded overflow-hidden hover:opacity-80 transition-opacity"
+                    >
+                      <img src={asset.thumbnail_url ?? asset.url} alt={asset.name} className="w-full h-full object-cover" />
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                        <Plus size={18} className="text-white" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -311,6 +385,7 @@ export default function RootAssetsPage() {
                   seed={seed}
                   onDelete={deleteSeed}
                   onUpdate={updateSeed}
+                  projectId={projectId}
                 />
               ))}
             </div>

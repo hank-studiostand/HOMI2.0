@@ -4,11 +4,11 @@ import { useState, useEffect } from 'react'
 import { useLocalState } from '@/hooks/useLocalState'
 import { createClient } from '@/lib/supabase/client'
 import { useParams } from 'next/navigation'
-import { Plus, Loader2, ChevronRight, ChevronDown, Wand2, X } from 'lucide-react'
+import { Plus, Loader2, ChevronRight, ChevronDown, Wand2, X, Image as ImageIcon } from 'lucide-react'
 import SceneCard from '@/components/scene/SceneCard'
 import SceneSettings from '@/components/scene/SceneSettings'
 import SceneTreeView from '@/components/scene/SceneTreeView'
-import type { Scene, SceneSettings as SceneSettingsType, RootAssetSeed } from '@/types'
+import type { Scene, SceneSettings as SceneSettingsType, RootAssetSeed, Asset } from '@/types'
 import Link from 'next/link'
 
 const lsKey = (pid: string) => `scene-editor-${pid}`
@@ -37,6 +37,8 @@ export default function ScenesPage() {
   const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | null>(null)
   const [bulkMessage, setBulkMessage] = useState<string | null>(null)
   const [rootAssets, setRootAssets] = useState<RootAssetSeed[]>([])
+  const [libraryAssets, setLibraryAssets] = useState<Asset[]>([])
+  const [pickerOpen, setPickerOpen] = useState<{ sceneId: string; category: string } | null>(null)
 
   const supabase = createClient()
 
@@ -50,6 +52,7 @@ export default function ScenesPage() {
   useEffect(() => {
     fetchScenes()
     fetchRootAssets()
+    fetchLibraryAssets()
     const channel = supabase.channel('scenes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'scenes', filter: `project_id=eq.${projectId}` },
         () => fetchScenes())
@@ -80,6 +83,15 @@ export default function ScenesPage() {
       .select('*')
       .eq('project_id', projectId)
     setRootAssets(data ?? [])
+  }
+
+  async function fetchLibraryAssets() {
+    const { data } = await supabase
+      .from('assets')
+      .select('*')
+      .eq('project_id', projectId)
+      .eq('type', 'reference')
+    setLibraryAssets(data ?? [])
   }
 
   async function updateScene(id: string, updates: Partial<Scene>) {
@@ -153,6 +165,35 @@ export default function ScenesPage() {
       .eq('id', sceneId)
 
     setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, selected_root_asset_ids: newSelection } : s))
+  }
+
+  async function updateRootAssetImageSelection(
+    sceneId: string,
+    category: string,
+    imageUrl: string,
+    selected: boolean,
+  ) {
+    const scene = scenes.find(s => s.id === sceneId)
+    if (!scene) return
+
+    const current = (scene.selected_root_asset_image_ids ?? {}) as Record<string, string[]>
+    const categoryList = (current[category] ?? []) as string[]
+
+    let updated: string[]
+    if (selected) {
+      if (categoryList.length >= 3) return  // max 3 per category
+      updated = [...categoryList, imageUrl]
+    } else {
+      updated = categoryList.filter(url => url !== imageUrl)
+    }
+
+    const newSelection = { ...current, [category]: updated }
+    await supabase
+      .from('scenes')
+      .update({ selected_root_asset_image_ids: newSelection, updated_at: new Date().toISOString() })
+      .eq('id', sceneId)
+
+    setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, selected_root_asset_image_ids: newSelection } : s))
   }
 
   async function generateBulkMasterPrompts() {
@@ -291,6 +332,55 @@ export default function ScenesPage() {
                 </div>
               )}
 
+              {/* 루트 에셋 이미지 선택 */}
+              <div className="pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
+                <p className="text-xs font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>루트 에셋 이미지</p>
+                <div className="space-y-2">
+                  {['character', 'space', 'object', 'misc'].map(category => {
+                    const catLabel = category === 'character' ? '캐릭터' : category === 'space' ? '공간' : category === 'object' ? '오브제' : '기타'
+                    const selectedImages = ((scene.selected_root_asset_image_ids ?? {}) as Record<string, string[]>)[category] ?? []
+                    const allCatImages = libraryAssets.filter(a => a.tags?.includes(category)).map(a => a.url)
+                    const rootSeedImages = rootAssets
+                      .filter(a => a.category === category)
+                      .flatMap(a => a.reference_image_urls ?? [])
+                    const availableImages = [...new Set([...allCatImages, ...rootSeedImages])]
+
+                    return (
+                      <div key={category} className="rounded border p-2" style={{ background: 'var(--surface-3)', borderColor: 'var(--border)' }}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <p className="text-[10px] font-semibold" style={{ color: 'var(--text-muted)' }}>{catLabel}</p>
+                          <button
+                            onClick={() => setPickerOpen({ sceneId: scene.id, category })}
+                            className="text-[10px] px-1.5 py-0.5 rounded transition-all hover:opacity-70"
+                            style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}
+                          >
+                            <Plus size={10} className="inline mr-0.5" /> 추가
+                          </button>
+                        </div>
+                        {selectedImages.length > 0 ? (
+                          <div className="grid grid-cols-3 gap-1">
+                            {selectedImages.map((url, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => updateRootAssetImageSelection(scene.id, category, url, false)}
+                                className="relative aspect-square rounded overflow-hidden group"
+                              >
+                                <img src={url} alt={`ref-${idx}`} className="w-full h-full object-cover" />
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <X size={12} className="text-white" />
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-[9px]" style={{ color: 'var(--text-muted)' }}>이미지 없음</p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
               <div className="pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
                 <button
                   onClick={() => generateMasterPrompt(scene.id)}
@@ -318,8 +408,53 @@ export default function ScenesPage() {
     </div>
   )
 
+  // 이미지 픽커 모달
+  const pickerModal = pickerOpen && (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-slate-900 rounded-lg max-w-2xl w-full max-h-[80vh] flex flex-col" style={{ background: 'var(--background)' }}>
+        <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
+          <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>이미지 선택</h3>
+          <button onClick={() => setPickerOpen(null)}><X size={16} /></button>
+        </div>
+        <div className="flex-1 overflow-auto p-4">
+          <div className="grid grid-cols-3 gap-3">
+            {libraryAssets
+              .filter(a => a.tags?.includes(pickerOpen.category))
+              .concat(
+                rootAssets
+                  .filter(a => a.category === pickerOpen.category)
+                  .flatMap(a => a.reference_image_urls?.map((url, idx) => ({
+                    id: `root-${a.id}-${idx}`,
+                    url,
+                    name: `${a.name} #${idx + 1}`,
+                    tags: [a.category],
+                  })) ?? [])
+              )
+              .map(asset => (
+                <button
+                  key={asset.id}
+                  onClick={() => {
+                    updateRootAssetImageSelection(pickerOpen.sceneId, pickerOpen.category, asset.url, true)
+                    setPickerOpen(null)
+                  }}
+                  className="relative aspect-square rounded overflow-hidden hover:opacity-80 transition-opacity"
+                >
+                  <img src={asset.thumbnail_url ?? asset.url} alt={asset.name} className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                    <Plus size={18} className="text-white" />
+                  </div>
+                </button>
+              ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
   return (
-    <div className="h-full flex flex-col">
+    <>
+      {pickerModal}
+      <div className="h-full flex flex-col">
       {/* 에러 */}
       {promptError && (
         <div
@@ -401,6 +536,7 @@ export default function ScenesPage() {
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </>
   )
 }

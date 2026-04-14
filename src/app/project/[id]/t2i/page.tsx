@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useParams } from 'next/navigation'
 import {
   Loader2, ChevronRight, ChevronDown, Wand2,
-  Plus, Edit3, BookImage, ImagePlus, X,
+  Plus, Edit3, BookImage, ImagePlus, X, RotateCcw,
 } from 'lucide-react'
 import type { Scene, PromptAttempt, SatisfactionScore, Asset, RootAssetSeed } from '@/types'
 import Link from 'next/link'
@@ -20,6 +20,80 @@ import SceneReferencePicker, {
 import { pushToast } from '@/components/ui/GenerationToast'
 import { sendGenerationNotification, getNotificationsEnabled, getSlackWebhookUrl } from '@/lib/notifications'
 import { cn } from '@/lib/utils'
+
+// ── 루트 에셋 패널 ────────────────────────────────────────────────
+function RootAssetPanel({
+  scene,
+}: {
+  scene: Scene
+}) {
+  const marks = (scene as any).root_asset_marks ?? { character: '', space: '', object: '', misc: '' }
+  const images = (scene as any).selected_root_asset_image_ids ?? {}
+  const categories = [
+    { key: 'character', label: '인물' },
+    { key: 'space', label: '공간' },
+    { key: 'object', label: '오브제' },
+    { key: 'misc', label: '기타' },
+  ]
+
+  const hasAnyContent = Object.values(marks).some(v => v.trim()) || Object.values(images).some((arr: any) => arr?.length > 0)
+
+  if (!hasAnyContent) {
+    return (
+      <div className="border rounded-lg p-3" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          씬 경계 편집에서 자동 분석/입력 필요
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="border rounded-lg overflow-hidden" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+      {/* 텍스트 마크 */}
+      {Object.values(marks).some(v => v.trim()) && (
+        <div className="p-3 space-y-1.5 border-b" style={{ borderColor: 'var(--border)' }}>
+          {categories.map(cat => {
+            const text = marks[cat.key as keyof typeof marks]
+            if (!text?.trim()) return null
+            return (
+              <div key={cat.key} className="flex items-start gap-2">
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }}>
+                  {cat.label}
+                </span>
+                <span className="text-xs flex-1" style={{ color: 'var(--text-secondary)' }}>
+                  {text}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* 이미지 */}
+      {Object.values(images).some((arr: any) => arr?.length > 0) && (
+        <div className="p-3 space-y-2">
+          {categories.map(cat => {
+            const imgs = (images as any)[cat.key] ?? []
+            if (!imgs.length) return null
+            return (
+              <div key={cat.key}>
+                <p className="text-[10px] font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>
+                  {cat.label}
+                </p>
+                <div className="grid grid-cols-3 gap-1">
+                  {imgs.map((url: string, idx: number) => (
+                    <img key={idx} src={url} alt="" className="w-full aspect-square object-cover rounded text-xs" />
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── 레퍼런스 이미지 선택 UI ────────────────────────────────────────
 interface RefImage { id: string; url: string; name: string }
@@ -255,6 +329,7 @@ export default function T2IPage() {
   const [editPrompt, setEditPromptText] = useState<string>('')
   const [editingScene, setEditingScene] = useState<string | null>(null)
   const [editLoading, setEditLoading] = useState(false)
+  const [editRefImages, setEditRefImages] = useState<Set<string>>(new Set())
 
   function updateCamera(sceneId: string, type: 'angle' | 'shotSize' | 'lens' | 'lighting', key: string) {
     setSceneCamera(prev => ({ ...prev, [sceneId]: { ...prev[sceneId], [type]: key } }))
@@ -357,8 +432,16 @@ export default function T2IPage() {
       }
     }
 
+    // 루트 에셋 이미지 추가
+    const selectedRootAssetImages = (scene as any)?.selected_root_asset_image_ids ?? {}
+    const rootImageUrls: string[] = []
+    for (const category of ['character', 'space', 'object', 'misc']) {
+      const urls = selectedRootAssetImages[category] ?? []
+      rootImageUrls.push(...urls)
+    }
+
     // 선택한 레퍼런스 + 루트 에셋 URL 합치기 (중복 제거)
-    const allRefUrls = [...(referenceImageUrls ?? []), ...rootAssetUrls]
+    const allRefUrls = [...(referenceImageUrls ?? []), ...rootAssetUrls, ...rootImageUrls]
     const uniqueRefUrls = Array.from(new Set(allRefUrls))
 
     const { data: attempt } = await supabase.from('prompt_attempts').insert({
@@ -505,6 +588,15 @@ export default function T2IPage() {
 
     return (
       <div className="border-t" style={{ borderColor: 'var(--border)', background: 'var(--background)' }}>
+        {/* ── 루트 에셋 패널 (읽기전용) ── */}
+        <div className="p-4 border-b" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider"
+              style={{ color: 'var(--text-muted)' }}>루트 에셋</span>
+          </div>
+          <RootAssetPanel scene={scene} />
+        </div>
+
         {/* ── 마스터 프롬프트 패널 ── */}
         <div className="p-4 border-b" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
           <div className="flex items-center gap-2 mb-2">
@@ -727,24 +819,42 @@ export default function T2IPage() {
           </div>
         ) : (
           // 편집 탭
-          <div className="max-w-4xl mx-auto">
-            <div className="grid grid-cols-2 gap-6 h-full">
-              {/* 왼쪽: 원본 이미지 선택 */}
-              <div className="border rounded-lg p-4 flex flex-col" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-                <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>원본 이미지 선택</h2>
+          <div className="max-w-6xl mx-auto space-y-4">
+            {/* 씬 선택 */}
+            <div className="border rounded-lg p-4" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+              <label className="text-sm font-semibold block mb-2" style={{ color: 'var(--text-primary)' }}>
+                적용할 씬
+              </label>
+              <select
+                value={editingScene ?? ''}
+                onChange={e => setEditingScene(e.target.value || null)}
+                className="w-full px-3 py-2 rounded text-sm"
+                style={{ background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+              >
+                <option value="">씬 선택...</option>
+                {scenes.map(scene => (
+                  <option key={scene.id} value={scene.id}>
+                    {scene.title}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-                {/* T2I 아카이브 + 레퍼런스 이미지 */}
-                <div className="flex-1 overflow-y-auto space-y-4">
+            <div className="grid grid-cols-3 gap-4">
+              {/* 원본 이미지 선택 */}
+              <div className="border rounded-lg p-4 flex flex-col" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+                <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>원본 이미지 선택</h3>
+                <div className="flex-1 overflow-y-auto space-y-3 mb-3">
                   {/* T2I 아카이브 */}
                   {Object.entries(attempts).map(([sceneId, sceneAttempts]) => {
                     const scene = scenes.find(s => s.id === sceneId)
                     if (!sceneAttempts.length) return null
                     return (
                       <div key={sceneId}>
-                        <p className="text-[11px] font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>
-                          {scene?.title} (생성 이력)
+                        <p className="text-[10px] font-semibold mb-2 uppercase" style={{ color: 'var(--text-muted)' }}>
+                          {scene?.title} (생성)
                         </p>
-                        <div className="grid grid-cols-4 gap-2">
+                        <div className="grid grid-cols-3 gap-1.5">
                           {sceneAttempts.flatMap(attempt => attempt.outputs ?? []).map(output => (
                             <button
                               key={output.id}
@@ -767,10 +877,10 @@ export default function T2IPage() {
                   {/* 레퍼런스 이미지 */}
                   {referenceAssets.length > 0 && (
                     <div>
-                      <p className="text-[11px] font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>
-                        레퍼런스 라이브러리
+                      <p className="text-[10px] font-semibold mb-2 uppercase" style={{ color: 'var(--text-muted)' }}>
+                        레퍼런스
                       </p>
-                      <div className="grid grid-cols-4 gap-2">
+                      <div className="grid grid-cols-3 gap-1.5">
                         {referenceAssets.map(asset => (
                           <button
                             key={asset.id}
@@ -790,8 +900,8 @@ export default function T2IPage() {
 
                 {/* 선택된 이미지 미리보기 */}
                 {editSourceImage && (
-                  <div className="mt-4 pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
-                    <p className="text-[11px] font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>선택됨</p>
+                  <div className="pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
+                    <p className="text-[10px] font-semibold mb-2 uppercase" style={{ color: 'var(--text-muted)' }}>선택됨</p>
                     <div className="aspect-video rounded overflow-hidden bg-black/20">
                       <img src={editSourceImage} alt="selected" className="w-full h-full object-cover" />
                     </div>
@@ -799,47 +909,75 @@ export default function T2IPage() {
                 )}
               </div>
 
+              {/* 중간: 참조 이미지 선택 */}
+              <div className="border rounded-lg p-4 flex flex-col" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+                <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>참조 이미지 (최대 5개)</h3>
+                <div className="flex-1 overflow-y-auto">
+                  <div className="grid grid-cols-2 gap-2">
+                    {referenceAssets.map(asset => {
+                      const isSel = editRefImages.has(asset.id)
+                      const isDisabled = !isSel && editRefImages.size >= 5
+                      return (
+                        <button
+                          key={asset.id}
+                          onClick={() => {
+                            const next = new Set(editRefImages)
+                            isSel ? next.delete(asset.id) : next.add(asset.id)
+                            setEditRefImages(next)
+                          }}
+                          disabled={isDisabled}
+                          className={cn('relative aspect-square rounded overflow-hidden transition-all', isDisabled ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:opacity-90')}
+                          style={{
+                            outline: isSel ? '2px solid var(--accent)' : '2px solid transparent',
+                            outlineOffset: '2px',
+                          }}
+                        >
+                          <img src={asset.thumbnail_url ?? asset.url} alt={asset.name} className="w-full h-full object-cover" />
+                          {isSel && (
+                            <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(99,102,241,0.35)' }}>
+                              <span className="text-white text-xs font-bold">✓</span>
+                            </div>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+                {editRefImages.size > 0 && (
+                  <div className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
+                    <p className="text-[10px] font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>선택됨: {editRefImages.size}개</p>
+                    <button
+                      onClick={() => setEditRefImages(new Set())}
+                      className="w-full text-[11px] py-1.5 rounded transition-all"
+                      style={{ background: 'var(--surface-3)', color: 'var(--text-secondary)' }}
+                    >
+                      <RotateCcw size={11} className="inline mr-1" /> 초기화
+                    </button>
+                  </div>
+                )}
+              </div>
+
               {/* 오른쪽: 편집 프롬프트 + 버튼 */}
               <div className="border rounded-lg p-4 flex flex-col" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-                <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>편집 프롬프트</h2>
+                <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>편집 프롬프트</h3>
 
                 <textarea
                   value={editPrompt}
                   onChange={e => setEditPromptText(e.target.value)}
                   placeholder="예: '색상을 더 밝게 해주세요' 또는 '배경을 나무숲으로 바꿔줘'"
-                  rows={8}
-                  className="flex-1 p-3 rounded-lg text-sm resize-none"
+                  rows={10}
+                  className="flex-1 p-3 rounded-lg text-sm resize-none mb-3"
                   style={{ background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
                 />
-
-                {/* 씬 선택 */}
-                <div className="mt-4">
-                  <label className="text-[11px] font-semibold block mb-2" style={{ color: 'var(--text-muted)' }}>
-                    적용할 씬 (선택)
-                  </label>
-                  <select
-                    value={editingScene ?? ''}
-                    onChange={e => setEditingScene(e.target.value || null)}
-                    className="w-full px-3 py-2 rounded text-sm"
-                    style={{ background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
-                  >
-                    <option value="">선택 없음</option>
-                    {scenes.map(scene => (
-                      <option key={scene.id} value={scene.id}>
-                        {scene.title}
-                      </option>
-                    ))}
-                  </select>
-                </div>
 
                 {/* 생성 버튼 */}
                 <button
                   onClick={() => editingScene && handleEditImage(editingScene)}
                   disabled={!editSourceImage || !editPrompt.trim() || !editingScene || editLoading}
-                  className="w-full mt-4 px-4 py-3 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-all hover:opacity-90"
+                  className="w-full px-4 py-3 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-all hover:opacity-90"
                   style={{ background: 'var(--accent)' }}
                 >
-                  {editLoading ? '수정 생성 중...' : '수정 생성'}
+                  {editLoading ? '수정 생성 중...' : '만들기'}
                 </button>
               </div>
             </div>

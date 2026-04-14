@@ -54,6 +54,12 @@ interface Scene {
   label?: string         // preset key
   labelMode?: 'toggle' | 'text'
   customLabel?: string
+  rootAssetMarks?: {
+    character: string
+    space: string
+    object: string
+    misc: string
+  }
 }
 
 // ── localStorage 헬퍼 ─────────────────────────────────────────
@@ -187,6 +193,74 @@ function SceneNumberInput({
   )
 }
 
+// ── 루트 에셋 마크 에디터 ────────────────────────────────────
+
+function RootAssetMarksEditor({
+  scene,
+  onUpdate,
+}: {
+  scene: Scene
+  onUpdate: (id: string, updates: Partial<Scene>) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const marks = scene.rootAssetMarks ?? { character: '', space: '', object: '', misc: '' }
+  const categories = [
+    { key: 'character' as const, label: '인물' },
+    { key: 'space' as const, label: '공간' },
+    { key: 'object' as const, label: '오브제' },
+    { key: 'misc' as const, label: '기타' },
+  ]
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-1 px-2 py-1 rounded text-xs transition-all hover:opacity-80"
+        style={{
+          background: Object.values(marks).some(v => v.trim()) ? 'rgba(34,197,94,0.1)' : 'var(--surface-2)',
+          border: `1px solid ${Object.values(marks).some(v => v.trim()) ? 'rgba(34,197,94,0.4)' : 'var(--border)'}`,
+          color: Object.values(marks).some(v => v.trim()) ? '#22c55e' : 'var(--text-muted)',
+        }}
+        title="루트 에셋 마크 편집"
+      >
+        <Type size={9} />
+        <span>에셋 마크</span>
+      </button>
+
+      {open && (
+        <div
+          className="absolute top-full left-0 mt-1 z-20 rounded-lg shadow-xl min-w-[280px] overflow-hidden"
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+        >
+          <div className="p-3 space-y-2">
+            {categories.map(cat => (
+              <div key={cat.key}>
+                <label className="text-[10px] font-semibold block mb-1" style={{ color: 'var(--text-muted)' }}>
+                  {cat.label}
+                </label>
+                <input
+                  type="text"
+                  value={marks[cat.key]}
+                  onChange={e => onUpdate(scene.id, {
+                    rootAssetMarks: { ...marks, [cat.key]: e.target.value }
+                  })}
+                  placeholder={`${cat.label} 입력...`}
+                  className="w-full px-2 py-1 rounded text-xs outline-none"
+                  style={{
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text-primary)',
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── 씬 라벨 에디터 ───────────────────────────────────────────
 
 function LabelEditor({
@@ -301,6 +375,7 @@ export default function SceneEditorPage() {
   const [classifying, setClassifying]       = useState(false)
   const [error, setError]                   = useState<string | null>(null)
   const [savedIndicator, setSavedIndicator] = useState(false)
+  const [extracting, setExtracting]         = useState(false)
 
   // Tree collapse state (persisted to localStorage)
   const [collapsedSeqs, setCollapsedSeqs]     = useState<Set<string>>(new Set())
@@ -464,6 +539,35 @@ export default function SceneEditorPage() {
     setLoading(false)
   }
 
+  async function extractRootAssetMarks() {
+    if (!scenes.length) return
+    setExtracting(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/scene-editor/extract-marks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sceneIds: scenes.map(s => s.id), projectId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      // Update local scenes with extracted marks
+      if (data.results) {
+        setScenes(prev => prev.map(scene => {
+          const result = data.results.find((r: any) => r.sceneId === scene.id)
+          if (result?.marks) {
+            return { ...scene, rootAssetMarks: result.marks }
+          }
+          return scene
+        }))
+      }
+    } catch (e) {
+      setError(`에셋 마크 추출 실패: ${String(e)}`)
+    } finally {
+      setExtracting(false)
+    }
+  }
+
   async function confirmAndClassify() {
     if (!scriptId || !scenes.length) return
     setClassifying(true)
@@ -590,6 +694,9 @@ export default function SceneEditorPage() {
             {/* 라벨 (씬 번호와 별개) */}
             <LabelEditor scene={scene} onUpdate={updateScene} />
 
+            {/* 루트 에셋 마크 */}
+            <RootAssetMarksEditor scene={scene} onUpdate={updateScene} />
+
             {/* 합치기 */}
             {idx > 0 && (
               <button
@@ -661,15 +768,26 @@ export default function SceneEditorPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={resetFromScript}
-            disabled={classifying || loading}
+            disabled={classifying || loading || extracting}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm hover-surface transition-all disabled:opacity-40"
             style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}
           >
             <RotateCcw size={13} /> 초기화
           </button>
           <button
+            onClick={extractRootAssetMarks}
+            disabled={extracting || classifying || !scenes.length}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm hover-surface transition-all disabled:opacity-40"
+            style={{ color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
+          >
+            {extracting
+              ? <><Loader2 size={13} className="animate-spin" /> 분석중...</>
+              : <>📝 대본 자동 분석</>
+            }
+          </button>
+          <button
             onClick={confirmAndClassify}
-            disabled={classifying || !scenes.length}
+            disabled={classifying || !scenes.length || extracting}
             className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-all hover:opacity-90"
             style={{ background: 'var(--accent)' }}
           >
