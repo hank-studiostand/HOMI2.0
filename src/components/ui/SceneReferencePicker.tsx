@@ -34,7 +34,6 @@ export function allSelectedUrls(sel: RefSelection, assets: Asset[]): string[] {
   ]
   return assets.filter(a => allIds.includes(a.id)).map(a => a.url)
 }
-
 // ─── 카테고리별 이미지 그리드 ─────────────────────────────────────────────────
 
 function RefImageGrid({
@@ -306,28 +305,4 @@ export default function SceneReferencePicker({
                   const cat = getAssetCategory(asset)
                   const catMeta = getCategoryMeta(cat)
                   return (
-                    <div key={asset.id} className="relative group">
-                      <img
-                        src={asset.thumbnail_url ?? asset.url}
-                        alt=""
-                        className="w-10 h-10 rounded-lg object-cover"
-                        style={{ outline: `2px solid ${catMeta.color}`, outlineOffset: '1px' }}
-                      />
-                      <button
-                        onClick={() => toggle(cat as Exclude<RefCategory, 'all'>, asset.id)}
-                        className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                        style={{ background: 'var(--danger)', color: 'white' }}
-                      >
-                        <X size={8} />
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
+                    <div key={asset.id}

@@ -401,47 +401,46 @@ export default function AssetsPage() {
     return matchSearch && matchCat
   })
 
-  async function uploadFiles(files: FileList | File[], category: RefCategory) {
-    setUploading(true)
-    const categoryTag: string[] = category === 'all' ? [] : [category]
+async function uploadFiles(files: FileList | File[], category: RefCategory) {
+  setUploading(true)
+  const categoryTag: string[] = category === 'all' ? [] : [category]
 
-    try {
-      for (const file of Array.from(files)) {
-        const ext  = file.name.split('.').pop() || 'png'
-        const path = `${projectId}/ref_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-        const { data: uploaded, error: storageErr } = await supabase.storage.from('assets').upload(path, file)
-        if (storageErr) {
-          console.error('[asset upload] storage error:', storageErr)
-          alert(`스토리지 업로드 실패: ${storageErr.message}`)
-          continue
-        }
-        if (!uploaded) {
-          console.error('[asset upload] no upload data returned')
-          continue
-        }
-        const { data: { publicUrl } } = supabase.storage.from('assets').getPublicUrl(path)
-        const { error: insertErr } = await supabase.from('assets').insert({
-          project_id: projectId,
-          type:       'reference',
-          name:       file.name,
-          url:        publicUrl,
-          tags:       categoryTag,
-          metadata:   { file_size: file.size, mime_type: file.type },
-        })
-        if (insertErr) {
-          console.error('[asset upload] DB insert error:', insertErr)
-          alert(`DB 저장 실패: ${insertErr.message}`)
-        }
+  try {
+    for (const file of Array.from(files)) {
+      const ext  = file.name.split('.').pop() || 'png'
+      const path = `${projectId}/ref_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+      const { data: uploaded, error: storageErr } = await supabase.storage.from('assets').upload(path, file)
+      if (storageErr) {
+        console.error('[asset upload] storage error:', storageErr)
+        alert(`스토리지 업로드 실패: ${storageErr.message}`)
+        continue
       }
-    } catch (e: any) {
-      console.error('[asset upload] exception:', e)
-      alert(`업로드 중 예외 발생: ${e?.message ?? e}`)
-    } finally {
-      setUploading(false)
-      fetchAssets()
+      if (!uploaded) {
+        console.error('[asset upload] no upload data returned')
+        continue
+      }
+      const { data: { publicUrl } } = supabase.storage.from('assets').getPublicUrl(path)
+      const { error: insertErr } = await supabase.from('assets').insert({
+        project_id: projectId,
+        type:       'reference',
+        name:       file.name,
+        url:        publicUrl,
+        tags:       categoryTag,
+        metadata:   { file_size: file.size, mime_type: file.type },
+      })
+      if (insertErr) {
+        console.error('[asset upload] DB insert error:', insertErr)
+        alert(`DB 저장 실패: ${insertErr.message}`)
+      }
     }
+  } catch (e: any) {
+    console.error('[asset upload] exception:', e)
+    alert(`업로드 중 예외 발생: ${e?.message ?? e}`)
+  } finally {
+    setUploading(false)
+    fetchAssets()
   }
-
+}
   async function scoreAsset(id: string, score: number) {
     await supabase.from('assets').update({ satisfaction_score: score }).eq('id', id)
     setAssets(prev => prev.map(a => a.id === id ? { ...a, satisfaction_score: score as any } : a))
@@ -692,43 +691,4 @@ export default function AssetsPage() {
                                 onDownload={id => {
                                   const a = assets.find(x => x.id === id)
                                   if (a) { const link = document.createElement('a'); link.href = a.url; link.download = a.name; link.click() }
-                                }}
-                                selectable
-                                selected={selected.has(asset.id)}
-                                onSelect={toggleSelect}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              /* 단일 카테고리 탭 */
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                {filtered.map(asset => (
-                  <AssetCard
-                    key={asset.id}
-                    asset={asset}
-                    onScore={scoreAsset}
-                    onToggleArchive={toggleArchive}
-                    onDelete={deleteAsset}
-                    onDownload={id => {
-                      const a = assets.find(x => x.id === id)
-                      if (a) { const link = document.createElement('a'); link.href = a.url; link.download = a.name; link.click() }
-                    }}
-                    selectable
-                    selected={selected.has(asset.id)}
-                    onSelect={toggleSelect}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
+     
