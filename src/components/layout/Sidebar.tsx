@@ -234,7 +234,7 @@ export default function Sidebar({ projectId, projectName }: SidebarProps) {
           <span>설정</span>
         </Link>
 
-        <form action="/auth/signout" method="post">
+        <form action="/api/auth/signout" method="post">
           <button
             type="submit"
             className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-[13px] transition-all"
