@@ -52,6 +52,20 @@ export interface Scene {
     object?: string[]
     misc?: string[]
   }
+  /** 씬 분류 페이지에서 카테고리별 최대 3장씩 고른 이미지 id/url 목록 */
+  selected_root_asset_image_ids?: {
+    character?: string[]
+    space?: string[]
+    object?: string[]
+    misc?: string[]
+  }
+  /** 씬 경계 편집에서 인물/공간/오브제/기타 텍스트 마킹 (Claude 자동 추출 가능) */
+  root_asset_marks?: {
+    character?: string
+    space?: string
+    object?: string
+    misc?: string
+  }
   created_at: string
   updated_at: string
 }
