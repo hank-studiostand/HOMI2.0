@@ -832,6 +832,7 @@ export default function I2VPage() {
             renderScene={renderSceneContent}
             expandedSceneId={expandedScene}
             onExpandScene={setExpandedScene}
+            storageKey={`i2v:${projectId}`}
           />
         </div>
       </div>

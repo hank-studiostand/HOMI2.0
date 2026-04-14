@@ -46,6 +46,12 @@ export interface Scene {
   order_index: number
   settings?: SceneSettings
   master_prompt?: MasterPrompt
+  selected_root_asset_ids?: {
+    character?: string[]
+    space?: string[]
+    object?: string[]
+    misc?: string[]
+  }
   created_at: string
   updated_at: string
 }
@@ -138,6 +144,20 @@ export interface AttemptOutput {
   satisfaction_score: SatisfactionScore | null
   archived: boolean
   created_at: string
+}
+
+// ── Root Asset Seeds ──────────────────────────
+export type RootAssetCategory = 'character' | 'space' | 'object' | 'misc'
+
+export interface RootAssetSeed {
+  id: string
+  project_id: string
+  category: RootAssetCategory
+  name: string
+  description: string | null
+  reference_image_urls: string[]
+  created_at: string
+  updated_at: string
 }
 
 // ── Archive & Download ────────────────────────

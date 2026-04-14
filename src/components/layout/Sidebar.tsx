@@ -8,7 +8,7 @@ import { useTheme } from '@/components/theme/ThemeProvider'
 import {
   FileText, Layers, Image, Video, Mic, Archive,
   FolderOpen, ChevronLeft, Settings, LogOut, Scissors,
-  Clapperboard, LayoutGrid, GripVertical, Sun, Moon,
+  Clapperboard, LayoutGrid, GripVertical, Sun, Moon, Package,
 } from 'lucide-react'
 
 interface NavItem {
@@ -26,6 +26,7 @@ const DEFAULT_NAV: NavItem[] = [
   { href: 'scene-editor', label: '씬 경계 편집',    icon: Scissors,     step: '02' },
   { href: 'scenes',       label: '씬 분류',         icon: Layers,       step: '03' },
   { href: 'assets',       label: '에셋 라이브러리', icon: FolderOpen,   step: '04' },
+  { href: 'root-assets',  label: '루트 에셋',       icon: Package,      step: '04a' },
   { href: 't2i',          label: 'T2I',             icon: Image,        step: '05' },
   { href: 'i2v',          label: 'I2V',             icon: Video,        step: '06' },
   { href: 'lipsync',      label: '립싱크',          icon: Mic,          step: '07' },

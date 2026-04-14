@@ -4,11 +4,11 @@ import { useState, useEffect } from 'react'
 import { useLocalState } from '@/hooks/useLocalState'
 import { createClient } from '@/lib/supabase/client'
 import { useParams } from 'next/navigation'
-import { Plus, Loader2, ChevronRight, ChevronDown, Wand2 } from 'lucide-react'
+import { Plus, Loader2, ChevronRight, ChevronDown, Wand2, X } from 'lucide-react'
 import SceneCard from '@/components/scene/SceneCard'
 import SceneSettings from '@/components/scene/SceneSettings'
 import SceneTreeView from '@/components/scene/SceneTreeView'
-import type { Scene, SceneSettings as SceneSettingsType } from '@/types'
+import type { Scene, SceneSettings as SceneSettingsType, RootAssetSeed } from '@/types'
 import Link from 'next/link'
 
 const lsKey = (pid: string) => `scene-editor-${pid}`
@@ -33,6 +33,10 @@ export default function ScenesPage() {
   const [expandedScene, setExpandedScene] = useLocalState<string | null>(`expanded-scenes-${projectId}`, null)
   const [completedScenes, setCompletedScenes] = useState<Set<string>>(new Set())
   const [localScenes, setLocalScenes]   = useState<{ id: string; content: string }[]>([])
+  const [bulkGenerating, setBulkGenerating] = useState(false)
+  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | null>(null)
+  const [bulkMessage, setBulkMessage] = useState<string | null>(null)
+  const [rootAssets, setRootAssets] = useState<RootAssetSeed[]>([])
 
   const supabase = createClient()
 
@@ -45,11 +49,19 @@ export default function ScenesPage() {
 
   useEffect(() => {
     fetchScenes()
+    fetchRootAssets()
     const channel = supabase.channel('scenes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'scenes', filter: `project_id=eq.${projectId}` },
         () => fetchScenes())
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    const assetChannel = supabase.channel('root-assets')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'root_asset_seeds', filter: `project_id=eq.${projectId}` },
+        () => fetchRootAssets())
+      .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+      supabase.removeChannel(assetChannel)
+    }
   }, [projectId])
 
   async function fetchScenes() {
@@ -60,6 +72,14 @@ export default function ScenesPage() {
       .order('order_index')
     setScenes(data ?? [])
     setLoading(false)
+  }
+
+  async function fetchRootAssets() {
+    const { data } = await supabase
+      .from('root_asset_seeds')
+      .select('*')
+      .eq('project_id', projectId)
+    setRootAssets(data ?? [])
   }
 
   async function updateScene(id: string, updates: Partial<Scene>) {
@@ -105,6 +125,69 @@ export default function ScenesPage() {
       body: JSON.stringify({ sceneId, updates }),
     })
     fetchScenes()
+  }
+
+  async function updateRootAssetSelection(
+    sceneId: string,
+    category: string,
+    assetId: string,
+    selected: boolean,
+  ) {
+    const scene = scenes.find(s => s.id === sceneId)
+    if (!scene) return
+
+    const current = scene.selected_root_asset_ids ?? {}
+    const categoryList = (current[category as keyof typeof current] ?? []) as string[]
+
+    let updated: string[]
+    if (selected) {
+      updated = [...categoryList, assetId]
+    } else {
+      updated = categoryList.filter(id => id !== assetId)
+    }
+
+    const newSelection = { ...current, [category]: updated }
+    await supabase
+      .from('scenes')
+      .update({ selected_root_asset_ids: newSelection, updated_at: new Date().toISOString() })
+      .eq('id', sceneId)
+
+    setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, selected_root_asset_ids: newSelection } : s))
+  }
+
+  async function generateBulkMasterPrompts() {
+    setBulkGenerating(true)
+    setBulkProgress(null)
+    setBulkMessage(null)
+    setPromptError(null)
+
+    try {
+      const sceneIds = scenes.map(s => s.id)
+      const res = await fetch('/api/prompts/master/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sceneIds, projectId }),
+      })
+      const data = await res.json()
+
+      if (!res.ok) {
+        setPromptError(data.error ?? '일괄 생성 실패')
+      } else {
+        const results = data.results ?? []
+        const succeeded = results.filter((r: any) => r.ok).length
+        const failed = results.filter((r: any) => !r.ok).length
+        setBulkMessage(
+          `완료: ${succeeded}개 성공${failed > 0 ? `, ${failed}개 실패` : ''}`
+        )
+        fetchScenes()
+      }
+    } catch (err) {
+      setPromptError('네트워크 오류')
+    } finally {
+      setBulkGenerating(false)
+      setBulkProgress(null)
+      setTimeout(() => setBulkMessage(null), 5000)
+    }
   }
 
   function handleToggleComplete(sceneId: string) {
@@ -170,6 +253,44 @@ export default function ScenesPage() {
                 settings={scene.settings ?? {}}
                 onChange={updates => updateSettings(scene.id, updates)}
               />
+
+              {/* 루트 에셋 선택 */}
+              {rootAssets.length > 0 && (
+                <div className="pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
+                  <p className="text-xs font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>루트 에셋 선택</p>
+                  <div className="space-y-2">
+                    {['character', 'space', 'object', 'misc'].map(category => {
+                      const assets = rootAssets.filter(a => a.category === category)
+                      const selected = (scene.selected_root_asset_ids?.[category as keyof typeof scene.selected_root_asset_ids] ?? []) as string[]
+                      if (assets.length === 0) return null
+                      return (
+                        <div key={category}>
+                          <p className="text-[10px] font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>
+                            {category === 'character' ? '캐릭터' : category === 'space' ? '공간' : category === 'object' ? '오브제' : '기타'}
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {assets.map(asset => (
+                              <button
+                                key={asset.id}
+                                onClick={() => updateRootAssetSelection(scene.id, category, asset.id, !selected.includes(asset.id))}
+                                className="px-2 py-1 rounded text-[10px] font-medium transition-all"
+                                style={{
+                                  background: selected.includes(asset.id) ? 'var(--accent)' : 'var(--surface-3)',
+                                  color: selected.includes(asset.id) ? 'white' : 'var(--text-secondary)',
+                                  border: `1px solid ${selected.includes(asset.id) ? 'var(--accent)' : 'var(--border)'}`,
+                                }}
+                              >
+                                {asset.name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className="pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
                 <button
                   onClick={() => generateMasterPrompt(scene.id)}
@@ -210,6 +331,17 @@ export default function ScenesPage() {
         </div>
       )}
 
+      {/* 일괄 생성 메시지 */}
+      {bulkMessage && (
+        <div
+          className="mx-6 mt-4 px-4 py-2.5 rounded text-sm flex items-center justify-between"
+          style={{ background: 'var(--success-bg)', border: '1px solid var(--success)', color: 'var(--success)' }}
+        >
+          <span>{bulkMessage}</span>
+          <button onClick={() => setBulkMessage(null)} className="opacity-60 hover:opacity-100 ml-4">✕</button>
+        </div>
+      )}
+
       {/* 헤더 */}
       <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
         <div>
@@ -217,6 +349,18 @@ export default function ScenesPage() {
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{scenes.length}개 씬</p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={generateBulkMasterPrompts}
+            disabled={bulkGenerating || scenes.length === 0}
+            className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-medium text-white disabled:opacity-50 transition-all hover:opacity-90"
+            style={{ background: 'var(--accent)' }}
+          >
+            {bulkGenerating
+              ? <Loader2 size={13} className="animate-spin" />
+              : <Wand2 size={13} />
+            }
+            {bulkGenerating ? '생성 중...' : '마스터 프롬프트 일괄 생성'}
+          </button>
           <button
             onClick={addScene}
             className="flex items-center gap-1.5 px-4 py-2 rounded text-sm hover-surface transition-all"
@@ -252,6 +396,7 @@ export default function ScenesPage() {
               renderScene={renderSceneContent}
               expandedSceneId={expandedScene}
               onExpandScene={setExpandedScene}
+              storageKey={`scenes:${projectId}`}
             />
           </div>
         )}

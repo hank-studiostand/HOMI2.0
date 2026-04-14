@@ -513,6 +513,7 @@ export default function TotalTreePage() {
               renderScene={renderSceneContent}
               expandedSceneId={expandedScene}
               onExpandScene={setExpandedScene}
+              storageKey={`totaltree:${projectId}`}
               pipelineChips={(scene: Scene) => {
                 const sd = scenes.find(s => s.id === scene.id)
                 return sd ? <PipelineChips scene={sd} /> : null

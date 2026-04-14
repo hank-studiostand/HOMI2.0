@@ -325,6 +325,17 @@ export default function AssetsPage() {
   const [activeTab, setActiveTab] = useState<RefCategory>('all')
   const supabase = createClient()
 
+  // activeTab 마지막 상태 기억
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(`assets-tab:${projectId}`)
+      if (saved) setActiveTab(saved as RefCategory)
+    } catch {}
+  }, [projectId])
+  useEffect(() => {
+    try { window.localStorage.setItem(`assets-tab:${projectId}`, activeTab) } catch {}
+  }, [activeTab, projectId])
+
   useEffect(() => { fetchAssets() }, [projectId])
 
   // 클립보드 붙여넣기 → 현재 활성 탭 카테고리로 업로드

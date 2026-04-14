@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, ReactNode } from 'react'
+import { useState, useCallback, useEffect, ReactNode } from 'react'
 import {
   ChevronRight, ChevronDown, CheckCircle2, Circle,
   Film, Layers, Scissors,
@@ -114,6 +114,22 @@ interface SceneTreeViewProps {
   expandedSceneId?: string | null
   onExpandScene?: (sceneId: string | null) => void
   pipelineChips?: (scene: Scene) => ReactNode
+  /** 지정되면 다중 펼침 + localStorage 자동 저장 (마지막 상태 기억). */
+  storageKey?: string
+}
+
+// ── localStorage helpers ──
+function loadSet(key: string): Set<string> {
+  try {
+    if (typeof window === 'undefined') return new Set()
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return new Set()
+    const arr = JSON.parse(raw)
+    return new Set(Array.isArray(arr) ? arr : [])
+  } catch { return new Set() }
+}
+function saveSet(key: string, s: Set<string>) {
+  try { window.localStorage.setItem(key, JSON.stringify(Array.from(s))) } catch {}
 }
 
 export default function SceneTreeView({
@@ -124,10 +140,54 @@ export default function SceneTreeView({
   expandedSceneId,
   onExpandScene,
   pipelineChips,
+  storageKey,
 }: SceneTreeViewProps) {
   const tree = buildTree(scenes)
+
+  // storageKey 제공 시 내부 멀티 펼침 상태 + localStorage
+  const [internalExpandedScenes, setInternalExpandedScenes] = useState<Set<string>>(new Set())
   const [expandedSeqs, setExpandedSeqs] = useState<Set<string>>(new Set(tree.map(t => t.seq)))
   const [expandedSceneGroups, setExpandedSceneGroups] = useState<Set<string>>(new Set())
+  const [hydrated, setHydrated] = useState(false)
+
+  // 마운트 시 localStorage에서 복원
+  useEffect(() => {
+    if (!storageKey) { setHydrated(true); return }
+    setInternalExpandedScenes(loadSet(`${storageKey}:scenes`))
+    const savedSeqs = loadSet(`${storageKey}:seqs`)
+    if (savedSeqs.size > 0) setExpandedSeqs(savedSeqs)
+    setExpandedSceneGroups(loadSet(`${storageKey}:groups`))
+    setHydrated(true)
+  }, [storageKey])
+
+  // 변경 시 저장
+  useEffect(() => {
+    if (!storageKey || !hydrated) return
+    saveSet(`${storageKey}:scenes`, internalExpandedScenes)
+  }, [internalExpandedScenes, storageKey, hydrated])
+  useEffect(() => {
+    if (!storageKey || !hydrated) return
+    saveSet(`${storageKey}:seqs`, expandedSeqs)
+  }, [expandedSeqs, storageKey, hydrated])
+  useEffect(() => {
+    if (!storageKey || !hydrated) return
+    saveSet(`${storageKey}:groups`, expandedSceneGroups)
+  }, [expandedSceneGroups, storageKey, hydrated])
+
+  const multiMode = !!storageKey
+  const isSceneExpanded = (id: string) =>
+    multiMode ? internalExpandedScenes.has(id) : expandedSceneId === id
+  const toggleScene = (id: string) => {
+    if (multiMode) {
+      setInternalExpandedScenes(prev => {
+        const next = new Set(prev)
+        next.has(id) ? next.delete(id) : next.add(id)
+        return next
+      })
+    } else {
+      onExpandScene?.(expandedSceneId === id ? null : id)
+    }
+  }
 
   const toggleSeq = useCallback((seq: string) => {
     setExpandedSeqs(prev => {
@@ -155,7 +215,7 @@ export default function SceneTreeView({
       <div className="space-y-1">
         {scenes.map(scene => {
           const isCompleted = completedScenes.has(scene.id)
-          const isExpanded  = expandedSceneId === scene.id
+          const isExpanded  = isSceneExpanded(scene.id)
 
           return (
             <div
@@ -167,7 +227,7 @@ export default function SceneTreeView({
               }}
             >
               <button
-                onClick={() => onExpandScene?.(isExpanded ? null : scene.id)}
+                onClick={() => toggleScene(scene.id)}
                 className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover-surface transition-colors"
               >
                 {isExpanded
@@ -245,7 +305,7 @@ export default function SceneTreeView({
                     const scene = sceneGroup.cuts[0]
                     if (!scene) return null
                     const isCompleted = completedScenes.has(scene.id)
-                    const isExpanded  = expandedSceneId === scene.id
+                    const isExpanded  = isSceneExpanded(scene.id)
 
                     return (
                       <div
@@ -254,7 +314,7 @@ export default function SceneTreeView({
                         style={{ borderColor: 'var(--border-light)' }}
                       >
                         <button
-                          onClick={() => onExpandScene?.(isExpanded ? null : scene.id)}
+                          onClick={() => toggleScene(scene.id)}
                           className="w-full flex items-center gap-2.5 py-2.5 text-left hover-surface transition-colors"
                           style={{ paddingLeft: '28px', paddingRight: '12px' }}
                         >
@@ -311,7 +371,7 @@ export default function SceneTreeView({
 
                       {isGroupExpanded && sceneGroup.cuts.map(scene => {
                         const isCompleted = completedScenes.has(scene.id)
-                        const isExpanded  = expandedSceneId === scene.id
+                        const isExpanded  = isSceneExpanded(scene.id)
 
                         return (
                           <div
@@ -321,7 +381,7 @@ export default function SceneTreeView({
                           >
                             {/* ▶ 컷 헤더 (3단계) */}
                             <button
-                              onClick={() => onExpandScene?.(isExpanded ? null : scene.id)}
+                              onClick={() => toggleScene(scene.id)}
                               className="w-full flex items-center gap-2.5 py-2 text-left hover-surface transition-colors"
                               style={{ paddingLeft: '48px', paddingRight: '12px' }}
                             >
@@ -337,19 +397,4 @@ export default function SceneTreeView({
                               {onToggleComplete && (
                                 <CompleteButton completed={isCompleted} onClick={() => onToggleComplete(scene.id)} />
                               )}
-                            </button>
-                            {isExpanded && !isCompleted && renderScene(scene)}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
+                    
