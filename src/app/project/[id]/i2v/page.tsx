@@ -384,7 +384,20 @@ export default function I2VPage() {
 
   useEffect(() => {
     fetchData()
-    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+    const attemptChannel = supabase
+      .channel(`i2v-attempts-${projectId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'prompt_attempts' }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attempt_outputs' }, () => fetchData())
+      .subscribe()
+    const assetChannel = supabase
+      .channel(`i2v-assets-${projectId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'assets', filter: `project_id=eq.${projectId}` }, () => fetchData())
+      .subscribe()
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current)
+      supabase.removeChannel(attemptChannel)
+      supabase.removeChannel(assetChannel)
+    }
   }, [projectId])
 
   // 생성 중인 attempt가 있으면 5초마다 자동 새로고침

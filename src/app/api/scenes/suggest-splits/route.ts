@@ -80,7 +80,8 @@ JSON만 반환:
     if (!scene_starts.includes(0)) scene_starts.unshift(0)
 
     return NextResponse.json({ scene_starts, source: 'ai' })
-  } catch {
+  } catch (err) {
+    console.warn('[suggest-splits] AI 파싱 실패, 폴백 사용:', err)
     // 실패 시 20줄마다 씬 하나로 폴백
     const fallback = Array.from(
       { length: Math.ceil(lines.length / 20) },

@@ -141,6 +141,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, asset })
   } catch (err) {
-    return NextResponse.json({ error: `편집 실패: ${String(err)}` }, { status: 500 })
+    return NextResponse.json({ error: `편집 실패: ${err instanceof Error ? err.message : String(err)}` }, { status: 500 })
   }
 }

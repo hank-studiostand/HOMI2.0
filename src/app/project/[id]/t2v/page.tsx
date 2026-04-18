@@ -340,7 +340,22 @@ export default function T2VPage() {
 
   const supabase = createClient()
 
-  useEffect(() => { fetchData() }, [projectId])
+  useEffect(() => {
+    fetchData()
+    const attemptChannel = supabase
+      .channel(`t2v-attempts-${projectId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'prompt_attempts' }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attempt_outputs' }, () => fetchData())
+      .subscribe()
+    const assetChannel = supabase
+      .channel(`t2v-assets-${projectId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'assets', filter: `project_id=eq.${projectId}` }, () => fetchData())
+      .subscribe()
+    return () => {
+      supabase.removeChannel(attemptChannel)
+      supabase.removeChannel(assetChannel)
+    }
+  }, [projectId])
 
   async function fetchData() {
     const { data: scenesData } = await supabase

@@ -154,6 +154,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error('[I2V] generate error:', err)
     await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attemptId)
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    const msg = err instanceof Error ? err.message : String(err)
+    return NextResponse.json({ error: 'I2V 생성 실패: ' + msg }, { status: 500 })
   }
 }

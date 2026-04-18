@@ -18,7 +18,22 @@ export default function LipsyncPage() {
   const [uploading, setUploading] = useState(false)
   const supabase = createClient()
 
-  useEffect(() => { fetchData() }, [projectId])
+  useEffect(() => {
+    fetchData()
+    const attemptChannel = supabase
+      .channel(`lipsync-attempts-${projectId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'prompt_attempts' }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attempt_outputs' }, () => fetchData())
+      .subscribe()
+    const assetChannel = supabase
+      .channel(`lipsync-assets-${projectId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'assets', filter: `project_id=eq.${projectId}` }, () => fetchData())
+      .subscribe()
+    return () => {
+      supabase.removeChannel(attemptChannel)
+      supabase.removeChannel(assetChannel)
+    }
+  }, [projectId])
 
   async function fetchData() {
     const { data: videoAssets } = await supabase

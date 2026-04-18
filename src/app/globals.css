@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* ── Global Scale (text 1.5x / box 2x) ──────────────────── */
+/* html font-size 16px → 24px (1.5x): rem 기반 Tailwind text-* 자동 1.5x */
+/* --spacing 0.25rem → 0.333rem (4/3 ×): rem 1.5x × spacing 4/3x = 2x boxes */
+html { font-size: 24px; }
+
+@theme {
+  --spacing: calc(0.25rem * 4 / 3);
+}
+
+
 /* ── Notion-style Design System ─────────────────────────── */
 
 /* DARK theme (default) */
@@ -71,7 +81,7 @@ html, body {
   background: var(--background);
   color: var(--text-primary);
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
-  font-size: 14px;
+  font-size: 21px;
   line-height: 1.6;
   height: 100%;
   -webkit-font-smoothing: antialiased;
@@ -95,8 +105,8 @@ html, body {
 /* Attempt tree connector line */
 .attempt-tree-line {
   border-left: 2px solid var(--border);
-  margin-left: 20px;
-  padding-left: 20px;
+  margin-left: 40px;
+  padding-left: 40px;
 }
 
 /* Card hover */
@@ -107,14 +117,14 @@ html, body {
 .asset-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
+  gap: 24px;
 }
 
 /* Notion-style divider */
 .notion-divider {
   height: 1px;
   background: var(--border);
-  margin: 8px 0;
+  margin: 16px 0;
 }
 
 /* Fade-in animation */
@@ -126,9 +136,9 @@ html, body {
 
 /* Notion page header style */
 .page-icon {
-  font-size: 28px;
+  font-size: 42px;
   line-height: 1;
-  margin-bottom: 8px;
+  margin-bottom: 16px;
   user-select: none;
 }
 
@@ -138,7 +148,7 @@ html, body {
   border: none;
   border-bottom: 1.5px solid var(--border);
   border-radius: 0;
-  padding: 6px 2px;
+  padding: 12px 4px;
   color: var(--text-primary);
   width: 100%;
   transition: border-color 0.15s;
@@ -150,9 +160,9 @@ html, body {
 .n-tag {
   display: inline-flex;
   align-items: center;
-  padding: 1px 7px;
+  padding: 2px 14px;
   border-radius: 3px;
-  font-size: 11px;
+  font-size: 17px;
   font-weight: 500;
   white-space: nowrap;
 }

@@ -101,7 +101,8 @@ export default function SettingsPage() {
         }),
       })
       setSlackTestResult('ok')
-    } catch {
+    } catch (err) {
+      console.error('[settings] Slack 테스트 실패:', err)
       setSlackTestResult('fail')
     } finally {
       setSlackTesting(false)

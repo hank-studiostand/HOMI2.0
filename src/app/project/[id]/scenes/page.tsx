@@ -110,8 +110,9 @@ export default function ScenesPage() {
       })
       const data = await res.json()
       if (!res.ok) setPromptError(data.error ?? '마스터 프롬프트 생성 실패')
-    } catch {
-      setPromptError('네트워크 오류')
+    } catch (err) {
+      console.error('[scenes] 마스터 프롬프트 요청 실패:', err)
+      setPromptError(err instanceof Error ? '네트워크 오류: ' + err.message : '네트워크 오류')
     } finally {
       setGeneratingId(null)
       fetchScenes()

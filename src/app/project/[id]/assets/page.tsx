@@ -336,7 +336,16 @@ export default function AssetsPage() {
     try { window.localStorage.setItem(`assets-tab:${projectId}`, activeTab) } catch {}
   }, [activeTab, projectId])
 
-  useEffect(() => { fetchAssets() }, [projectId])
+  useEffect(() => {
+    fetchAssets()
+    const assetChannel = supabase
+      .channel(`assets-library-${projectId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'assets', filter: `project_id=eq.${projectId}` }, () => fetchAssets())
+      .subscribe()
+    return () => {
+      supabase.removeChannel(assetChannel)
+    }
+  }, [projectId])
 
   // 클립보드 붙여넣기 → 현재 활성 탭 카테고리로 업로드
   useEffect(() => {

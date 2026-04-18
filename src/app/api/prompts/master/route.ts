@@ -81,7 +81,7 @@ NEGATIVE: [10 negative keywords, comma separated]`
     promptContent = promptMatch?.[1]?.trim() ?? text.trim()
     negContent = negMatch?.[1]?.trim() ?? negContent
   } catch (err) {
-    return NextResponse.json({ error: `AI 생성 실패: ${String(err)}` }, { status: 500 })
+    return NextResponse.json({ error: `AI 생성 실패: ${err instanceof Error ? err.message : String(err)}` }, { status: 500 })
   }
 
   // 기존 버전 확인

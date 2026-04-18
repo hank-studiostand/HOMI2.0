@@ -51,7 +51,9 @@ function sendBrowserNotification(options: NotifOptions) {
   try {
     const notif = new Notification(title, { body, icon })
     notif.onclick = () => { window.focus(); notif.close() }
-  } catch {}
+  } catch (err) {
+    console.warn('[notifications] 브라우저 알림 발송 실패:', err)
+  }
 }
 
 /** Slack 웹훅 전송 */
@@ -67,12 +69,17 @@ async function sendSlackNotification(options: NotifOptions) {
     : `:x: *${label} 실패*\n${project}${scene}\n${options.message ?? ''}`
 
   try {
-    await fetch(options.slackWebhookUrl, {
+    const res = await fetch(options.slackWebhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
     })
-  } catch {}
+    if (!res.ok) {
+      console.warn('[notifications] Slack 웹훅 응답 ' + res.status)
+    }
+  } catch (err) {
+    console.warn('[notifications] Slack 웹훅 전송 실패:', err)
+  }
 }
 
 /** 통합 알림 발송 (브라우저 + Slack) */

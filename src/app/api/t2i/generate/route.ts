@@ -197,7 +197,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, count: imageUrls.length })
 
   } catch (err) {
-    const msg = String(err)
+    const msg = err instanceof Error ? err.message : String(err)
     console.error('[T2I] 생성 실패:', msg)
     await admin.from('prompt_attempts').update({ status: 'failed' }).eq('id', attemptId)
     return NextResponse.json({ error: msg, detail: errorDetail }, { status: 500 })
