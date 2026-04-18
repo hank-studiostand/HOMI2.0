@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
-import { createAdminClient } from '@/lib/supabase/admin'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -15,6 +14,11 @@ interface MarkResult {
   sceneId: string
   marks?: RootAssetMarks
   error?: string
+}
+
+interface SceneInput {
+  id: string
+  content: string
 }
 
 // 구조화된 출력 강제 — 파싱 실패 제거
@@ -66,37 +70,38 @@ ${sceneContent}`,
 }
 
 export async function POST(req: NextRequest) {
-  const { sceneIds, projectId: _projectId } = await req.json()
-  const admin = createAdminClient()
+  const body = await req.json()
+  // 새 포맷: { scenes: [{id, content}], projectId } — 로컬 편집 상태 지원
+  // 이전 포맷: { sceneIds, projectId } — DB 저장 후 (현재 사용 안함)
+  let sceneInputs: SceneInput[] = []
+
+  if (Array.isArray(body.scenes)) {
+    sceneInputs = body.scenes
+      .filter((s: any) => s && typeof s.id === 'string' && typeof s.content === 'string')
+      .map((s: any) => ({ id: s.id, content: s.content }))
+  } else {
+    return NextResponse.json(
+      { error: 'scenes 배열이 필요합니다 ([{id, content}])' },
+      { status: 400 },
+    )
+  }
+
+  if (sceneInputs.length === 0) {
+    return NextResponse.json({ results: [] })
+  }
 
   try {
-    const { data: scenes, error: sceneErr } = await admin
-      .from('scenes')
-      .select('id, content')
-      .in('id', sceneIds)
-
-    if (sceneErr || !scenes) {
-      return NextResponse.json(
-        { error: `씬 조회 실패: ${sceneErr?.message}` },
-        { status: 404 },
-      )
-    }
-
-    // 병렬 처리: 씬별 Claude 호출 + DB 업데이트를 모두 동시에
-    const tasks = scenes.map(
+    // 병렬 처리: 씬별 Claude 호출
+    const tasks = sceneInputs.map(
       async (scene): Promise<MarkResult> => {
         try {
-          const marks = await extractMarks(scene.content)
-          const { error: updErr } = await admin
-            .from('scenes')
-            .update({
-              root_asset_marks: marks,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', scene.id)
-          if (updErr) {
-            throw new Error(`DB 업데이트 실패: ${updErr.message}`)
+          if (!scene.content.trim()) {
+            return {
+              sceneId: scene.id,
+              marks: { character: '', space: '', object: '', misc: '' },
+            }
           }
+          const marks = await extractMarks(scene.content)
           return { sceneId: scene.id, marks }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)

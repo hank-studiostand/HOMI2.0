@@ -547,7 +547,7 @@ export default function SceneEditorPage() {
       const res = await fetch('/api/scene-editor/extract-marks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sceneIds: scenes.map(s => s.id), projectId }),
+        body: JSON.stringify({ scenes: scenes.map(s => ({ id: s.id, content: s.content })), projectId }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
