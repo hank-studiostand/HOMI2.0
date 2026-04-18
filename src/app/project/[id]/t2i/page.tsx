@@ -36,7 +36,7 @@ function RootAssetPanel({
     { key: 'misc', label: '기타' },
   ]
 
-  const hasAnyContent = Object.values(marks).some(v => v.trim()) || Object.values(images).some((arr: any) => arr?.length > 0)
+  const hasAnyContent = Object.values(marks).some((v: any) => typeof v === 'string' && v.trim()) || Object.values(images).some((arr: any) => arr?.length > 0)
 
   if (!hasAnyContent) {
     return (
@@ -51,7 +51,7 @@ function RootAssetPanel({
   return (
     <div className="border rounded-lg overflow-hidden" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
       {/* 텍스트 마크 */}
-      {Object.values(marks).some(v => v.trim()) && (
+      {Object.values(marks).some((v: any) => typeof v === 'string' && v.trim()) && (
         <div className="p-3 space-y-1.5 border-b" style={{ borderColor: 'var(--border)' }}>
           {categories.map(cat => {
             const text = marks[cat.key as keyof typeof marks]
