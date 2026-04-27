@@ -163,13 +163,65 @@ export async function POST(req: NextRequest) {
       console.log(`[T2I] nanobanana(gemini-2.5-flash-image)로 ${imageUrls.length}장 생성 완료`)
 
     } else if (engine === 'midjourney') {
-      const res = await fetch(`${process.env.MIDJOURNEY_API_URL}/imagine`, {
+      const mjUrl = process.env.MIDJOURNEY_API_URL
+      const mjKey = process.env.MIDJOURNEY_API_KEY
+      if (!mjUrl) throw new Error('MIDJOURNEY_API_URL이 설정되지 않았습니다.')
+      if (!mjKey) throw new Error('MIDJOURNEY_API_KEY가 설정되지 않았습니다.')
+
+      const res = await fetch(`${mjUrl}/imagine`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${process.env.MIDJOURNEY_API_KEY}`, 'Content-Type': 'application/json' },
+        headers: { 'Authorization': `Bearer ${mjKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt, n: 4 }),
       })
+
+      if (!res.ok) {
+        const body = await res.text()
+        throw new Error(`Midjourney API ${res.status}: ${body.slice(0, 500)}`)
+      }
+
       const data = await res.json()
-      imageUrls = data.images ?? []
+      console.log('[T2I] midjourney 응답 구조:', JSON.stringify(data).slice(0, 300))
+
+      // 응답 필드명이 제공업체마다 다름 — 흔한 후보들을 순회
+      const rawUrls: string[] = (
+        data.images ??
+        data.imageUrls ??
+        data.urls ??
+        data.results ??
+        (Array.isArray(data) ? data : []) ??
+        []
+      )
+        .map((item: any) => typeof item === 'string' ? item : (item?.url ?? item?.image_url ?? item?.imageUrl))
+        .filter((u: any): u is string => typeof u === 'string' && u.length > 0)
+
+      if (rawUrls.length === 0) {
+        throw new Error(`Midjourney 응답에서 이미지 URL을 찾지 못했습니다. 응답 프리뷰: ${JSON.stringify(data).slice(0, 300)}`)
+      }
+
+      // 외부 URL은 만료될 수 있으므로 Supabase Storage로 미러링
+      for (const extUrl of rawUrls) {
+        try {
+          const { b64, mimeType } = await fetchImageAsBase64(extUrl)
+          const storedUrl = await uploadBase64(admin, b64, mimeType, projectId, attemptId)
+          imageUrls.push(storedUrl)
+        } catch (e) {
+          console.error('[T2I] midjourney 이미지 저장 실패:', extUrl, e)
+        }
+      }
+
+      if (imageUrls.length === 0) {
+        throw new Error('Midjourney 이미지를 Storage에 저장하지 못했습니다.')
+      }
+
+      console.log(`[T2I] midjourney로 ${imageUrls.length}장 저장 완료`)
+
+    } else if (engine === 'gpt-image') {
+      // TODO: OPENAI_API_KEY 추가 후 https://api.openai.com/v1/images/generations 호출
+      // 모델: gpt-image-1, response_format: 'b64_json'
+      throw new Error('GPT Image 엔진은 아직 준비 중입니다. OPENAI_API_KEY 설정 후 활성화됩니다.')
+
+    } else if (engine === 'stable-diffusion' || engine === 'dalle') {
+      throw new Error(`${engine} 엔진은 아직 준비 중입니다.`)
 
     } else {
       throw new Error(`지원하지 않는 엔진: ${engine}`)

@@ -2,6 +2,8 @@
 
 import Sidebar from './Sidebar'
 import ProjectTopBar from './ProjectTopBar'
+import LiveCursors from './LiveCursors'
+import ChatSidebar from './ChatSidebar'
 
 interface ProjectLayoutProps {
   children: React.ReactNode
@@ -19,6 +21,8 @@ export default function ProjectLayout({ children, projectId, projectName }: Proj
           {children}
         </main>
       </div>
+      <LiveCursors projectId={projectId} />
+      <ChatSidebar projectId={projectId} />
     </div>
   )
 }

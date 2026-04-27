@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight, Edit2, Check, X, Wand2, Copy, CheckCheck } f
 import { cn } from '@/lib/utils'
 import type { Scene } from '@/types'
 import Badge from '@/components/ui/Badge'
+import AssigneePicker from './AssigneePicker'
 
 interface SceneCardProps {
   scene: Scene
@@ -110,6 +111,12 @@ export default function SceneCard({ scene, onUpdate, onGeneratePrompt, isGenerat
 
         {/* Actions */}
         <div className="flex items-center gap-2">
+          <AssigneePicker
+            projectId={scene.project_id}
+            sceneId={scene.id}
+            assignedTo={scene.assigned_to}
+            onAssigned={(uid) => onUpdate(scene.id, { assigned_to: uid })}
+          />
           {hasMasterPrompt && <Badge variant="success">프롬프트 완성</Badge>}
           <button
             onClick={() => onGeneratePrompt(scene.id)}

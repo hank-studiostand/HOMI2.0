@@ -24,7 +24,22 @@ export interface ProjectMember {
   user_id: string
   role: UserRole
   email?: string
+  display_name?: string
   avatar_url?: string
+}
+
+// ── Chat ─────────────────────────────────────
+export interface ProjectMessage {
+  id: string
+  project_id: string
+  user_id: string
+  content: string
+  scene_mentions: string[]      // 멘션된 씬 id 배열
+  created_at: string
+  // 화면용 (join)
+  user_email?: string
+  user_display_name?: string
+  user_avatar_url?: string
 }
 
 // ── Script & Scene ────────────────────────────
@@ -66,12 +81,14 @@ export interface Scene {
     object?: string
     misc?: string
   }
+  assigned_to?: string | null
   created_at: string
   updated_at: string
 }
 
 // ── Scene Settings (for master prompt) ────────
-export type EngineType = 'nanobanana' | 'midjourney' | 'stable-diffusion' | 'dalle'
+export type EngineType = 'nanobanana' | 'gpt-image' | 'midjourney' | 'stable-diffusion' | 'dalle'
+export type VideoEngineType = 'kling' | 'kling3' | 'kling3-omni' | 'seedance-2'
 export type AngleType = 'eye-level' | 'low-angle' | 'high-angle' | 'birds-eye' | 'dutch-angle' | 'overhead'
 export type LensType = 'wide' | 'standard' | 'telephoto' | 'fisheye' | 'macro' | 'anamorphic'
 

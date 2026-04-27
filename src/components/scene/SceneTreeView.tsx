@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import type { Scene } from '@/types'
 import { cn } from '@/lib/utils'
+import AssigneePicker from './AssigneePicker'
 
 // ─── 파싱 유틸 ─────────────────────────────────────────────────────────
 
@@ -238,6 +239,11 @@ export default function SceneTreeView({
                 <span className="text-sm flex-1 truncate" style={{ color: 'var(--text-primary)' }}>
                   {scene.title}
                 </span>
+                <AssigneePicker
+                  projectId={scene.project_id}
+                  sceneId={scene.id}
+                  assignedTo={scene.assigned_to}
+                />
                 {pipelineChips?.(scene)}
                 {onToggleComplete && (
                   <CompleteButton completed={isCompleted} onClick={() => onToggleComplete(scene.id)} />
@@ -327,6 +333,11 @@ export default function SceneTreeView({
                           <span className="text-sm flex-1 truncate" style={{ color: 'var(--text-secondary)' }}>
                             {scene.title}
                           </span>
+                          <AssigneePicker
+                            projectId={scene.project_id}
+                            sceneId={scene.id}
+                            assignedTo={scene.assigned_to}
+                          />
                           {pipelineChips?.(scene)}
                           {onToggleComplete && (
                             <CompleteButton completed={isCompleted} onClick={() => onToggleComplete(scene.id)} />
@@ -393,6 +404,11 @@ export default function SceneTreeView({
                               <span className="text-xs flex-1 truncate" style={{ color: 'var(--text-secondary)' }}>
                                 {scene.title}
                               </span>
+                              <AssigneePicker
+                                projectId={scene.project_id}
+                                sceneId={scene.id}
+                                assignedTo={scene.assigned_to}
+                              />
                               {pipelineChips?.(scene)}
                               {onToggleComplete && (
                                 <CompleteButton completed={isCompleted} onClick={() => onToggleComplete(scene.id)} />

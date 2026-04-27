@@ -28,6 +28,13 @@ const ENGINES = [
     color: '#a78bfa',
     bg:    'rgba(167,139,250,0.12)',
   },
+  {
+    id:    'seedance-2',
+    label: 'Seedance 2.0',
+    desc:  'ByteDance · UI 스켈레톤 (API 키 필요)',
+    color: '#06b6d4',
+    bg:    'rgba(6,182,212,0.12)',
+  },
 ]
 
 const ASPECT_OPTIONS  = ['16:9', '9:16', '1:1', '4:3', '21:9']
@@ -40,7 +47,7 @@ const KLING_MODES = [
 interface SceneOpts {
   prompt:      string
   negPrompt:   string
-  engine:      'kling3' | 'kling3-omni'
+  engine:      'kling3' | 'kling3-omni' | 'seedance-2'
   duration:    number
   aspectRatio: string
   mode:        'std' | 'pro'

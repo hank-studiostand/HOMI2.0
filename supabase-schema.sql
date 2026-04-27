@@ -44,6 +44,7 @@ create table public.scenes (
   title text not null default '',
   content text not null default '',
   order_index integer not null default 0,
+  assigned_to uuid references auth.users(id) on delete set null,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -52,7 +53,7 @@ create table public.scenes (
 create table public.scene_settings (
   id uuid primary key default uuid_generate_v4(),
   scene_id uuid references public.scenes(id) on delete cascade not null unique,
-  engine text not null default 'midjourney',
+  engine text not null default 'nanobanana',
   angle text not null default 'eye-level',
   lens text not null default 'standard',
   object_count integer not null default 1,
@@ -109,6 +110,16 @@ alter table public.assets
   add constraint assets_attempt_id_fkey
   foreign key (attempt_id) references public.prompt_attempts(id) on delete set null;
 
+-- ── Project Messages (chat) ───────────────────
+create table public.project_messages (
+  id uuid primary key default uuid_generate_v4(),
+  project_id uuid references public.projects(id) on delete cascade not null,
+  user_id   uuid references auth.users(id) on delete cascade not null,
+  content   text not null,
+  scene_mentions uuid[] not null default '{}',
+  created_at timestamptz default now()
+);
+
 -- ── Attempt Outputs ───────────────────────────
 create table public.attempt_outputs (
   id uuid primary key default uuid_generate_v4(),
@@ -132,6 +143,7 @@ alter table public.master_prompts enable row level security;
 alter table public.assets enable row level security;
 alter table public.prompt_attempts enable row level security;
 alter table public.attempt_outputs enable row level security;
+alter table public.project_messages enable row level security;
 
 -- Helper: 프로젝트 멤버인지 확인
 create or replace function public.is_project_member(p_project_id uuid)
@@ -217,3 +229,4 @@ alter publication supabase_realtime add table public.master_prompts;
 alter publication supabase_realtime add table public.assets;
 alter publication supabase_realtime add table public.prompt_attempts;
 alter publication supabase_realtime add table public.attempt_outputs;
+alter publication supabase_realtime add table public.project_messages;

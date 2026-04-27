@@ -40,6 +40,7 @@ const ASPECT_RATIOS: { value: string; label: string }[] = [
 
 const ENGINES: { value: EngineType; label: string }[] = [
   { value: 'nanobanana', label: '나노바나나' },
+  { value: 'gpt-image', label: 'GPT Image' },
   { value: 'midjourney', label: 'Midjourney' },
   { value: 'stable-diffusion', label: 'Stable Diffusion' },
   { value: 'dalle', label: 'DALL-E 3' },

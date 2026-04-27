@@ -5,8 +5,9 @@ import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
   FileText, Scissors, Layers, Image, Video, Mic,
-  RefreshCw, Users,
+  RefreshCw, Users, UserPlus,
 } from 'lucide-react'
+import ProjectMembersModal from './ProjectMembersModal'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -189,6 +190,7 @@ export default function ProjectTopBar({ projectId, projectName }: ProjectTopBarP
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [loading, setLoading]         = useState(true)
   const [activeStage, setActiveStage] = useState<string | null>(null)
+  const [membersModalOpen, setMembersModalOpen] = useState(false)
 
   const channelRef  = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const userInfoRef = useRef<{ name: string; avatar: string | null } | null>(null)
@@ -453,7 +455,24 @@ export default function ProjectTopBar({ projectId, projectName }: ProjectTopBarP
             <span className="text-[11px]">나만 접속 중</span>
           </div>
         )}
+
+        {/* 팀원 초대/관리 버튼 */}
+        <button
+          onClick={() => setMembersModalOpen(true)}
+          className="flex items-center gap-1 px-2 py-1 rounded-md hover-surface text-[11px]"
+          style={{ color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
+          title="팀원 관리"
+        >
+          <UserPlus size={11} />
+          <span>팀원</span>
+        </button>
       </div>
+
+      <ProjectMembersModal
+        projectId={projectId}
+        open={membersModalOpen}
+        onClose={() => setMembersModalOpen(false)}
+      />
     </div>
   )
 }

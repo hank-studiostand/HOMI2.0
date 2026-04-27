@@ -14,8 +14,9 @@ export async function POST(req: NextRequest) {
       .eq('scene_id', sceneId)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   } else {
+    // 새 레코드는 기본 엔진을 nanobanana로 명시 (DB default 변경 누락 대비)
     const { error } = await admin.from('scene_settings')
-      .insert({ scene_id: sceneId, ...updates })
+      .insert({ scene_id: sceneId, engine: 'nanobanana', ...updates })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
