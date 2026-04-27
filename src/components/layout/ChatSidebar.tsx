@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { MessageSquare, Send, X, ChevronRight, Hash, Loader2 } from 'lucide-react'
+import { MessageSquare, Send, ChevronRight, Hash, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 
@@ -15,6 +15,7 @@ interface MessageRow {
   user_email?: string
   user_display_name?: string
   user_avatar_url?: string
+  pending?: boolean
 }
 
 interface SceneLite {
@@ -35,7 +36,6 @@ function initials(s: string) {
   const w = s.trim().split(/\s+/)
   return w.length >= 2 ? (w[0][0] + w[1][0]).toUpperCase() : s.slice(0,2).toUpperCase()
 }
-
 function formatTime(iso: string) {
   const d = new Date(iso)
   const today = new Date()
@@ -46,9 +46,7 @@ function formatTime(iso: string) {
   return `${d.getMonth()+1}/${d.getDate()} ${hh}:${mm}`
 }
 
-// "#1-1-1" / "#3" 패턴 → 씬 멘션 링크. 매칭 안 되는 #는 일반 텍스트로.
 function renderContent(content: string, sceneMap: Map<string, SceneLite>, projectId: string) {
-  // 씬 번호 형식: 1-1-1 / 1-1 / 1 (숫자 + 옵션 - 숫자 - 숫자)
   const re = /#(\d+(?:-\d+){0,2})/g
   const out: Array<{ type: 'text' | 'mention'; value: string; sceneId?: string }> = []
   let last = 0
@@ -57,24 +55,16 @@ function renderContent(content: string, sceneMap: Map<string, SceneLite>, projec
     if (m.index > last) out.push({ type: 'text', value: content.slice(last, m.index) })
     const num = m[1]
     const scene = sceneMap.get(num)
-    out.push({
-      type: scene ? 'mention' : 'text',
-      value: m[0],
-      sceneId: scene?.id,
-    })
+    out.push({ type: scene ? 'mention' : 'text', value: m[0], sceneId: scene?.id })
     last = m.index + m[0].length
   }
   if (last < content.length) out.push({ type: 'text', value: content.slice(last) })
-
   return out.map((seg, i) => {
     if (seg.type === 'mention' && seg.sceneId) {
       return (
-        <Link
-          key={i}
-          href={`/project/${projectId}/scenes#${seg.sceneId}`}
+        <Link key={i} href={`/project/${projectId}/scenes#${seg.sceneId}`}
           className="inline-flex items-center px-1.5 rounded font-medium"
-          style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}
-        >
+          style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}>
           {seg.value}
         </Link>
       )
@@ -83,21 +73,29 @@ function renderContent(content: string, sceneMap: Map<string, SceneLite>, projec
   })
 }
 
-export default function ChatSidebar({ projectId }: { projectId: string }) {
+interface MeInfo { id: string; email: string; name: string; avatar: string }
+
+export default function ChatSidebar({
+  projectId, open, onClose,
+}: {
+  projectId: string
+  open: boolean
+  onClose: () => void
+}) {
   const supabase = createClient()
-  const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<MessageRow[]>([])
   const [scenes, setScenes] = useState<SceneLite[]>([])
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
-  const [meId, setMeId] = useState<string | null>(null)
+  const [me, setMe] = useState<MeInfo | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [showMentions, setShowMentions] = useState(false)
   const [mentionQuery, setMentionQuery] = useState('')
 
   const listRef = useRef<HTMLDivElement | null>(null)
+  const meRef = useRef<MeInfo | null>(null)
+  useEffect(() => { meRef.current = me }, [me])
 
-  // scene_number → SceneLite 맵 (멘션 변환용)
   const sceneMap = useMemo(() => {
     const m = new Map<string, SceneLite>()
     for (const s of scenes) m.set(s.scene_number, s)
@@ -112,41 +110,61 @@ export default function ChatSidebar({ projectId }: { projectId: string }) {
     setLoaded(true)
   }, [projectId])
 
-  // 처음 열 때 메시지/씬 로드 + Realtime 구독
   useEffect(() => {
     if (!open) return
+    let mounted = true
     void (async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      setMeId(user?.id ?? null)
-
-      // 씬 목록 (멘션 변환용)
+      if (!mounted || !user) return
+      const meta = (user.user_metadata ?? {}) as Record<string, any>
+      setMe({
+        id: user.id,
+        email: user.email ?? '',
+        name: String(meta.display_name ?? meta.full_name ?? meta.name ?? ''),
+        avatar: String(meta.avatar_url ?? ''),
+      })
       const { data: sc } = await supabase
         .from('scenes').select('id, scene_number, title').eq('project_id', projectId).order('order_index')
+      if (!mounted) return
       setScenes(sc ?? [])
-
       await fetchMessages()
     })()
 
-    // Realtime 구독 — 새 메시지 들어오면 추가
     const ch = supabase
       .channel(`project-chat-${projectId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'project_messages', filter: `project_id=eq.${projectId}` },
-        () => fetchMessages(),
+        (payload) => {
+          const row = payload.new as any
+          setMessages(prev => {
+            if (prev.some(m => m.id === row.id)) return prev
+            const meSnap = meRef.current
+            if (meSnap && row.user_id === meSnap.id) {
+              const idx = prev.findIndex(m => m.pending && m.user_id === row.user_id && m.content === row.content)
+              if (idx >= 0) {
+                const next = [...prev]
+                next[idx] = { ...row, user_email: meSnap.email, user_display_name: meSnap.name, user_avatar_url: meSnap.avatar }
+                return next
+              }
+            }
+            return [...prev, { ...row, user_email: '', user_display_name: '', user_avatar_url: '' }]
+          })
+        },
       )
       .subscribe()
 
-    return () => { supabase.removeChannel(ch) }
+    return () => {
+      mounted = false
+      supabase.removeChannel(ch)
+    }
   }, [open, projectId, supabase, fetchMessages])
 
-  // 새 메시지 도착 시 스크롤 맨 아래로
   useEffect(() => {
     if (!open || !listRef.current) return
     listRef.current.scrollTop = listRef.current.scrollHeight
   }, [messages, open])
 
-  // # 입력 추적 → 자동완성
   useEffect(() => {
     const m = /#(\d*-?\d*-?\d*)$/.exec(draft)
     if (m && draft.length > 0) {
@@ -172,10 +190,8 @@ export default function ChatSidebar({ projectId }: { projectId: string }) {
 
   async function send() {
     const content = draft.trim()
-    if (!content || sending) return
-    setSending(true)
+    if (!content || sending || !me) return
 
-    // 멘션 ID 추출
     const mentions: string[] = []
     const re = /#(\d+(?:-\d+){0,2})/g
     let m: RegExpExecArray | null
@@ -184,13 +200,45 @@ export default function ChatSidebar({ projectId }: { projectId: string }) {
       if (sc) mentions.push(sc.id)
     }
 
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2,7)}`
+    const optimistic: MessageRow = {
+      id: tempId,
+      project_id: projectId,
+      user_id: me.id,
+      content,
+      scene_mentions: mentions,
+      created_at: new Date().toISOString(),
+      user_email: me.email,
+      user_display_name: me.name,
+      user_avatar_url: me.avatar,
+      pending: true,
+    }
+
+    setMessages(prev => [...prev, optimistic])
+    setDraft('')
+    setSending(true)
+
     try {
       const r = await fetch(`/api/projects/${projectId}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content, sceneMentions: mentions }),
       })
-      if (r.ok) setDraft('')
+      const j = await r.json()
+      if (!r.ok) {
+        setMessages(prev => prev.filter(x => x.id !== tempId))
+        setDraft(content)
+        return
+      }
+      const real = j.message
+      if (real) {
+        setMessages(prev => prev.map(x => x.id === tempId
+          ? { ...real, user_email: me.email, user_display_name: me.name, user_avatar_url: me.avatar }
+          : x))
+      }
+    } catch {
+      setMessages(prev => prev.filter(x => x.id !== tempId))
+      setDraft(content)
     } finally {
       setSending(false)
     }
@@ -203,146 +251,109 @@ export default function ChatSidebar({ projectId }: { projectId: string }) {
     }
   }
 
+  if (!open) return null
+
   return (
-    <>
-      {/* 토글 버튼 (사이드바 닫혔을 때만 보임) */}
-      {!open && (
-        <button
-          onClick={() => setOpen(true)}
-          className="fixed right-3 bottom-4 z-40 flex items-center gap-2 px-3 py-2 rounded-full shadow-lg hover:scale-105 transition-transform"
-          style={{ background: 'var(--accent)', color: 'white' }}
-          title="팀 채팅"
-        >
-          <MessageSquare size={14} />
-          <span className="text-xs font-semibold">팀 채팅</span>
+    <div className="h-full flex flex-col" style={{ background: 'var(--surface)' }}>
+      <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
+        <MessageSquare size={14} style={{ color: 'var(--accent)' }} />
+        <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>팀 채팅</span>
+        <button onClick={onClose} className="ml-auto hover-surface p-1 rounded" title="접기">
+          <ChevronRight size={14} style={{ color: 'var(--text-muted)' }} />
         </button>
-      )}
+      </div>
 
-      {/* 사이드바 */}
-      {open && (
-        <aside
-          className="fixed top-0 right-0 z-40 h-full flex flex-col"
-          style={{
-            width: 340,
-            background: 'var(--surface)',
-            borderLeft: '1px solid var(--border)',
-            boxShadow: '-4px 0 16px rgba(0,0,0,0.1)',
-          }}
-        >
-          {/* 헤더 */}
-          <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
-            <MessageSquare size={14} style={{ color: 'var(--accent)' }} />
-            <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>팀 채팅</span>
-            <button onClick={() => setOpen(false)} className="ml-auto hover-surface p-1 rounded" title="접기">
-              <ChevronRight size={14} style={{ color: 'var(--text-muted)' }} />
-            </button>
+      <div ref={listRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
+        {!loaded && (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 size={14} className="animate-spin" style={{ color: 'var(--text-muted)' }} />
           </div>
-
-          {/* 메시지 리스트 */}
-          <div ref={listRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-            {!loaded && (
-              <div className="flex items-center justify-center py-10">
-                <Loader2 size={14} className="animate-spin" style={{ color: 'var(--text-muted)' }} />
-              </div>
-            )}
-            {loaded && messages.length === 0 && (
-              <div className="text-center py-10 text-xs" style={{ color: 'var(--text-muted)' }}>
-                첫 메시지를 남겨보세요. 씬 멘션은 <code className="text-[10px]">#1-1-1</code> 처럼.
-              </div>
-            )}
-            {messages.map((msg, idx) => {
-              const prev = messages[idx - 1]
-              const sameAuthorAsPrev = prev && prev.user_id === msg.user_id
-                && (new Date(msg.created_at).getTime() - new Date(prev.created_at).getTime()) < 5 * 60_000
-              const isMe = msg.user_id === meId
-
-              return (
-                <div key={msg.id} className="flex gap-2">
-                  {/* 아바타 */}
-                  <div className="w-7 shrink-0">
-                    {!sameAuthorAsPrev && (
-                      <div
-                        className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
-                        style={{ background: colorFor(msg.user_id) }}
-                      >
-                        {msg.user_avatar_url
-                          ? <img src={msg.user_avatar_url} className="w-full h-full rounded-full object-cover" alt="" />
-                          : initials(msg.user_display_name || msg.user_email || msg.user_id)}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    {!sameAuthorAsPrev && (
-                      <div className="flex items-baseline gap-2 mb-0.5">
-                        <span className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>
-                          {msg.user_display_name || msg.user_email || (isMe ? '나' : '익명')}
-                        </span>
-                        <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                          {formatTime(msg.created_at)}
-                        </span>
-                      </div>
-                    )}
-                    <div className="text-sm whitespace-pre-wrap break-words" style={{ color: 'var(--text-primary)' }}>
-                      {renderContent(msg.content, sceneMap, projectId)}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
+        )}
+        {loaded && messages.length === 0 && (
+          <div className="text-center py-10 text-xs" style={{ color: 'var(--text-muted)' }}>
+            첫 메시지를 남겨보세요. 씬 멘션은 <code className="text-[10px]">#1-1-1</code> 처럼.
           </div>
+        )}
+        {messages.map((msg, idx) => {
+          const prev = messages[idx - 1]
+          const sameAuthorAsPrev = prev && prev.user_id === msg.user_id
+            && (new Date(msg.created_at).getTime() - new Date(prev.created_at).getTime()) < 5 * 60_000
+          const isMe = me?.id === msg.user_id
 
-          {/* 입력창 */}
-          <div className="border-t relative" style={{ borderColor: 'var(--border)' }}>
-            {/* 씬 멘션 자동완성 */}
-            {showMentions && mentionMatches.length > 0 && (
-              <div
-                className="absolute bottom-full left-2 right-2 mb-1 rounded-lg shadow-lg max-h-48 overflow-y-auto"
-                style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-              >
-                {mentionMatches.map(s => (
-                  <button
-                    key={s.id}
-                    onClick={() => applyMention(s)}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover-surface"
-                  >
-                    <Hash size={11} style={{ color: 'var(--accent)' }} />
-                    <span className="font-mono font-semibold" style={{ color: 'var(--accent)' }}>
-                      {s.scene_number}
+          return (
+            <div key={msg.id} className="flex gap-2" style={{ opacity: msg.pending ? 0.55 : 1 }}>
+              <div className="w-7 shrink-0">
+                {!sameAuthorAsPrev && (
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
+                    style={{ background: colorFor(msg.user_id) }}>
+                    {msg.user_avatar_url
+                      ? <img src={msg.user_avatar_url} className="w-full h-full rounded-full object-cover" alt="" />
+                      : initials(msg.user_display_name || msg.user_email || msg.user_id)}
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                {!sameAuthorAsPrev && (
+                  <div className="flex items-baseline gap-2 mb-0.5">
+                    <span className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      {msg.user_display_name || msg.user_email || (isMe ? '나' : '멤버')}
                     </span>
-                    <span className="truncate" style={{ color: 'var(--text-secondary)' }}>{s.title}</span>
-                  </button>
-                ))}
+                    <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                      {formatTime(msg.created_at)}{msg.pending && ' · 전송 중...'}
+                    </span>
+                  </div>
+                )}
+                <div className="text-sm whitespace-pre-wrap break-words" style={{ color: 'var(--text-primary)' }}>
+                  {renderContent(msg.content, sceneMap, projectId)}
+                </div>
               </div>
-            )}
-
-            <div className="flex items-end gap-2 p-2">
-              <textarea
-                value={draft}
-                onChange={e => setDraft(e.target.value)}
-                onKeyDown={onKeyDown}
-                placeholder="메시지... (씬 멘션 #1-1-1)"
-                rows={1}
-                className="flex-1 px-3 py-2 rounded-lg text-sm resize-none"
-                style={{
-                  background: 'var(--surface-3)',
-                  border: '1px solid var(--border)',
-                  color: 'var(--text-primary)',
-                  maxHeight: 120,
-                }}
-              />
-              <button
-                onClick={() => void send()}
-                disabled={!draft.trim() || sending}
-                className="p-2 rounded-lg disabled:opacity-40"
-                style={{ background: 'var(--accent)', color: 'white' }}
-              >
-                <Send size={13} />
-              </button>
             </div>
+          )
+        })}
+      </div>
+
+      <div className="border-t relative" style={{ borderColor: 'var(--border)' }}>
+        {showMentions && mentionMatches.length > 0 && (
+          <div className="absolute bottom-full left-2 right-2 mb-1 rounded-lg shadow-lg max-h-48 overflow-y-auto"
+            style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+            {mentionMatches.map(s => (
+              <button key={s.id} onClick={() => applyMention(s)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover-surface">
+                <Hash size={11} style={{ color: 'var(--accent)' }} />
+                <span className="font-mono font-semibold" style={{ color: 'var(--accent)' }}>
+                  {s.scene_number}
+                </span>
+                <span className="truncate" style={{ color: 'var(--text-secondary)' }}>{s.title}</span>
+              </button>
+            ))}
           </div>
-        </aside>
-      )}
-    </>
+        )}
+
+        <div className="flex items-end gap-2 p-2">
+          <textarea
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder="메시지... (씬 멘션 #1-1-1)"
+            rows={1}
+            className="flex-1 px-3 py-2 rounded-lg text-sm resize-none"
+            style={{
+              background: 'var(--surface-3)',
+              border: '1px solid var(--border)',
+              color: 'var(--text-primary)',
+              maxHeight: 120,
+            }}
+          />
+          <button
+            onClick={() => void send()}
+            disabled={!draft.trim() || sending}
+            className="p-2 rounded-lg disabled:opacity-40"
+            style={{ background: 'var(--accent)', color: 'white' }}
+          >
+            <Send size={13} />
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

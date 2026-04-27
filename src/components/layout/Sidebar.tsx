@@ -93,7 +93,7 @@ export default function Sidebar({ projectId, projectName }: SidebarProps) {
 
   return (
     <aside
-      className="flex flex-col w-56 shrink-0 h-full border-r"
+      className="flex flex-col w-full h-full border-r overflow-hidden"
       style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
     >
       {/* ── Header ── */}

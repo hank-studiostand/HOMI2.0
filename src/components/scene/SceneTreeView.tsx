@@ -97,7 +97,7 @@ function SceneTag({ num, level }: { num: string; level?: 'seq' | 'scene' | 'cut'
 
   return (
     <span
-      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium"
+      className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-semibold"
       style={colors}
     >
       {num}
@@ -229,14 +229,14 @@ export default function SceneTreeView({
             >
               <button
                 onClick={() => toggleScene(scene.id)}
-                className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover-surface transition-colors"
+                className="w-full flex items-center gap-2.5 px-3 py-3 text-left hover-surface transition-colors"
               >
                 {isExpanded
-                  ? <ChevronDown size={14} style={{ color: 'var(--text-muted)' }} />
-                  : <ChevronRight size={14} style={{ color: 'var(--text-muted)' }} />
+                  ? <ChevronDown size={15} style={{ color: 'var(--accent)' }} />
+                  : <ChevronRight size={15} style={{ color: 'var(--accent)' }} />
                 }
                 <SceneTag num={`S${scene.scene_number}`} level="cut" />
-                <span className="text-sm flex-1 truncate" style={{ color: 'var(--text-primary)' }}>
+                <span className="text-base flex-1 truncate font-medium" style={{ color: 'var(--text-primary)' }}>
                   {scene.title}
                 </span>
                 <AssigneePicker
@@ -270,23 +270,28 @@ export default function SceneTreeView({
           <div
             key={seqNode.seq}
             className="rounded border overflow-hidden"
-            style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+            style={{
+              borderColor: 'var(--border)',
+              background: 'var(--surface)',
+              borderLeft: '4px solid var(--warning)',
+            }}
           >
-            {/* ▶ 시퀀스 헤더 (1단계) */}
+            {/* ▶ 시퀀스 헤더 (1단계) — 가장 위계 */}
             <button
               onClick={() => toggleSeq(seqNode.seq)}
-              className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover-surface transition-colors"
+              className="w-full flex items-center gap-2.5 px-3 py-3 text-left hover-surface transition-colors"
+              style={{ background: 'rgba(251,191,36,0.06)' }}
             >
               {isSeqExpanded
-                ? <ChevronDown size={14} style={{ color: 'var(--text-muted)' }} />
-                : <ChevronRight size={14} style={{ color: 'var(--text-muted)' }} />
+                ? <ChevronDown size={16} style={{ color: 'var(--warning)' }} />
+                : <ChevronRight size={16} style={{ color: 'var(--warning)' }} />
               }
-              <Film size={13} style={{ color: 'var(--warning)' }} />
-              <span className="text-sm font-semibold flex-1" style={{ color: 'var(--text-primary)' }}>
+              <Film size={15} style={{ color: 'var(--warning)' }} />
+              <span className="text-base font-semibold flex-1" style={{ color: 'var(--text-primary)' }}>
                 {seqNode.label}
               </span>
               <span
-                className="text-[10px] px-2 py-0.5 rounded"
+                className="text-xs font-medium px-2 py-0.5 rounded tabular-nums"
                 style={{
                   background: completedCount === totalCount && totalCount > 0
                     ? 'var(--success-bg)' : 'var(--surface-2)',
@@ -322,15 +327,20 @@ export default function SceneTreeView({
                         <button
                           onClick={() => toggleScene(scene.id)}
                           className="w-full flex items-center gap-2.5 py-2.5 text-left hover-surface transition-colors"
-                          style={{ paddingLeft: '28px', paddingRight: '12px' }}
+                          style={{
+                            paddingLeft: '24px',
+                            paddingRight: '12px',
+                            borderLeft: '3px solid var(--accent)',
+                            background: 'var(--accent-subtle)',
+                          }}
                         >
                           {isExpanded
                             ? <ChevronDown size={13} style={{ color: 'var(--text-muted)' }} />
                             : <ChevronRight size={13} style={{ color: 'var(--text-muted)' }} />
                           }
-                          <Scissors size={11} style={{ color: 'var(--text-muted)' }} />
+                          <Scissors size={13} style={{ color: 'var(--accent)' }} />
                           <SceneTag num={scene.scene_number} level="scene" />
-                          <span className="text-sm flex-1 truncate" style={{ color: 'var(--text-secondary)' }}>
+                          <span className="text-base flex-1 truncate font-medium" style={{ color: 'var(--text-primary)' }}>
                             {scene.title}
                           </span>
                           <AssigneePicker
@@ -355,7 +365,7 @@ export default function SceneTreeView({
                       className="border-b last:border-b-0"
                       style={{ borderColor: 'var(--border-light)' }}
                     >
-                      {/* ▶ 씬 그룹 헤더 (2단계) */}
+                      {/* ▶ 씬 그룹 헤더 (2단계) — accent 컬러바 */}
                       <button
                         onClick={() => toggleSceneGroup(groupKey)}
                         className={cn(
@@ -363,19 +373,20 @@ export default function SceneTreeView({
                           groupCompleted && 'opacity-50',
                         )}
                         style={{
-                          paddingLeft: '28px', paddingRight: '12px',
-                          background: 'var(--surface-2)',
+                          paddingLeft: '24px', paddingRight: '12px',
+                          background: 'var(--accent-subtle)',
+                          borderLeft: '3px solid var(--accent)',
                         }}
                       >
                         {isGroupExpanded
-                          ? <ChevronDown size={13} style={{ color: 'var(--text-muted)' }} />
-                          : <ChevronRight size={13} style={{ color: 'var(--text-muted)' }} />
+                          ? <ChevronDown size={14} style={{ color: 'var(--accent)' }} />
+                          : <ChevronRight size={14} style={{ color: 'var(--accent)' }} />
                         }
-                        <Layers size={11} style={{ color: 'var(--accent)' }} />
-                        <span className="text-xs font-medium flex-1" style={{ color: 'var(--text-primary)' }}>
+                        <Layers size={13} style={{ color: 'var(--accent)' }} />
+                        <span className="text-sm font-semibold flex-1" style={{ color: 'var(--text-primary)' }}>
                           {sceneGroup.label}
                         </span>
-                        <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
                           {sceneGroup.cuts.length}컷
                         </span>
                       </button>
@@ -390,18 +401,22 @@ export default function SceneTreeView({
                             className={cn('border-t transition-opacity', isCompleted && 'opacity-50')}
                             style={{ borderColor: 'var(--border-light)' }}
                           >
-                            {/* ▶ 컷 헤더 (3단계) */}
+                            {/* ▶ 컷 헤더 (3단계) — secondary 톤 컬러바 */}
                             <button
                               onClick={() => toggleScene(scene.id)}
                               className="w-full flex items-center gap-2.5 py-2 text-left hover-surface transition-colors"
-                              style={{ paddingLeft: '48px', paddingRight: '12px' }}
+                              style={{
+                                paddingLeft: '44px',
+                                paddingRight: '12px',
+                                borderLeft: '2px solid var(--text-muted)',
+                              }}
                             >
                               {isExpanded
-                                ? <ChevronDown size={12} style={{ color: 'var(--text-muted)' }} />
-                                : <ChevronRight size={12} style={{ color: 'var(--text-muted)' }} />
+                                ? <ChevronDown size={13} style={{ color: 'var(--text-muted)' }} />
+                                : <ChevronRight size={13} style={{ color: 'var(--text-muted)' }} />
                               }
                               <SceneTag num={scene.scene_number} level="cut" />
-                              <span className="text-xs flex-1 truncate" style={{ color: 'var(--text-secondary)' }}>
+                              <span className="text-sm flex-1 truncate" style={{ color: 'var(--text-primary)' }}>
                                 {scene.title}
                               </span>
                               <AssigneePicker

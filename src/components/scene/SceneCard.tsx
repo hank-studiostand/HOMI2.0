@@ -58,12 +58,22 @@ export default function SceneCard({ scene, onUpdate, onGeneratePrompt, isGenerat
   const hasMasterPrompt = !!masterPrompt?.content
 
   return (
-    <div className="rounded-xl border prompt-card" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+    <div
+      className="rounded-xl border prompt-card overflow-hidden"
+      style={{
+        background: 'var(--surface)',
+        borderColor: expanded ? 'var(--accent)' : 'var(--border)',
+        borderLeft: '4px solid var(--accent)',
+      }}
+    >
       {/* Header */}
-      <div className="flex items-center gap-3 p-4">
+      <div
+        className="flex items-center gap-3 p-4"
+        style={{ background: expanded ? 'var(--accent-subtle)' : 'transparent' }}
+      >
         <button onClick={handleToggleExpand}
-          className="text-zinc-500 hover:text-zinc-300 transition-colors">
-          {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          className="transition-colors" style={{ color: 'var(--accent)' }}>
+          {expanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
         </button>
 
         {/* Scene Number */}
@@ -101,7 +111,7 @@ export default function SceneCard({ scene, onUpdate, onGeneratePrompt, isGenerat
           ) : (
             <button onClick={() => startEdit('title')}
               className="flex items-center gap-1 group text-left">
-              <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+              <span className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
                 {scene.title || '제목 없음'}
               </span>
               <Edit2 size={11} className="text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -122,11 +132,11 @@ export default function SceneCard({ scene, onUpdate, onGeneratePrompt, isGenerat
             onClick={() => onGeneratePrompt(scene.id)}
             disabled={isGenerating}
             className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all',
               isGenerating ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'
             )}
             style={{ background: 'var(--accent)', color: 'white' }}>
-            <Wand2 size={12} className={isGenerating ? 'animate-spin' : ''} />
+            <Wand2 size={13} className={isGenerating ? 'animate-spin' : ''} />
             {isGenerating ? '생성중...' : '마스터 프롬프트'}
           </button>
         </div>
