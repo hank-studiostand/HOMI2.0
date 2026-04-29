@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import type { Scene, Asset, SatisfactionScore } from '@/types'
 import Badge from '@/components/ui/Badge'
+import SatisfactionRating from '@/components/ui/SatisfactionRating'
 import SceneTreeView from '@/components/scene/SceneTreeView'
 import CameraReferencePanel, { buildCameraPrompt } from '@/components/ui/CameraReferencePanel'
 import SceneReferencePicker, {
@@ -84,12 +85,12 @@ function GeneratingCard({ attempt, onCancel }: { attempt: I2VAttempt; onCancel?:
   }
 
   return (
-    <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.05)' }}>
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: '1px solid rgba(245,158,11,0.2)' }}>
-        <Loader2 size={14} className="animate-spin text-amber-400 shrink-0" />
-        <span className="text-xs font-medium text-amber-300">영상 생성 중</span>
-        <span className="text-xs text-amber-400/60">{duration}초 · Kling</span>
+    <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}>
+      {/* Header — T2I와 동일한 톤 */}
+      <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
+        <Loader2 size={14} className="animate-spin shrink-0" style={{ color: 'var(--warning)' }} />
+        <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>영상 생성 중</span>
+        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{duration}초 · Kling</span>
         <div className="flex-1" />
         {!attempt._optimistic && onCancel && (
           <button
@@ -97,9 +98,9 @@ function GeneratingCard({ attempt, onCancel }: { attempt: I2VAttempt; onCancel?:
             disabled={cancelling}
             className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
             style={{
-              background: 'rgba(239,68,68,0.15)',
-              border: '1px solid rgba(239,68,68,0.35)',
-              color: '#f87171',
+              background: 'var(--danger-bg)',
+              border: '1px solid var(--danger)',
+              color: 'var(--danger)',
             }}
           >
             {cancelling
@@ -112,38 +113,31 @@ function GeneratingCard({ attempt, onCancel }: { attempt: I2VAttempt; onCancel?:
         <Badge variant="warning">생성중</Badge>
       </div>
 
-      {/* Body */}
+      {/* Body — T2I 패턴: 비디오 비율 스켈레톤 1개 + 프롬프트 라인 */}
       <div className="p-4 space-y-3">
-        {/* 소스 이미지 + 애니메이션 */}
-        <div className="flex items-center gap-4">
-          {sourceImg ? (
-            <div className="relative shrink-0">
-              <img src={sourceImg} className="w-20 h-20 rounded-xl object-cover" style={{ border: '1px solid rgba(245,158,11,0.3)' }} alt="source" />
-              <div className="absolute inset-0 rounded-xl flex items-center justify-center"
-                style={{ background: 'rgba(0,0,0,0.35)' }}>
-                <Film size={18} className="text-amber-300 opacity-80" />
-              </div>
-            </div>
-          ) : (
-            <div className="w-20 h-20 rounded-xl shrink-0 flex items-center justify-center"
-              style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)' }}>
-              <ImageOff size={18} className="text-amber-400/50" />
-            </div>
+        <div
+          className="aspect-video rounded-lg animate-pulse relative overflow-hidden"
+          style={{ background: 'var(--surface-3)' }}
+        >
+          {sourceImg && (
+            <img
+              src={sourceImg}
+              alt=""
+              className="absolute inset-0 w-full h-full object-cover opacity-30"
+            />
           )}
-
-          <div className="flex-1 space-y-2">
-            <div className="flex items-center gap-1.5">
-              {[...Array(8)].map((_, i) => (
-                <div key={i} className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(245,158,11,0.1)' }}>
-                  <div className="h-full rounded-full bg-amber-400/60 animate-pulse"
-                    style={{ animationDelay: `${i * 0.15}s`, width: `${Math.random() * 60 + 20}%` }} />
-                </div>
-              ))}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-2">
+              <Loader2 size={28} className="animate-spin" style={{ color: 'var(--warning)' }} />
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>완성까지 1~3분 소요</span>
             </div>
-            <p className="text-xs leading-relaxed line-clamp-2" style={{ color: 'rgba(245,158,11,0.7)' }}>{attempt.prompt}</p>
-            <p className="text-[10px]" style={{ color: 'rgba(255,255,255,0.3)' }}>완성까지 1~3분 소요 · 자동으로 업데이트됩니다</p>
           </div>
         </div>
+        {attempt.prompt && (
+          <p className="text-xs leading-relaxed line-clamp-2" style={{ color: 'var(--text-secondary)' }}>
+            {attempt.prompt}
+          </p>
+        )}
       </div>
     </div>
   )
@@ -151,9 +145,10 @@ function GeneratingCard({ attempt, onCancel }: { attempt: I2VAttempt; onCancel?:
 
 // ─── Video Card ───────────────────────────────────────────────────────────────
 
-function VideoCard({ output, onScore, onArchive }: {
+function VideoCard({ output, onScore, onFeedback, onArchive }: {
   output: I2VOutput
   onScore: (id: string, score: SatisfactionScore) => void
+  onFeedback: (id: string, feedback: string) => void
   onArchive: (id: string) => void
 }) {
   const videoUrl = output.asset?.url
@@ -175,24 +170,13 @@ function VideoCard({ output, onScore, onArchive }: {
         )}
       </div>
       <div className="p-3 space-y-2" style={{ background: 'var(--surface)' }}>
-        <div className="flex items-center gap-1">
-          {([1, 2, 3, 4, 5] as SatisfactionScore[]).map(s => (
-            <button key={s} onClick={() => onScore(output.id, s)}
-              className="w-7 h-7 rounded-lg text-xs font-bold transition-all"
-              style={{
-                background: output.satisfaction_score === s
-                  ? s >= 4 ? 'rgba(16,185,129,0.3)' : s === 3 ? 'rgba(245,158,11,0.3)' : 'rgba(239,68,68,0.3)'
-                  : 'var(--surface-3)',
-                color: output.satisfaction_score === s
-                  ? s >= 4 ? '#34d399' : s === 3 ? '#fbbf24' : '#f87171'
-                  : 'var(--text-muted)',
-                border: `1px solid ${output.satisfaction_score === s ? 'currentColor' : 'var(--border)'}`,
-              }}>
-              {s}
-            </button>
-          ))}
-          <span className="text-xs ml-1" style={{ color: 'var(--text-muted)' }}>만족도</span>
-        </div>
+        <SatisfactionRating
+          value={output.satisfaction_score}
+          onChange={(score) => onScore(output.id, score)}
+          feedback={(output as any).feedback ?? ''}
+          onFeedbackCommit={(fb) => onFeedback(output.id, fb)}
+          size="sm"
+        />
         <button onClick={() => onArchive(output.id)}
           className="w-full py-2 rounded-lg text-sm font-medium transition-all"
           style={{
@@ -209,10 +193,11 @@ function VideoCard({ output, onScore, onArchive }: {
 
 // ─── Attempt Row (완료/실패) ───────────────────────────────────────────────────
 
-function AttemptRow({ attempt, onRetry, onScore, onArchive }: {
+function AttemptRow({ attempt, onRetry, onScore, onFeedback, onArchive }: {
   attempt: I2VAttempt
   onRetry: (sceneId: string, prompt: string, sourceImageUrl: string) => void
   onScore: (id: string, score: SatisfactionScore) => void
+  onFeedback: (id: string, feedback: string) => void
   onArchive: (id: string) => void
 }) {
   const [expanded, setExpanded] = useState(true)
@@ -267,7 +252,7 @@ function AttemptRow({ attempt, onRetry, onScore, onArchive }: {
             </div>
           )}
           {attempt.outputs.map(out => (
-            <VideoCard key={out.id} output={out} onScore={onScore} onArchive={onArchive} />
+            <VideoCard key={out.id} output={out} onScore={onScore} onFeedback={onFeedback} onArchive={onArchive} />
           ))}
           {(attempt.status === 'done' || attempt.status === 'failed') && sourceImg && (
             <button onClick={() => onRetry(attempt.scene_id, attempt.prompt, sourceImg)}
@@ -594,6 +579,20 @@ export default function I2VPage() {
     fetchData()
   }
 
+  async function handleFeedback(outputId: string, feedback: string) {
+    await supabase.from('attempt_outputs').update({ feedback }).eq('id', outputId)
+    setAttempts(prev => {
+      const next: Record<string, I2VAttempt[]> = {}
+      for (const [sceneId, list] of Object.entries(prev)) {
+        next[sceneId] = list.map(a => ({
+          ...a,
+          outputs: (a.outputs ?? []).map(o => o.id === outputId ? { ...o, feedback } : o),
+        }))
+      }
+      return next
+    })
+  }
+
   async function handleArchive(outputId: string) {
     const { data } = await supabase.from('attempt_outputs').select('archived').eq('id', outputId).single()
     if (!data) return
@@ -646,7 +645,7 @@ export default function I2VPage() {
                     }}
                   />
                 : <AttemptRow key={attempt.id} attempt={attempt}
-                    onRetry={handleRetry} onScore={handleScore} onArchive={handleArchive} />
+                    onRetry={handleRetry} onScore={handleScore} onFeedback={handleFeedback} onArchive={handleArchive} />
             )}
           </div>
         )}

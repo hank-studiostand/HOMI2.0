@@ -148,19 +148,34 @@ export default function SceneCard({ scene, onUpdate, onGeneratePrompt, isGenerat
           {/* 씬 경계 편집 원본 */}
           {originalContent && (
             <div className="pt-4">
-              <label className="text-[10px] font-semibold mb-1.5 block uppercase tracking-wide"
-                style={{ color: 'var(--text-muted)' }}>대본 원문 (씬 경계 편집)</label>
-              <div className="p-3 rounded-lg"
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)' }}>
-                <pre className="whitespace-pre-wrap font-sans text-xs leading-relaxed"
-                  style={{ color: 'var(--text-muted)' }}>{originalContent}</pre>
+              <label
+                className="text-xs font-semibold mb-2 block uppercase tracking-wider"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                대본 원문 · 씬 경계 편집
+              </label>
+              <div
+                className="p-4 rounded-lg"
+                style={{
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--border)',
+                  borderLeft: '3px solid var(--text-muted)',
+                }}
+              >
+                <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed"
+                  style={{ color: 'var(--text-secondary)' }}>{originalContent}</pre>
               </div>
             </div>
           )}
 
           {/* Scene Content */}
           <div className="pt-4">
-            <label className="text-xs font-medium mb-2 block" style={{ color: 'var(--text-secondary)' }}>씬 내용</label>
+            <label
+              className="text-xs font-semibold mb-2 block uppercase tracking-wider"
+              style={{ color: 'var(--accent)' }}
+            >
+              씬 내용 · AI 묘사
+            </label>
             {editing === 'content' ? (
               <div className="space-y-2">
                 <textarea value={draft}
@@ -182,8 +197,13 @@ export default function SceneCard({ scene, onUpdate, onGeneratePrompt, isGenerat
               </div>
             ) : (
               <div onClick={() => startEdit('content')}
-                className="p-3 rounded-lg text-sm cursor-pointer hover:border-indigo-500/50 transition-colors"
-                style={{ background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+                className="p-4 rounded-lg cursor-pointer transition-colors"
+                style={{
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  borderLeft: '3px solid var(--accent)',
+                  color: 'var(--text-primary)',
+                }}>
                 <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">{scene.content}</pre>
               </div>
             )}
@@ -191,9 +211,18 @@ export default function SceneCard({ scene, onUpdate, onGeneratePrompt, isGenerat
 
           {/* Master Prompt Preview */}
           {hasMasterPrompt && (
-            <div className="p-3 rounded-lg" style={{ background: 'var(--surface-3)', border: '1px solid rgba(99,102,241,0.3)' }}>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-medium text-indigo-400">마스터 프롬프트</label>
+            <div
+              className="p-4 rounded-lg"
+              style={{
+                background: 'rgba(99,102,241,0.06)',
+                border: '1px solid rgba(99,102,241,0.3)',
+                borderLeft: '3px solid #818cf8',
+              }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#a5b4fc' }}>
+                  마스터 프롬프트 · 생성용 영문
+                </label>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>v{masterPrompt?.version}</span>
                   <button
@@ -211,7 +240,7 @@ export default function SceneCard({ scene, onUpdate, onGeneratePrompt, isGenerat
                   </button>
                 </div>
               </div>
-              <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+              <p className="text-sm leading-relaxed" style={{ color: 'var(--text-primary)' }}>
                 {masterPrompt?.content}
               </p>
               {masterPrompt?.negative_prompt && (

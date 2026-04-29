@@ -175,6 +175,7 @@ interface AttemptNodeProps {
   attempt: PromptAttempt
   onRetry: (parentId: string, prompt: string, refUrls?: string[]) => void
   onScore: (outputId: string, score: SatisfactionScore) => void
+  onFeedback: (outputId: string, feedback: string) => void
   onArchive: (outputId: string) => void
   onSendToReference: (outputId: string) => void
   referenceAssets: Asset[]
@@ -182,7 +183,7 @@ interface AttemptNodeProps {
 }
 
 function AttemptNode({
-  attempt, onRetry, onScore, onArchive, onSendToReference, referenceAssets, depth = 0,
+  attempt, onRetry, onScore, onFeedback, onArchive, onSendToReference, referenceAssets, depth = 0,
 }: AttemptNodeProps) {
   const [expanded, setExpanded] = useState(true)
   const [showRetry, setShowRetry] = useState(false)
@@ -248,8 +249,13 @@ function AttemptNode({
                       {output.archived && <div className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-400" />}
                     </div>
                     <div className="p-2 space-y-1.5">
-                      <SatisfactionRating value={output.satisfaction_score}
-                        onChange={score => onScore(output.id, score)} size="sm" />
+                      <SatisfactionRating
+                        value={output.satisfaction_score}
+                        onChange={score => onScore(output.id, score)}
+                        feedback={(output as any).feedback ?? ''}
+                        onFeedbackCommit={(fb) => onFeedback(output.id, fb)}
+                        size="sm"
+                      />
                       <button onClick={() => onArchive(output.id)}
                         className={cn('w-full text-[11px] py-0.5 rounded transition-all',
                           output.archived ? 'bg-emerald-500/20 text-emerald-300' : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600')}>
@@ -292,6 +298,7 @@ function AttemptNode({
       </div>
       {attempt.children?.map(child => (
         <AttemptNode key={child.id} attempt={child} onRetry={onRetry} onScore={onScore}
+          onFeedback={onFeedback}
           onArchive={onArchive} onSendToReference={onSendToReference}
           referenceAssets={referenceAssets} depth={depth + 1} />
       ))}
@@ -415,6 +422,7 @@ export default function T2IPage() {
             thumbnail_url:      o.thumbnail_url ?? o.asset?.thumbnail_url ?? null,
             satisfaction_score: o.satisfaction_score ?? o.asset?.satisfaction_score ?? null,
             archived:           o.archived ?? o.asset?.archived ?? false,
+            feedback:           o.feedback ?? '',
           })),
         })
       }
@@ -507,6 +515,20 @@ export default function T2IPage() {
       }
     }
     fetchData()
+  }
+
+  async function saveFeedback(outputId: string, feedback: string) {
+    await supabase.from('attempt_outputs').update({ feedback }).eq('id', outputId)
+    setAttempts(prev => {
+      const next: typeof prev = {}
+      for (const [sceneId, list] of Object.entries(prev)) {
+        next[sceneId] = list.map(a => ({
+          ...a,
+          outputs: a.outputs.map(o => o.id === outputId ? { ...o, feedback } as any : o),
+        }))
+      }
+      return next
+    })
   }
 
   async function archiveOutput(outputId: string) {
@@ -695,7 +717,7 @@ export default function T2IPage() {
               {sceneAttempts.filter(a => !a.parent_id).map(attempt => (
                 <AttemptNode key={attempt.id} attempt={attempt}
                   onRetry={(parentId, p, refUrls) => generate(scene.id, p, parentId, refUrls)}
-                  onScore={scoreOutput} onArchive={archiveOutput}
+                  onScore={scoreOutput} onFeedback={saveFeedback} onArchive={archiveOutput}
                   onSendToReference={sendToReference}
                   referenceAssets={referenceAssets} />
               ))}

@@ -158,24 +158,66 @@ function PipelineChips({ scene }: { scene: SceneData }) {
       : (mp as any)?.content ?? ''
   })()
 
-  const chip = (label: string, active: boolean, color: string, activeBg: string) => (
-    <span
-      className="flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded font-medium"
-      style={active
-        ? { background: activeBg, color }
-        : { background: 'var(--surface-3)', color: 'var(--text-muted)' }
-      }
-    >
-      {label}
-    </span>
-  )
+  // 단계별 상태: not-started | in-progress | done | failed
+  function stageState(attempts: { status: string }[]): 'idle' | 'progress' | 'done' | 'failed' {
+    if (attempts.length === 0) return 'idle'
+    if (attempts.some(a => a.status === 'done')) return 'done'
+    if (attempts.some(a => a.status === 'generating' || a.status === 'pending')) return 'progress'
+    if (attempts.every(a => a.status === 'failed')) return 'failed'
+    return 'idle'
+  }
+
+  const STATE_STYLE: Record<'idle'|'progress'|'done'|'failed', { bg: string; color: string }> = {
+    idle:     { bg: 'var(--surface-3)',  color: 'var(--text-muted)' },
+    progress: { bg: 'var(--warning-bg)', color: 'var(--warning)' },
+    done:     { bg: 'var(--success-bg)', color: 'var(--success)' },
+    failed:   { bg: 'var(--danger-bg)',  color: 'var(--danger)' },
+  }
+
+  const chip = (
+    label: string,
+    state: 'idle' | 'progress' | 'done' | 'failed',
+    count?: { done: number; total: number },
+  ) => {
+    const sty = STATE_STYLE[state]
+    return (
+      <span
+        className="flex items-center gap-1 text-xs px-2 py-0.5 rounded font-semibold tabular-nums"
+        style={sty}
+      >
+        {label}
+        {count && count.total > 0 && (
+          <span className="opacity-70">{count.done}/{count.total}</span>
+        )}
+      </span>
+    )
+  }
+
+  const t2iState = stageState(scene.t2iAttempts)
+  const i2vState = stageState([...scene.i2vAttempts, ...scene.t2vAttempts])
+  const lipState = stageState(scene.lipsyncAttempts)
 
   return (
-    <div className="flex items-center gap-1 shrink-0">
-      {chip('프롬프트', !!mpContent, '#818cf8', 'rgba(129,140,248,0.15)')}
-      {chip('T2I', scene.t2iAttempts.some(a => a.status === 'done'), '#818cf8', 'rgba(99,102,241,0.15)')}
-      {chip('I2V', scene.i2vAttempts.some(a => a.status === 'done'), '#a78bfa', 'rgba(167,139,250,0.15)')}
-      {chip('립싱크', scene.lipsyncAttempts.some(a => a.status === 'done'), '#f472b6', 'rgba(244,114,182,0.15)')}
+    <div className="flex items-center gap-1.5 shrink-0">
+      {chip('프롬프트', mpContent ? 'done' : 'idle')}
+      {chip(
+        'T2I',
+        t2iState,
+        { done: scene.t2iAttempts.filter(a => a.status === 'done').length, total: scene.t2iAttempts.length },
+      )}
+      {chip(
+        'I2V',
+        i2vState,
+        {
+          done:  [...scene.i2vAttempts, ...scene.t2vAttempts].filter(a => a.status === 'done').length,
+          total: scene.i2vAttempts.length + scene.t2vAttempts.length,
+        },
+      )}
+      {chip(
+        '립싱크',
+        lipState,
+        { done: scene.lipsyncAttempts.filter(a => a.status === 'done').length, total: scene.lipsyncAttempts.length },
+      )}
     </div>
   )
 }
@@ -416,7 +458,7 @@ export default function TotalTreePage() {
     const [{ data: refAssets }, { data: allAttempts }] = await Promise.all([
       supabase.from('assets').select('id, scene_id, url, name').eq('project_id', projectId).eq('type', 'reference'),
       supabase.from('prompt_attempts')
-        .select('*, outputs:attempt_outputs(id, url, archived, satisfaction_score, asset:assets(url))')
+        .select('*, outputs:attempt_outputs(*, asset:assets(url))')
         .in('scene_id', sceneIds).order('created_at'),
     ])
 

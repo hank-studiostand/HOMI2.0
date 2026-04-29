@@ -126,6 +126,7 @@ create table public.attempt_outputs (
   attempt_id uuid references public.prompt_attempts(id) on delete cascade not null,
   asset_id uuid references public.assets(id) on delete cascade not null,
   satisfaction_score integer check (satisfaction_score between 1 and 5),
+  feedback text not null default '',
   archived boolean not null default false,
   created_at timestamptz default now()
 );
