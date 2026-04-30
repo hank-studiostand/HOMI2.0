@@ -818,10 +818,10 @@ export default function I2VPage() {
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+      <div className="flex items-center justify-between" style={{ padding: '20px 28px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg)', position: 'sticky', top: 0, zIndex: 3 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>I2V — 영상 생성</h1>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>아카이빙된 이미지를 Kling으로 영상 변환</p>
+          <p className="text-[13px] mt-1" style={{ color: 'var(--ink-3)' }}>아카이빙된 이미지를 Kling으로 영상 변환</p>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={fetchData} className="p-2 rounded-lg transition-colors hover-surface" style={{ color: 'var(--text-muted)' }}>

@@ -160,7 +160,8 @@ export default function SceneSettings({ settings, onChange }: SceneSettingsProps
         <div className="flex items-center gap-3">
           <input type="range" min={0} max={10} value={s.object_count}
             onChange={e => onChange({ object_count: parseInt(e.target.value) })}
-            className="flex-1 accent-indigo-500" />
+            className="flex-1"
+            style={{ accentColor: 'var(--accent)' }} />
           <span className="text-sm font-mono w-6 text-center" style={{ color: 'var(--text-primary)' }}>
             {s.object_count}
           </span>

@@ -519,13 +519,13 @@ export default function TotalTreePage() {
   return (
     <div className="h-full flex flex-col">
       {/* 헤더 */}
-      <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+      <div className="flex items-center justify-between" style={{ padding: '20px 28px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg)', position: 'sticky', top: 0, zIndex: 3 }}>
         <div>
           <h1 className="flex items-center gap-2" style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>
             <Layers size={16} style={{ color: 'var(--accent)' }} />
             토탈트리
           </h1>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-[13px] mt-1" style={{ color: 'var(--ink-3)' }}>
             씬별 전체 제작 파이프라인 · {scenes.length}개 씬
           </p>
         </div>

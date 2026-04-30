@@ -489,7 +489,7 @@ async function uploadFiles(files: FileList | File[], category: RefCategory) {
           <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>
             레퍼런스 라이브러리
           </h1>
-          <p className="text-xs mt-0.5 flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-[13px] mt-1 flex items-center gap-1.5" style={{ color: 'var(--ink-3)' }}>
             <span>캐릭터 · 공간 · 오브제 · 기타별로 레퍼런스를 관리하세요</span>
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px]"
               style={{ background: 'var(--surface-3)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>

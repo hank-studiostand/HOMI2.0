@@ -133,9 +133,12 @@ export default function SceneCard({ scene, onUpdate, onGeneratePrompt, isGenerat
             disabled={isGenerating}
             className={cn(
               'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all',
-              isGenerating ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'
+              isGenerating ? 'opacity-50 cursor-not-allowed' : ''
             )}
-            style={{ background: 'var(--accent)', color: 'white' }}>
+            style={{ background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)' }}
+            onMouseEnter={e => { if (!isGenerating) { e.currentTarget.style.background = 'var(--accent-2)'; e.currentTarget.style.borderColor = 'var(--accent-2)' } }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.borderColor = 'var(--accent)' }}
+          >
             <Wand2 size={13} className={isGenerating ? 'animate-spin' : ''} />
             {isGenerating ? '생성중...' : '마스터 프롬프트'}
           </button>

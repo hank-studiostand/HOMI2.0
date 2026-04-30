@@ -111,10 +111,10 @@ export default function ArchivePage() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+      <div className="flex items-center justify-between" style={{ padding: '20px 28px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg)', position: 'sticky', top: 0, zIndex: 3 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>아카이브</h1>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-[13px] mt-1" style={{ color: 'var(--ink-3)' }}>
             {assets.length}개 에셋 · {sceneGroups.length}개 씬
             {selected.size > 0 && ` · ${selected.size}개 선택됨`}
           </p>

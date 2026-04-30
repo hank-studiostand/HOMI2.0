@@ -785,11 +785,11 @@ export default function T2IPage() {
   return (
     <div className="h-full flex flex-col">
       {/* 헤더 */}
-      <div className="px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+      <div style={{ padding: '20px 28px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg)', position: 'sticky', top: 0, zIndex: 3 }}>
         <div className="flex items-center justify-between mb-3">
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>T2I — 이미지 생성</h1>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-[13px] mt-1" style={{ color: 'var(--ink-3)' }}>
               {t2iTab === 'generate' ? (
                 <>
                   씬별 이미지를 생성하고 만족도를 평가하세요
