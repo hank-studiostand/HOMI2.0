@@ -258,14 +258,14 @@ function ScenePipelineContent({ scene }: { scene: SceneData }) {
       {activeTab === 'overview' && (
         <div className="p-4 grid grid-cols-6 gap-3">
           {/* 대본 */}
-          <div className="p-3 rounded" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div className="p-3" style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)' }}>
             <SectionHeader icon={FileText} label="대본" color="var(--text-secondary)" />
             <pre className="text-[9px] leading-relaxed whitespace-pre-wrap line-clamp-8" style={{ color: 'var(--text-muted)' }}>
               {scene.content || '내용 없음'}
             </pre>
           </div>
           {/* 프롬프트 */}
-          <div className="p-3 rounded" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div className="p-3" style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)' }}>
             <SectionHeader icon={Wand2} label="프롬프트" color="var(--accent)" />
             {mpContent
               ? <p className="text-[9px] leading-relaxed line-clamp-8" style={{ color: 'var(--text-muted)' }}>{mpContent}</p>
@@ -273,7 +273,7 @@ function ScenePipelineContent({ scene }: { scene: SceneData }) {
             }
           </div>
           {/* 레퍼런스 */}
-          <div className="p-3 rounded" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div className="p-3" style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)' }}>
             <SectionHeader icon={FolderOpen} label="레퍼런스" count={scene.referenceAssets.length} color="var(--accent-2)" />
             {scene.referenceAssets.length > 0 ? (
               <div className="grid grid-cols-2 gap-1">
@@ -286,17 +286,17 @@ function ScenePipelineContent({ scene }: { scene: SceneData }) {
             ) : <EmptyState label="없음" />}
           </div>
           {/* T2I */}
-          <div className="p-3 rounded" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div className="p-3" style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)' }}>
             <SectionHeader icon={Image} label="T2I" count={scene.t2iAttempts.length} color="var(--accent)" />
             <ImageGrid attempts={scene.t2iAttempts} />
           </div>
           {/* I2V / T2V */}
-          <div className="p-3 rounded" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div className="p-3" style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)' }}>
             <SectionHeader icon={Video} label="I2V / T2V" count={scene.i2vAttempts.length + scene.t2vAttempts.length} color="var(--violet)" />
             <VideoGrid attempts={[...scene.i2vAttempts, ...scene.t2vAttempts]} />
           </div>
           {/* 립싱크 */}
-          <div className="p-3 rounded" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div className="p-3" style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)' }}>
             <SectionHeader icon={Mic} label="립싱크" count={scene.lipsyncAttempts.length} color="var(--pink)" />
             <VideoGrid attempts={scene.lipsyncAttempts} />
           </div>
@@ -310,15 +310,15 @@ function ScenePipelineContent({ scene }: { scene: SceneData }) {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <SectionHeader icon={FileText} label="대본 원문" color="var(--text-secondary)" />
-              <pre className="text-xs leading-relaxed whitespace-pre-wrap p-3 rounded" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+              <pre className="text-xs leading-relaxed whitespace-pre-wrap" style={{ padding: 12, background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', color: 'var(--ink-3)' }}>
                 {scene.content || '내용 없음'}
               </pre>
             </div>
             <div>
               <SectionHeader icon={Wand2} label="마스터 프롬프트" color="var(--accent)" />
               {mpContent
-                ? <p className="text-xs leading-relaxed p-3 rounded" style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>{mpContent}</p>
-                : <div className="p-3 rounded" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}><EmptyState label="마스터 프롬프트 미생성" /></div>
+                ? <p className="text-xs leading-relaxed" style={{ padding: 12, background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', color: 'var(--ink-3)' }}>{mpContent}</p>
+                : <div className="p-3" style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)' }}><EmptyState label="마스터 프롬프트 미생성" /></div>
               }
             </div>
           </div>
@@ -343,7 +343,7 @@ function ScenePipelineContent({ scene }: { scene: SceneData }) {
               <SectionHeader icon={Image} label="T2I 생성 이력" count={scene.t2iAttempts.length} color="var(--accent)" />
               <div className="space-y-2">
                 {scene.t2iAttempts.map(attempt => (
-                  <div key={attempt.id} className="p-3 rounded" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                  <div key={attempt.id} className="p-3" style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)' }}>
                     <div className="flex items-center gap-2 mb-2">
                       <StatusIcon status={attempt.status} />
                       <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
@@ -384,7 +384,7 @@ function ScenePipelineContent({ scene }: { scene: SceneData }) {
               <SectionHeader icon={Video} label="영상 생성 이력 (I2V / T2V)" count={scene.i2vAttempts.length + scene.t2vAttempts.length} color="var(--violet)" />
               <div className="space-y-2">
                 {[...scene.i2vAttempts, ...scene.t2vAttempts].map(attempt => (
-                  <div key={attempt.id} className="p-3 rounded" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                  <div key={attempt.id} className="p-3" style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)' }}>
                     <div className="flex items-center gap-2 mb-2">
                       <StatusIcon status={attempt.status} />
                       <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
@@ -409,7 +409,7 @@ function ScenePipelineContent({ scene }: { scene: SceneData }) {
               <SectionHeader icon={Mic} label="립싱크 이력" count={scene.lipsyncAttempts.length} color="var(--pink)" />
               <div className="space-y-2">
                 {scene.lipsyncAttempts.map(attempt => (
-                  <div key={attempt.id} className="p-3 rounded" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                  <div key={attempt.id} className="p-3" style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)' }}>
                     <div className="flex items-center gap-2 mb-1">
                       <StatusIcon status={attempt.status} />
                       <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{attempt.engine}</span>

@@ -497,18 +497,28 @@ export default function T2VPage() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+      <div className="flex items-center justify-between" style={{ padding: '20px 28px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg)', position: 'sticky', top: 0, zIndex: 3 }}>
         <div>
-          <h1 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>T2V — 텍스트→영상</h1>
-          <p className="text-xs mt-0.5 flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
+          <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>T2V — 텍스트→영상</h1>
+          <p className="text-[13px] mt-1 flex items-center gap-2" style={{ color: 'var(--ink-3)' }}>
             <span style={{ color: 'var(--warn)' }}>Kling 3.0</span>
             <span>·</span>
             <span style={{ color: 'var(--violet)' }}>Kling 3.0 Omni</span>
           </p>
         </div>
-        <Link href={`/project/${projectId}/i2v`}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white"
-          style={{ background: 'var(--accent)' }}>
+        <Link
+          href={`/project/${projectId}/i2v`}
+          className="flex items-center gap-2 transition-all"
+          style={{
+            padding: '7px 14px',
+            borderRadius: 'var(--r-md)',
+            fontSize: 13, fontWeight: 500,
+            background: 'var(--accent)', color: '#fff',
+            border: '1px solid var(--accent)',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--accent-2)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent-2)' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--accent)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)' }}
+        >
           I2V로 이동 <ChevronRight size={15} />
         </Link>
       </div>
@@ -530,26 +540,30 @@ export default function T2VPage() {
             const isShowingForm = !!(showForm[scene.id])
 
             return (
-              <div key={scene.id} className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
+              <div
+                key={scene.id}
+                className="overflow-hidden"
+                style={{ borderRadius: 'var(--r-lg)', border: '1px solid var(--line)', background: 'var(--bg-2)' }}
+              >
                 <button
                   onClick={() => setExpandedScene(isExpanded ? null : scene.id)}
-                  className="w-full flex items-center gap-3 p-4 text-left hover:bg-white/5 transition-colors"
-                  style={{ background: 'var(--surface)' }}>
-                  {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  className="w-full flex items-center gap-3 text-left transition-colors hover-surface"
+                  style={{ padding: '14px 16px', background: 'var(--bg-1)' }}>
+                  {isExpanded ? <ChevronDown size={16} style={{ color: 'var(--accent)' }} /> : <ChevronRight size={16} style={{ color: 'var(--ink-4)' }} />}
                   <Badge variant="accent" className="font-mono">S{scene.scene_number}</Badge>
-                  <span className="text-sm font-medium flex-1" style={{ color: 'var(--text-primary)' }}>
+                  <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)', flex: 1 }}>
                     {scene.title}
                   </span>
                   {sceneAttempts.length > 0 && (
-                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>
                       {sceneAttempts.length}개 영상
                     </span>
                   )}
                 </button>
 
                 {isExpanded && (
-                  <div className="p-4 border-t space-y-3"
-                    style={{ borderColor: 'var(--border)', background: 'var(--background)' }}>
+                  <div className="space-y-3"
+                    style={{ padding: 16, borderTop: '1px solid var(--line)', background: 'var(--bg-2)' }}>
                     {sceneAttempts.map(attempt => (
                       <VideoNode key={attempt.id} attempt={attempt}
                         onScore={scoreOutput} onArchive={archiveOutput} />
@@ -558,8 +572,18 @@ export default function T2VPage() {
                     {!isShowingForm ? (
                       <button
                         onClick={() => setShowForm(prev => ({ ...prev, [scene.id]: true }))}
-                        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed text-sm transition-all hover:border-[var(--accent-line)] hover:"
-                        style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
+                        className="w-full flex items-center justify-center gap-2 transition-all"
+                        style={{
+                          padding: '12px',
+                          borderRadius: 'var(--r-md)',
+                          border: '1px dashed var(--line-2)',
+                          fontSize: 13,
+                          background: 'transparent',
+                          color: 'var(--ink-4)',
+                        }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent-line)'; (e.currentTarget as HTMLElement).style.color = 'var(--accent)' }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--line-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--ink-4)' }}
+                      >
                         <Edit3 size={14} />
                         {sceneAttempts.length === 0 ? '새 영상 생성' : '새 시도 추가'}
                       </button>
