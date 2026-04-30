@@ -819,26 +819,48 @@ export default function T2IPage() {
               )}
             </p>
           </div>
-          <Link href={`/project/${projectId}/t2v`}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white"
-            style={{ background: 'var(--accent)' }}>
+          <Link
+            href={`/project/${projectId}/t2v`}
+            className="flex items-center gap-2 transition-all"
+            style={{
+              padding: '7px 14px',
+              borderRadius: 'var(--r-md)',
+              fontSize: 13, fontWeight: 500,
+              background: 'var(--accent)', color: '#fff',
+              border: '1px solid var(--accent)',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--accent-2)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent-2)' }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--accent)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)' }}
+          >
             T2V로 이동 <ChevronRight size={15} />
           </Link>
         </div>
 
         {/* 탭 */}
-        <div className="flex gap-2">
+        <div className="flex gap-1">
           <button
             onClick={() => setT2iTab('generate')}
-            className="px-3 py-1.5 rounded text-sm font-medium transition-all"
-            style={t2iTab === 'generate' ? { background: 'var(--accent)', color: 'white' } : { color: 'var(--text-secondary)' }}
+            className="transition-all"
+            style={{
+              padding: '6px 12px',
+              borderRadius: 'var(--r-md)',
+              fontSize: 12, fontWeight: 500,
+              background: t2iTab === 'generate' ? 'var(--bg-3)' : 'transparent',
+              color: t2iTab === 'generate' ? 'var(--ink)' : 'var(--ink-3)',
+            }}
           >
             생성
           </button>
           <button
             onClick={() => setT2iTab('edit')}
-            className="px-3 py-1.5 rounded text-sm font-medium transition-all"
-            style={t2iTab === 'edit' ? { background: 'var(--accent)', color: 'white' } : { color: 'var(--text-secondary)' }}
+            className="transition-all"
+            style={{
+              padding: '6px 12px',
+              borderRadius: 'var(--r-md)',
+              fontSize: 12, fontWeight: 500,
+              background: t2iTab === 'edit' ? 'var(--bg-3)' : 'transparent',
+              color: t2iTab === 'edit' ? 'var(--ink)' : 'var(--ink-3)',
+            }}
           >
             이미지 수정
           </button>

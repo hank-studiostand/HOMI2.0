@@ -494,8 +494,16 @@ export default function ScenesPage() {
           <button
             onClick={generateBulkMasterPrompts}
             disabled={bulkGenerating || scenes.length === 0}
-            className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-medium text-white disabled:opacity-50 transition-all hover:opacity-90"
-            style={{ background: 'var(--accent)' }}
+            className="flex items-center gap-1.5 disabled:opacity-50 transition-all"
+            style={{
+              padding: '7px 14px',
+              borderRadius: 'var(--r-md)',
+              fontSize: 13, fontWeight: 500,
+              background: 'var(--accent)', color: '#fff',
+              border: '1px solid var(--accent)',
+            }}
+            onMouseEnter={e => { if (!bulkGenerating && scenes.length > 0) { (e.currentTarget as HTMLElement).style.background = 'var(--accent-2)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent-2)' } }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--accent)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)' }}
           >
             {bulkGenerating
               ? <Loader2 size={13} className="animate-spin" />
@@ -505,15 +513,31 @@ export default function ScenesPage() {
           </button>
           <button
             onClick={addScene}
-            className="flex items-center gap-1.5 px-4 py-2 rounded text-sm hover-surface transition-all"
-            style={{ color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
+            className="flex items-center gap-1.5 transition-all"
+            style={{
+              padding: '7px 14px',
+              borderRadius: 'var(--r-md)',
+              fontSize: 13, fontWeight: 500,
+              background: 'transparent', color: 'var(--ink-2)',
+              border: '1px solid var(--line-strong)',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-3)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
           >
             <Plus size={13} /> 씬 추가
           </button>
           <Link
             href={`/project/${projectId}/assets`}
-            className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-medium text-white"
-            style={{ background: 'var(--accent)' }}
+            className="flex items-center gap-1.5 transition-all"
+            style={{
+              padding: '7px 14px',
+              borderRadius: 'var(--r-md)',
+              fontSize: 13, fontWeight: 500,
+              background: 'var(--accent)', color: '#fff',
+              border: '1px solid var(--accent)',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--accent-2)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent-2)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--accent)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)' }}
           >
             에셋 <ChevronRight size={13} />
           </Link>
@@ -523,9 +547,9 @@ export default function ScenesPage() {
       {/* 씬 트리 */}
       <div className="flex-1 overflow-auto p-6">
         {scenes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center">
-            <p className="text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>씬이 없습니다</p>
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          <div className="empty" style={{ maxWidth: 480, margin: '64px auto' }}>
+            <p style={{ fontSize: 14, color: 'var(--ink-3)', marginBottom: 6 }}>씬이 없어요</p>
+            <p style={{ fontSize: 12, color: 'var(--ink-4)' }}>
               대본 페이지에서 AI 자동 분류를 실행하거나 직접 추가하세요
             </p>
           </div>

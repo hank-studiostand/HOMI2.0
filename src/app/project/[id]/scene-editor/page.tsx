@@ -754,8 +754,8 @@ export default function SceneEditorPage() {
 
       {/* 헤더 */}
       <div
-        className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0"
-        style={{ borderColor: 'var(--border)' }}
+        className="flex items-center justify-between flex-shrink-0"
+        style={{ padding: '20px 28px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg)', position: 'sticky', top: 0, zIndex: 3 }}
       >
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>씬 경계 편집</h1>
@@ -769,16 +769,32 @@ export default function SceneEditorPage() {
           <button
             onClick={resetFromScript}
             disabled={classifying || loading || extracting}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm hover-surface transition-all disabled:opacity-40"
-            style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}
+            className="flex items-center gap-2 transition-all disabled:opacity-40"
+            style={{
+              padding: '7px 14px',
+              borderRadius: 'var(--r-md)',
+              fontSize: 13, fontWeight: 500,
+              background: 'transparent', color: 'var(--ink-3)',
+              border: '1px solid var(--line-strong)',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-3)'; (e.currentTarget as HTMLElement).style.color = 'var(--ink)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--ink-3)' }}
           >
             <RotateCcw size={13} /> 초기화
           </button>
           <button
             onClick={extractRootAssetMarks}
             disabled={extracting || classifying || !scenes.length}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm hover-surface transition-all disabled:opacity-40"
-            style={{ color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
+            className="flex items-center gap-2 transition-all disabled:opacity-40"
+            style={{
+              padding: '7px 14px',
+              borderRadius: 'var(--r-md)',
+              fontSize: 13, fontWeight: 500,
+              background: 'transparent', color: 'var(--ink-3)',
+              border: '1px solid var(--line-strong)',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-3)'; (e.currentTarget as HTMLElement).style.color = 'var(--ink)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--ink-3)' }}
           >
             {extracting
               ? <><Loader2 size={13} className="animate-spin" /> 분석중...</>
@@ -788,8 +804,16 @@ export default function SceneEditorPage() {
           <button
             onClick={confirmAndClassify}
             disabled={classifying || !scenes.length || extracting}
-            className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50 transition-all hover:opacity-90"
-            style={{ background: 'var(--accent)' }}
+            className="flex items-center gap-2 disabled:opacity-50 transition-all"
+            style={{
+              padding: '7px 16px',
+              borderRadius: 'var(--r-md)',
+              fontSize: 13, fontWeight: 500,
+              background: 'var(--accent)', color: '#fff',
+              border: '1px solid var(--accent)',
+            }}
+            onMouseEnter={e => { if (!classifying && scenes.length > 0 && !extracting) { (e.currentTarget as HTMLElement).style.background = 'var(--accent-2)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent-2)' } }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--accent)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)' }}
           >
             {classifying
               ? <><Loader2 size={14} className="animate-spin" /> 생성중...</>
@@ -802,8 +826,16 @@ export default function SceneEditorPage() {
       {/* 에러 */}
       {error && (
         <div
-          className="mx-6 mt-3 px-4 py-3 rounded-lg text-xs flex items-center justify-between flex-shrink-0"
-          style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger)', color: 'var(--danger)' }}
+          className="flex items-center justify-between flex-shrink-0"
+          style={{
+            margin: '12px 28px 0',
+            padding: '10px 14px',
+            borderRadius: 'var(--r-md)',
+            fontSize: 12,
+            background: 'var(--danger-soft)',
+            border: '1px solid var(--danger-soft)',
+            color: 'var(--danger)',
+          }}
         >
           {error}
           <button onClick={() => setError(null)} className="ml-3 opacity-60 hover:opacity-100">✕</button>
