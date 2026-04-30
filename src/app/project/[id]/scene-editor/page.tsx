@@ -758,7 +758,7 @@ export default function SceneEditorPage() {
         style={{ borderColor: 'var(--border)' }}
       >
         <div>
-          <h1 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>씬 경계 편집</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>씬 경계 편집</h1>
           <p className="text-xs mt-0.5 flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
             {scenes.length}개 씬 &nbsp;·&nbsp;
             <span className="opacity-70">Cmd+Enter 나누기 / Backspace 합치기</span>

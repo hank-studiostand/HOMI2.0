@@ -254,12 +254,26 @@ export default function ChatSidebar({
   if (!open) return null
 
   return (
-    <div className="h-full flex flex-col" style={{ background: 'var(--surface)' }}>
-      <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
+    <div className="h-full flex flex-col" style={{ background: 'var(--bg)' }}>
+      <div
+        className="flex items-center gap-2"
+        style={{
+          padding: '12px 16px',
+          background: 'var(--bg-1)',
+          borderBottom: '1px solid var(--line)',
+        }}
+      >
         <MessageSquare size={14} style={{ color: 'var(--accent)' }} />
-        <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>팀 채팅</span>
-        <button onClick={onClose} className="ml-auto hover-surface p-1 rounded" title="접기">
-          <ChevronRight size={14} style={{ color: 'var(--text-muted)' }} />
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>팀 채팅</span>
+        <button
+          onClick={onClose}
+          className="ml-auto rounded"
+          style={{ padding: 4, color: 'var(--ink-4)' }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-3)')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          title="접기"
+        >
+          <ChevronRight size={14} />
         </button>
       </div>
 
@@ -329,26 +343,34 @@ export default function ChatSidebar({
           </div>
         )}
 
-        <div className="flex items-end gap-2 p-2">
+        <div className="flex items-end gap-2" style={{ padding: 10 }}>
           <textarea
             value={draft}
             onChange={e => setDraft(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder="메시지... (씬 멘션 #1-1-1)"
             rows={1}
-            className="flex-1 px-3 py-2 rounded-lg text-sm resize-none"
+            className="flex-1 resize-none"
             style={{
-              background: 'var(--surface-3)',
-              border: '1px solid var(--border)',
-              color: 'var(--text-primary)',
+              background: 'var(--bg-2)',
+              border: '1px solid var(--line)',
+              borderRadius: 'var(--r-md)',
+              padding: '8px 12px',
+              color: 'var(--ink)',
+              fontSize: 13,
+              outline: 'none',
               maxHeight: 120,
             }}
           />
           <button
             onClick={() => void send()}
             disabled={!draft.trim() || sending}
-            className="p-2 rounded-lg disabled:opacity-40"
-            style={{ background: 'var(--accent)', color: 'white' }}
+            className="disabled:opacity-40"
+            style={{
+              background: 'var(--accent)', color: '#fff',
+              padding: 8, borderRadius: 'var(--r-md)',
+              border: '1px solid var(--accent)',
+            }}
           >
             <Send size={13} />
           </button>

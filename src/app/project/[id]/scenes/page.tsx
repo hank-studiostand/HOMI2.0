@@ -487,7 +487,7 @@ export default function ScenesPage() {
       {/* 헤더 */}
       <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
         <div>
-          <h1 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>씬 분류</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>씬 분류</h1>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{scenes.length}개 씬</p>
         </div>
         <div className="flex items-center gap-2">

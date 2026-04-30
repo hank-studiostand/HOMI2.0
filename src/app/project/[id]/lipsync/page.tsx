@@ -79,7 +79,7 @@ export default function LipsyncPage() {
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
         <div>
-          <h1 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>립싱크</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>립싱크</h1>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>영상에 음성을 합성하세요</p>
         </div>
         <Link href={`/project/${projectId}/archive`}

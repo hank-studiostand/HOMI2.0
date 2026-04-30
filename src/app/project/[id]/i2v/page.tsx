@@ -820,7 +820,7 @@ export default function I2VPage() {
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
         <div>
-          <h1 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>I2V — 영상 생성</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>I2V — 영상 생성</h1>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>아카이빙된 이미지를 Kling으로 영상 변환</p>
         </div>
         <div className="flex items-center gap-3">

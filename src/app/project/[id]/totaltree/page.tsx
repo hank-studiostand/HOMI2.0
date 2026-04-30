@@ -521,7 +521,7 @@ export default function TotalTreePage() {
       {/* 헤더 */}
       <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
         <div>
-          <h1 className="text-base font-semibold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+          <h1 className="flex items-center gap-2" style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>
             <Layers size={16} style={{ color: 'var(--accent)' }} />
             토탈트리
           </h1>

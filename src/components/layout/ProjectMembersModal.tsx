@@ -123,19 +123,48 @@ export default function ProjectMembersModal({ projectId, open, onClose }: Props)
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-24 px-4"
-      style={{ background: 'rgba(0,0,0,0.5)' }}
+      className="fixed inset-0 z-50 flex items-start justify-center pt-24 px-4 fade-in"
+      style={{
+        background: 'rgba(0, 0, 0, 0.35)',
+        backdropFilter: 'blur(4px)',
+      }}
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-2xl shadow-2xl"
-        style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+        className="w-full max-w-lg shadow-lg"
+        style={{
+          background: 'var(--bg-2)',
+          border: '1px solid var(--line)',
+          borderRadius: 'var(--r-xl)',
+          overflow: 'hidden',
+        }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: 'var(--border)' }}>
-          <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>팀원 관리</h2>
-          <button onClick={onClose} className="hover-surface p-1 rounded-md">
-            <X size={16} style={{ color: 'var(--text-muted)' }} />
+        {/* 모달 헤더 (.ph 톤) */}
+        <div
+          className="flex items-center justify-between"
+          style={{
+            padding: '14px 16px',
+            borderBottom: '1px solid var(--line)',
+            background: 'var(--bg-1)',
+          }}
+        >
+          <div>
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, letterSpacing: '-0.01em', color: 'var(--ink)' }}>
+              팀원 관리
+            </h2>
+            <p style={{ marginTop: 2, fontSize: 12, color: 'var(--ink-3)' }}>
+              가입한 사용자를 검색해 프로젝트에 추가하세요.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded"
+            style={{ padding: 6, color: 'var(--ink-4)' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-3)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >
+            <X size={16} />
           </button>
         </div>
 

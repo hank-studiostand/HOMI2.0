@@ -788,7 +788,7 @@ export default function T2IPage() {
       <div className="px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h1 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>T2I — 이미지 생성</h1>
+            <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>T2I — 이미지 생성</h1>
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
               {t2iTab === 'generate' ? (
                 <>

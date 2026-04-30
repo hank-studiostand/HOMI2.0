@@ -486,7 +486,7 @@ async function uploadFiles(files: FileList | File[], category: RefCategory) {
         style={{ borderColor: 'var(--border)' }}
       >
         <div>
-          <h1 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+          <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>
             레퍼런스 라이브러리
           </h1>
           <p className="text-xs mt-0.5 flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>

@@ -113,7 +113,7 @@ export default function ArchivePage() {
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
         <div>
-          <h1 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>아카이브</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>아카이브</h1>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
             {assets.length}개 에셋 · {sceneGroups.length}개 씬
             {selected.size > 0 && ` · ${selected.size}개 선택됨`}

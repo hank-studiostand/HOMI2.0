@@ -322,7 +322,7 @@ export default function RootAssetsPage() {
     <div className="h-full flex flex-col">
       {/* 헤더 */}
       <div className="px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
-        <h1 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>루트 에셋 시드</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>루트 에셋 시드</h1>
         <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>프로젝트의 기본 에셋 라이브러리</p>
       </div>
 
