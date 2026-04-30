@@ -1,181 +1,278 @@
 @import "tailwindcss";
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css");
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap");
 
-/* ── Global Scale (text 1.5x / box 2x) ──────────────────── */
-/* html font-size 16px → 24px (1.5x): rem 기반 Tailwind text-* 자동 1.5x */
-/* --spacing 0.25rem → 0.333rem (4/3 ×): rem 1.5x × spacing 4/3x = 2x boxes */
-html { font-size: 24px; }
+/* ── Reel Design System ─ Light + Orange ────────────────── */
+/* 디자이너 레퍼런스 styles.css에서 가져온 토큰. 다크 모드는 일단 미적용. */
 
-@theme {
-  --spacing: calc(0.25rem * 4 / 3);
-}
-
-
-/* ── Notion-style Design System ─────────────────────────── */
-
-/* DARK theme (default) */
-:root, [data-theme="dark"] {
-  --bg:           #191919;
-  --background:   #191919;
-  --surface:      #202020;
-  --surface-2:    #252525;
-  --surface-3:    #2f2f2f;
-  --surface-hover:#2a2a2a;
-  --border:       #373737;
-  --border-light: #2e2e2e;
-  --accent:       #7c6aff;
-  --accent-hover: #6a58e8;
-  --accent-subtle:rgba(124,106,255,0.12);
-  --text-primary: #e3e3e0;
-  --text-secondary:#9b9a97;
-  --text-muted:   #6b6b6b;
-  --text-on-accent:#ffffff;
-
-  /* functional */
-  --success:      #4ade80;
-  --success-bg:   rgba(74,222,128,0.1);
-  --warning:      #fbbf24;
-  --warning-bg:   rgba(251,191,36,0.1);
-  --danger:       #f87171;
-  --danger-bg:    rgba(248,113,113,0.1);
-  --info:         #60a5fa;
-  --info-bg:      rgba(96,165,250,0.1);
-
-  color-scheme: dark;
-}
-
-/* LIGHT theme */
-[data-theme="light"] {
+:root, [data-theme="light"] {
+  /* Surfaces */
   --bg:           #ffffff;
+  --bg-1:         #fafafa;
+  --bg-2:         #f5f5f5;
+  --bg-3:         #efefef;
+  --bg-4:         #e5e5e5;
   --background:   #ffffff;
-  --surface:      #f7f6f3;
-  --surface-2:    #efefef;
-  --surface-3:    #e5e4e2;
-  --surface-hover:#f0efe9;
-  --border:       #e3e2de;
-  --border-light: #eeede9;
-  --accent:       #7c6aff;
-  --accent-hover: #6a58e8;
-  --accent-subtle:rgba(124,106,255,0.1);
-  --text-primary: #37352f;
-  --text-secondary:#6f6e69;
-  --text-muted:   #9b9a97;
+  --surface:      #fafafa;
+  --surface-2:    #f5f5f5;
+  --surface-3:    #efefef;
+  --surface-hover:#efefef;
+
+  /* Lines */
+  --line:         #e5e5e5;
+  --line-2:       #d4d4d4;
+  --line-strong:  #c4c4c4;
+  --border:       #e5e5e5;
+  --border-light: #efefef;
+
+  /* Ink (text) */
+  --ink:          #0a0a0a;
+  --ink-2:        #262626;
+  --ink-3:        #525252;
+  --ink-4:        #737373;
+  --ink-5:        #a3a3a3;
+  --text-primary: #0a0a0a;
+  --text-secondary:#525252;
+  --text-muted:   #a3a3a3;
+
+  /* Accent — orange */
+  --accent:       #f97316;
+  --accent-2:     #ea580c;
+  --accent-hover: #ea580c;
+  --accent-soft:  rgba(249, 115, 22, 0.10);
+  --accent-line:  rgba(249, 115, 22, 0.4);
+  --accent-subtle:rgba(249, 115, 22, 0.10);
   --text-on-accent:#ffffff;
 
-  /* functional */
+  /* Semantic */
+  --ok:           #16a34a;
+  --ok-soft:      rgba(22, 163, 74, 0.12);
   --success:      #16a34a;
-  --success-bg:   rgba(22,163,74,0.08);
-  --warning:      #d97706;
-  --warning-bg:   rgba(217,119,6,0.08);
+  --success-bg:   rgba(22, 163, 74, 0.12);
+  --warn:         #ca8a04;
+  --warn-soft:    rgba(202, 138, 4, 0.12);
+  --warning:      #ca8a04;
+  --warning-bg:   rgba(202, 138, 4, 0.12);
   --danger:       #dc2626;
-  --danger-bg:    rgba(220,38,38,0.08);
-  --info:         #2563eb;
-  --info-bg:      rgba(37,99,235,0.08);
+  --danger-soft:  rgba(220, 38, 38, 0.12);
+  --danger-bg:    rgba(220, 38, 38, 0.12);
+  --info:         #0284c7;
+  --info-soft:    rgba(2, 132, 199, 0.12);
+  --info-bg:      rgba(2, 132, 199, 0.12);
+  --violet:       #7c3aed;
+  --violet-soft:  rgba(124, 58, 237, 0.12);
+  --pink:         #db2777;
+  --pink-soft:    rgba(219, 39, 119, 0.12);
+
+  /* Fonts */
+  --font-sans:    "Pretendard", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-display: "Instrument Serif", "Times New Roman", serif;
+
+  /* Radius */
+  --r-sm:         6px;
+  --r-md:         8px;
+  --r-lg:         12px;
+  --r-xl:         16px;
+  --r-2xl:        20px;
+
+  /* Shadow */
+  --shadow-sm:    0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md:    0 4px 12px rgba(0,0,0,0.08);
+  --shadow-lg:    0 12px 32px rgba(0,0,0,0.12);
 
   color-scheme: light;
 }
 
-/* ── Reset ──────────────────────────────────────────────── */
-* { box-sizing: border-box; padding: 0; margin: 0; }
+/* Dark — 임시 보존용. 레퍼런스 디자인 적용 시기에는 라이트 권장. */
+[data-theme="dark"] {
+  --bg:           #0a0a0a;
+  --bg-1:         #141414;
+  --bg-2:         #1a1a1a;
+  --bg-3:         #242424;
+  --bg-4:         #2e2e2e;
+  --background:   #0a0a0a;
+  --surface:      #141414;
+  --surface-2:    #1a1a1a;
+  --surface-3:    #242424;
+  --surface-hover:#242424;
+  --line:         #2a2a2a;
+  --line-2:       #3a3a3a;
+  --line-strong:  #4a4a4a;
+  --border:       #2a2a2a;
+  --border-light: #242424;
+  --ink:          #fafafa;
+  --ink-2:        #d4d4d4;
+  --ink-3:        #a3a3a3;
+  --ink-4:        #737373;
+  --ink-5:        #525252;
+  --text-primary: #fafafa;
+  --text-secondary:#a3a3a3;
+  --text-muted:   #737373;
+  --accent:       #f97316;
+  --accent-2:     #fb923c;
+  --accent-hover: #fb923c;
+  --accent-soft:  rgba(249, 115, 22, 0.18);
+  --accent-line:  rgba(249, 115, 22, 0.5);
+  --accent-subtle:rgba(249, 115, 22, 0.18);
+  color-scheme: dark;
+}
 
-html, body {
-  background: var(--background);
-  color: var(--text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
-  font-size: 21px;
-  line-height: 1.6;
-  height: 100%;
+/* ── Reset ────────────────────────────────────────────── */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+html { font-size: 16px; }
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.5;
+  letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
 }
+button { font-family: inherit; cursor: pointer; }
+input, textarea, select { font-family: inherit; }
 
 /* ── Scrollbar ──────────────────────────────────────────── */
-::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
-
-/* ── Notion-style components ──────────────────────────────*/
-
-/* Notion-style block hover */
-.notion-block {
-  border-radius: 4px;
-  transition: background 0.1s;
+::-webkit-scrollbar-thumb {
+  background: var(--line-2); border-radius: 10px;
+  border: 2px solid transparent; background-clip: padding-box;
 }
-.notion-block:hover { background: var(--surface-hover); }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-5); background-clip: padding-box; border: 2px solid transparent; }
 
-/* Attempt tree connector line */
-.attempt-tree-line {
-  border-left: 2px solid var(--border);
-  margin-left: 40px;
-  padding-left: 40px;
-}
-
-/* Card hover */
-.prompt-card { transition: border-color 0.15s, box-shadow 0.15s; }
-.prompt-card:hover { border-color: var(--accent); }
-
-/* Asset grid */
-.asset-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 24px;
-}
-
-/* Notion-style divider */
-.notion-divider {
-  height: 1px;
-  background: var(--border);
-  margin: 16px 0;
-}
-
-/* Fade-in animation */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.fade-in { animation: fadeIn 0.15s ease-out; }
-
-/* Notion page header style */
-.page-icon {
-  font-size: 42px;
-  line-height: 1;
-  margin-bottom: 16px;
-  user-select: none;
-}
-
-/* Notion-style input */
-.notion-input {
-  background: transparent;
-  border: none;
-  border-bottom: 1.5px solid var(--border);
-  border-radius: 0;
-  padding: 12px 4px;
-  color: var(--text-primary);
-  width: 100%;
-  transition: border-color 0.15s;
-  outline: none;
-}
-.notion-input:focus { border-color: var(--accent); }
-
-/* Notion-style tag/badge */
-.n-tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 14px;
-  border-radius: 3px;
-  font-size: 17px;
-  font-weight: 500;
+/* ── Pill / Status ─────────────────────────────────────── */
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px; border-radius: 999px;
+  font-size: 10px; font-weight: 500;
+  background: var(--bg-3); color: var(--ink-3);
+  border: 1px solid var(--line);
   white-space: nowrap;
 }
+.pill .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.pill.draft    { color: var(--ink-3); }
+.pill.ready    { color: var(--info);   background: var(--info-soft);   border-color: rgba(2,132,199,0.25); }
+.pill.gen      { color: var(--violet); background: var(--violet-soft); border-color: rgba(124,58,237,0.25); }
+.pill.review   { color: var(--warn);   background: var(--warn-soft);   border-color: rgba(202,138,4,0.25); }
+.pill.revise   { color: var(--accent); background: var(--accent-soft); border-color: var(--accent-line); }
+.pill.approved { color: var(--ok);     background: var(--ok-soft);     border-color: rgba(22,163,74,0.25); }
+.pill.removed  { color: var(--ink-4);  background: var(--bg-3); }
+.pill.locked   { color: var(--ink-3);  background: var(--bg-3); }
+.pill.completed{ color: var(--ok);     background: var(--ok-soft);     border-color: rgba(22,163,74,0.25); }
+.pill.danger   { color: var(--danger); background: var(--danger-soft); border-color: rgba(220,38,38,0.25); }
 
-/* Notion-style hover utility - works in both light and dark modes */
-.hover-surface:hover { background: var(--surface-hover) !important; }
+/* ── Card ──────────────────────────────────────────────── */
+.card    { background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
+.card-pad{ padding: 16px; }
+
+/* ── Button ────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 12px; border-radius: var(--r-md);
+  font-size: 12px; font-weight: 500;
+  background: var(--bg-3); color: var(--ink-2);
+  border: 1px solid var(--line-strong);
+  transition: all 0.12s;
+}
+.btn:hover    { background: var(--bg-4); color: var(--ink); }
+.btn.primary  { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn.primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+.btn.ghost    { background: transparent; border-color: transparent; color: var(--ink-3); }
+.btn.ghost:hover { background: var(--bg-3); color: var(--ink); }
+.btn.outline  { background: transparent; border-color: var(--line-strong); }
+.btn.danger   { background: transparent; color: var(--danger); border-color: rgba(220,38,38,0.3); }
+.btn.danger:hover { background: var(--danger-soft); }
+.btn.sm       { padding: 4px 8px; font-size: 11px; }
+.btn.lg       { padding: 10px 16px; font-size: 13px; }
+
+/* ── Inputs ────────────────────────────────────────────── */
+.input, .textarea, .select {
+  width: 100%;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 8px 12px;
+  color: var(--ink); font-size: 13px;
+  outline: none;
+}
+.input:focus, .textarea:focus, .select:focus {
+  border-color: var(--accent-line); background: var(--bg-3);
+}
+.textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
+
+/* ── Avatar gradients ──────────────────────────────────── */
+.av-1 { background: linear-gradient(135deg, #f97316, #c2410c); color: #fff; }
+.av-2 { background: linear-gradient(135deg, #38bdf8, #0369a1); color: #fff; }
+.av-3 { background: linear-gradient(135deg, #a78bfa, #6d28d9); color: #fff; }
+.av-4 { background: linear-gradient(135deg, #22c55e, #15803d); color: #fff; }
+.av-5 { background: linear-gradient(135deg, #ec4899, #be185d); color: #fff; }
+.av-6 { background: linear-gradient(135deg, #eab308, #a16207); color: #fff; }
+
+/* ── Misc utilities ────────────────────────────────────── */
+.muted { color: var(--ink-4); }
+.mono  { font-family: var(--font-mono); font-size: 11px; }
+.kbd   {
+  display: inline-block; padding: 1px 5px; font-size: 10px; font-family: var(--font-mono);
+  border: 1px solid var(--line-strong); border-radius: 4px; color: var(--ink-3);
+  background: var(--bg-2);
+}
+.divider   { height: 1px; background: var(--line); margin: 12px 0; }
+.divider-v { width: 1px; background: var(--line); align-self: stretch; }
+.field-label {
+  font-size: 11px; font-weight: 500; color: var(--ink-3); margin-bottom: 6px;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.empty {
+  padding: 48px 24px; text-align: center; color: var(--ink-4);
+  border: 1px dashed var(--line); border-radius: var(--r-lg); background: var(--bg-1);
+}
+
+/* ── Animations ────────────────────────────────────────── */
+@keyframes pulse-soft { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+.pulse { animation: pulse-soft 1.6s ease-in-out infinite; }
+
+@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+.shimmer {
+  background: linear-gradient(90deg, var(--bg-3) 0%, var(--bg-4) 50%, var(--bg-3) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.fade-in { animation: fadeIn 0.2s ease-out; }
+
+/* ── Notion-style hover utilities (기존 컴포넌트 호환) ── */
+.hover-surface:hover   { background: var(--surface-hover) !important; }
 .hover-surface-2:hover { background: var(--surface-2) !important; }
 
-/* Smooth theme transition */
+/* 기존 코드 호환용 보조 클래스 — 점진적 정리 예정 */
+.notion-block { border-radius: 4px; transition: background 0.1s; }
+.notion-block:hover { background: var(--surface-hover); }
+.attempt-tree-line { border-left: 2px solid var(--border); margin-left: 40px; padding-left: 40px; }
+.prompt-card { transition: border-color 0.15s, box-shadow 0.15s; }
+.prompt-card:hover { border-color: var(--accent); }
+.asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 24px; }
+.notion-divider { height: 1px; background: var(--border); margin: 16px 0; }
+.page-icon { font-size: 42px; line-height: 1; margin-bottom: 16px; user-select: none; }
+.notion-input {
+  background: transparent; border: none; border-bottom: 1.5px solid var(--border);
+  border-radius: 0; padding: 12px 4px; color: var(--text-primary); width: 100%;
+  transition: border-color 0.15s; outline: none;
+}
+.notion-input:focus { border-color: var(--accent); }
+.n-tag {
+  display: inline-flex; align-items: center;
+  padding: 2px 14px; border-radius: 3px;
+  font-size: 11px; font-weight: 500; white-space: nowrap;
+}
+
+/* Smooth theme transitions */
 *, *::before, *::after {
   transition-property: background-color, border-color, color;
-  transition-duration: 0.15s;
+  transition-duration: 0.12s;
   transition-timing-function: ease;
 }
-/* But don't apply transition to everything (performance) */
 svg, img, video { transition: none !important; }

@@ -2,178 +2,45 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { usePathname } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import {
-  FileText, Scissors, Layers, Image, Video, Mic,
-  RefreshCw, Users, UserPlus,
+  RefreshCw, Users, UserPlus, Bell, Settings, Search, ChevronDown, Folder,
 } from 'lucide-react'
 import ProjectMembersModal from './ProjectMembersModal'
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface StageStats {
-  label: string
-  key: string
-  icon: React.ElementType
-  done: number
-  total: number
-  href: string
-}
 
 interface PresenceMember {
   userId: string
   name: string
   avatar: string | null
-  page: string        // 현재 보고 있는 페이지 경로 slug
+  page: string
   pageLabel: string
-  color: string       // 아바타 배경 고유 색상
-  joinedAt: string
+  color: string
 }
-
-// ─── 유틸 ─────────────────────────────────────────────────────────────────────
 
 const PAGE_LABELS: Record<string, string> = {
-  'totaltree':    '토탈트리',
-  'script':       '대본',
-  'scene-editor': '씬 경계 편집',
-  'scenes':       '씬 분류',
-  'assets':       '에셋',
-  't2i':          'T2I',
-  'i2v':          'I2V',
-  'lipsync':      '립싱크',
-  'archive':      '아카이브',
-  't2v':          'T2V',
-  'settings':     '설정',
+  totaltree: '대시보드', script: '대본', 'scene-editor': '씬 경계',
+  scenes: '씬 분류', assets: '에셋', t2i: 'T2I', i2v: 'I2V',
+  lipsync: '립싱크', archive: '아카이브', t2v: 'T2V', settings: '설정',
+  workspace: 'Workspace', review: 'Review', version: 'Version',
 }
 
-const AVATAR_COLORS = [
-  '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b',
-  '#10b981', '#3b82f6', '#ef4444', '#14b8a6',
-]
+const AVATAR_COLORS = ['#f97316','#0284c7','#7c3aed','#22c55e','#ec4899','#eab308','#dc2626','#14b8a6']
 
 function getPageSlug(pathname: string): string {
-  const parts = pathname.split('/')
-  return parts[parts.length - 1] ?? ''
+  return pathname.split('/').pop() ?? ''
 }
-
 function getAvatarColor(userId: string): string {
-  let hash = 0
-  for (let i = 0; i < userId.length; i++) hash = userId.charCodeAt(i) + ((hash << 5) - hash)
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
+  let h = 0
+  for (let i = 0; i < userId.length; i++) h = userId.charCodeAt(i) + ((h << 5) - h)
+  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length]
 }
-
 function getInitials(name: string): string {
   if (!name) return '?'
-  // 이메일인 경우
   if (name.includes('@')) return name[0].toUpperCase()
-  const words = name.trim().split(/\s+/)
-  return words.length >= 2
-    ? (words[0][0] + words[1][0]).toUpperCase()
-    : name.slice(0, 2).toUpperCase()
+  const w = name.trim().split(/\s+/)
+  return w.length >= 2 ? (w[0][0] + w[1][0]).toUpperCase() : name.slice(0, 2).toUpperCase()
 }
-
-// ─── Stage Pill ───────────────────────────────────────────────────────────────
-
-function StagePill({
-  stage, isActive, onClick,
-}: {
-  stage: StageStats; isActive: boolean; onClick: () => void
-}) {
-  const Icon   = stage.icon
-  const pct    = stage.total === 0 ? 0 : Math.round((stage.done / stage.total) * 100)
-  const isDone = pct === 100
-
-  return (
-    <button
-      onClick={onClick}
-      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-all shrink-0"
-      style={{
-        background: isActive
-          ? 'var(--accent-subtle)'
-          : isDone
-            ? 'var(--success-bg)'
-            : 'var(--surface-3)',
-        border: `1px solid ${isActive ? 'var(--accent)' : isDone ? 'var(--success)' : 'var(--border)'}`,
-        color: isActive ? 'var(--accent)' : isDone ? 'var(--success)' : 'var(--text-secondary)',
-      }}
-    >
-      <Icon size={11} />
-      <span className="text-[11px] font-medium">{stage.label}</span>
-      <span
-        className="text-[10px] font-mono tabular-nums"
-        style={{
-          color: isActive ? 'var(--accent)' : isDone ? 'var(--success)' : 'var(--text-muted)',
-        }}
-      >
-        {stage.done}/{stage.total}
-      </span>
-    </button>
-  )
-}
-
-// ─── Member Avatar ────────────────────────────────────────────────────────────
-
-function MemberAvatar({
-  member, showTooltip,
-}: {
-  member: PresenceMember; showTooltip: boolean
-}) {
-  const [hovered, setHovered] = useState(false)
-
-  return (
-    <div
-      className="relative"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <div
-        className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white ring-2 shrink-0"
-        style={{
-          background: member.color,
-          outline: '2px solid var(--background)',
-        }}
-      >
-        {member.avatar
-          ? <img src={member.avatar} className="w-full h-full rounded-full object-cover" alt="" />
-          : getInitials(member.name)
-        }
-      </div>
-
-      {/* 온라인 dot */}
-      <div
-        className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full"
-        style={{ background: 'var(--success)', outline: '2px solid var(--background)' }}
-      />
-
-      {/* Tooltip */}
-      {(hovered || showTooltip) && (
-        <div
-          className="absolute top-full right-0 mt-2 z-50 flex flex-col gap-0.5 p-2.5 rounded-xl shadow-xl whitespace-nowrap"
-          style={{
-            background: 'var(--surface)',
-            border: '1px solid var(--border)',
-            minWidth: '140px',
-          }}
-        >
-          <p className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
-            {member.name}
-          </p>
-          <div className="flex items-center gap-1 mt-0.5">
-            <div
-              className="w-1.5 h-1.5 rounded-full"
-              style={{ background: 'var(--success)' }}
-            />
-            <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-              {member.pageLabel || '작업 중'}
-            </p>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Main TopBar ──────────────────────────────────────────────────────────────
 
 interface ProjectTopBarProps {
   projectId: string
@@ -183,288 +50,271 @@ interface ProjectTopBarProps {
 export default function ProjectTopBar({ projectId, projectName }: ProjectTopBarProps) {
   const pathname = usePathname()
   const supabase = createClient()
-
-  const [stages, setStages]           = useState<StageStats[]>([])
-  const [members, setMembers]         = useState<PresenceMember[]>([])
-  const [totalPct, setTotalPct]       = useState(0)
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-  const [loading, setLoading]         = useState(true)
-  const [activeStage, setActiveStage] = useState<string | null>(null)
+  const [members, setMembers] = useState<PresenceMember[]>([])
+  const [totalPct, setTotalPct] = useState(0)
+  const [counts, setCounts] = useState({ review: 0, revise: 0, generating: 0 })
   const [membersModalOpen, setMembersModalOpen] = useState(false)
 
-  const channelRef  = useRef<ReturnType<typeof supabase.channel> | null>(null)
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const userInfoRef = useRef<{ name: string; avatar: string | null } | null>(null)
-
   const currentSlug = getPageSlug(pathname)
 
-  // ── 씬 완료도 조회 ───────────────────────────────────────────────────────
+  // ── 진행률 + 카운트 조회 ────────────────────────────────────
   const fetchStats = useCallback(async () => {
-    // 전체 씬 수
     const { data: scenes } = await supabase
       .from('scenes').select('id').eq('project_id', projectId)
     const total = scenes?.length ?? 0
     const sceneIds = scenes?.map(s => s.id) ?? []
 
     if (total === 0) {
-      setStages(buildStages(0, 0, 0, 0, 0))
-      setTotalPct(0)
-      setLoading(false)
+      setTotalPct(0); setCounts({ review: 0, revise: 0, generating: 0 })
       return
     }
 
-    // 마스터 프롬프트 있는 씬 (씬분류 완료)
-    const { data: mpScenes } = await supabase
-      .from('master_prompts').select('scene_id').in('scene_id', sceneIds)
-    const mpDone = new Set(mpScenes?.map(r => r.scene_id) ?? []).size
+    const [{ data: mp }, { data: t2iA }, { data: i2vA }] = await Promise.all([
+      supabase.from('master_prompts').select('scene_id').in('scene_id', sceneIds),
+      supabase.from('prompt_attempts').select('scene_id, status').eq('type', 't2i').in('scene_id', sceneIds),
+      supabase.from('prompt_attempts').select('scene_id, status').eq('type', 'i2v').in('scene_id', sceneIds),
+    ])
 
-    // T2I 아카이브 완료된 씬
-    const { data: t2iAttempts } = await supabase
-      .from('prompt_attempts').select('id, scene_id').eq('type', 't2i').in('scene_id', sceneIds)
-    const t2iIds = t2iAttempts?.map(a => a.id) ?? []
-    let t2iDone = 0
-    if (t2iIds.length > 0) {
-      const { data: t2iOutputs } = await supabase
-        .from('attempt_outputs').select('attempt_id').eq('archived', true).in('attempt_id', t2iIds)
-      const t2iDoneScenes = new Set(
-        (t2iOutputs ?? []).map(o => t2iAttempts?.find(a => a.id === o.attempt_id)?.scene_id).filter(Boolean)
-      )
-      t2iDone = t2iDoneScenes.size
-    }
+    const mpDone = new Set((mp ?? []).map(r => r.scene_id)).size
+    const t2iDone = new Set((t2iA ?? []).filter(a => a.status === 'done').map(a => a.scene_id)).size
+    const i2vDone = new Set((i2vA ?? []).filter(a => a.status === 'done').map(a => a.scene_id)).size
+    const generating =
+      ((t2iA ?? []).filter(a => a.status === 'generating').length) +
+      ((i2vA ?? []).filter(a => a.status === 'generating').length)
 
-    // I2V 완료된 씬
-    const { data: i2vAttempts } = await supabase
-      .from('prompt_attempts').select('scene_id').eq('type', 'i2v').eq('status', 'done').in('scene_id', sceneIds)
-    const i2vDone = new Set(i2vAttempts?.map(a => a.scene_id) ?? []).size
-
-    // 립싱크 완료된 씬
-    const { data: lipAttempts } = await supabase
-      .from('prompt_attempts').select('scene_id').eq('type', 'lipsync').eq('status', 'done').in('scene_id', sceneIds)
-    const lipDone = new Set(lipAttempts?.map(a => a.scene_id) ?? []).size
-
-    const newStages = buildStages(total, mpDone, t2iDone, i2vDone, lipDone)
-    setStages(newStages)
-
-    // 전체 진행률 = 각 스테이지 평균
-    const staged = newStages.filter(s => s.total > 0)
-    const avg = staged.length === 0 ? 0
-      : staged.reduce((acc, s) => acc + s.done / s.total, 0) / staged.length * 100
-    setTotalPct(Math.round(avg))
-    setLoading(false)
-  }, [projectId])
-
-  function buildStages(
-    total: number, mpDone: number, t2iDone: number, i2vDone: number, lipDone: number,
-  ): StageStats[] {
-    return [
-      { key: 'scenes',       label: '씬 분류', icon: Layers,   done: mpDone,  total, href: 'scenes'  },
-      { key: 't2i',          label: 'T2I',    icon: Image,    done: t2iDone, total, href: 't2i'     },
-      { key: 'i2v',          label: 'I2V',    icon: Video,    done: i2vDone, total, href: 'i2v'     },
-      { key: 'lipsync',      label: '립싱크',  icon: Mic,      done: lipDone, total, href: 'lipsync' },
-    ]
-  }
-
-  // ── Supabase Realtime Presence ────────────────────────────────────────────
-  useEffect(() => {
-    let mounted = true
-
-    async function init() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user || !mounted) return
-      setCurrentUserId(user.id)
-
-      const channel = supabase.channel(`presence:project:${projectId}`, {
-        config: { presence: { key: user.id } },
-      })
-
-      channelRef.current = channel
-
-      channel.on('presence', { event: 'sync' }, () => {
-        if (!mounted) return
-        const state = channel.presenceState<{
-          userId: string; name: string; avatar: string | null; page: string
-        }>()
-
-        const newMembers: PresenceMember[] = []
-        for (const [userId, presences] of Object.entries(state)) {
-          if (!presences || presences.length === 0) continue
-          const p = presences[0]
-          // 본인 제외
-          if (userId === user.id) continue
-          newMembers.push({
-            userId,
-            name:      p.name ?? p.userId ?? userId,
-            avatar:    p.avatar ?? null,
-            page:      p.page ?? '',
-            pageLabel: PAGE_LABELS[p.page] ?? p.page ?? '',
-            color:     getAvatarColor(userId),
-            joinedAt:  new Date().toISOString(),
-          })
-        }
-        setMembers(newMembers)
-      })
-
-      const name   = user.user_metadata?.full_name ?? user.email ?? user.id
-      const avatar = user.user_metadata?.avatar_url ?? null
-      userInfoRef.current = { name, avatar }
-
-      await channel.subscribe(async (status) => {
-        if (status !== 'SUBSCRIBED' || !mounted) return
-        await channel.track({
-          userId: user.id,
-          name,
-          avatar,
-          page: currentSlug,
-        })
-      })
-    }
-
-    init()
-    return () => {
-      mounted = false
-      channelRef.current?.unsubscribe()
-    }
-  }, [projectId])
-
-  // 페이지 변경 시 presence 업데이트 (currentSlug 변경 감지)
-  useEffect(() => {
-    if (!channelRef.current || !currentUserId || !userInfoRef.current) return
-    channelRef.current.track({
-      userId: currentUserId,
-      name:   userInfoRef.current.name,
-      avatar: userInfoRef.current.avatar,
-      page:   currentSlug,
+    const stages = [
+      { done: mpDone, total }, { done: t2iDone, total }, { done: i2vDone, total },
+    ].filter(s => s.total > 0)
+    const avg = stages.length === 0 ? 0
+      : Math.round(stages.reduce((acc, s) => acc + s.done / s.total, 0) / stages.length * 100)
+    setTotalPct(avg)
+    setCounts({
+      review: Math.max(0, t2iDone - i2vDone),  // 검토 대기: T2I done이지만 I2V 미시작
+      revise: 0,                                // (피드백 시스템 연결 시 채움)
+      generating,
     })
-  }, [currentSlug, currentUserId])
+  }, [projectId, supabase])
 
-  // 통계 주기적 새로고침 (30초)
   useEffect(() => {
     fetchStats()
     const t = setInterval(fetchStats, 30_000)
     return () => clearInterval(t)
   }, [fetchStats])
 
-  // ── 전체 진행 바 퍼센트 색상 ──────────────────────────────────────────────
-  const barColor =
-    totalPct === 100 ? 'var(--success)' :
-    totalPct >= 50   ? 'var(--accent)'  :
-    totalPct >= 20   ? 'var(--warning)' :
-    'var(--text-muted)'
+  // ── Presence ────────────────────────────────────────────────
+  useEffect(() => {
+    let mounted = true
+    void (async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user || !mounted) return
+      const channel = supabase.channel(`presence:project:${projectId}`, {
+        config: { presence: { key: user.id } },
+      })
+      channelRef.current = channel
+      const meta = (user.user_metadata ?? {}) as Record<string, any>
+      const name = String(meta.display_name ?? meta.full_name ?? user.email ?? user.id)
+      const avatar = meta.avatar_url ?? null
+      userInfoRef.current = { name, avatar }
+
+      channel.on('presence', { event: 'sync' }, () => {
+        if (!mounted) return
+        const state = channel.presenceState<{ userId: string; name: string; avatar: string | null; page: string }>()
+        const next: PresenceMember[] = []
+        for (const [uid, presences] of Object.entries(state)) {
+          if (!presences || presences.length === 0) continue
+          if (uid === user.id) continue
+          const p = presences[0]
+          next.push({
+            userId: uid,
+            name: p.name ?? uid,
+            avatar: p.avatar ?? null,
+            page: p.page ?? '',
+            pageLabel: PAGE_LABELS[p.page] ?? p.page ?? '',
+            color: getAvatarColor(uid),
+          })
+        }
+        setMembers(next)
+      })
+
+      await channel.subscribe(async (status) => {
+        if (status !== 'SUBSCRIBED' || !mounted) return
+        await channel.track({ userId: user.id, name, avatar, page: currentSlug })
+      })
+    })()
+    return () => { mounted = false; channelRef.current?.unsubscribe() }
+  }, [projectId, supabase])
+
+  useEffect(() => {
+    if (!channelRef.current || !userInfoRef.current) return
+    void channelRef.current.track({
+      userId: '', name: userInfoRef.current.name, avatar: userInfoRef.current.avatar, page: currentSlug,
+    })
+  }, [currentSlug])
 
   return (
-    <div
-      className="flex items-center gap-3 px-4 border-b shrink-0"
-      style={{
-        height: '44px',
-        background: 'var(--surface)',
-        borderColor: 'var(--border)',
-      }}
-    >
-      {/* ── 전체 진행 바 ── */}
-      <div className="flex items-center gap-2 shrink-0">
-        <div
-          className="relative w-24 h-1.5 rounded-full overflow-hidden"
-          style={{ background: 'var(--surface-3)' }}
-        >
-          <div
-            className="absolute inset-y-0 left-0 rounded-full transition-all duration-700"
-            style={{ width: `${totalPct}%`, background: barColor }}
-          />
-        </div>
-        <span className="text-[11px] font-mono tabular-nums shrink-0"
-          style={{ color: barColor, minWidth: '28px' }}>
-          {totalPct}%
-        </span>
-      </div>
-
-      {/* 구분선 */}
-      <div className="w-px h-4 shrink-0" style={{ background: 'var(--border)' }} />
-
-      {/* ── 스테이지 Pills ── */}
-      {loading ? (
-        <div className="flex gap-1.5">
-          {[80, 60, 60, 64].map((w, i) => (
-            <div key={i} className="h-6 rounded-lg animate-pulse shrink-0"
-              style={{ width: w, background: 'var(--surface-3)' }} />
-          ))}
-        </div>
-      ) : (
-        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
-          {stages.map(stage => (
-            <StagePill
-              key={stage.key}
-              stage={stage}
-              isActive={currentSlug === stage.href}
-              onClick={() => setActiveStage(activeStage === stage.key ? null : stage.key)}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* 새로고침 */}
-      <button
-        onClick={fetchStats}
-        className="p-1 rounded-md transition-all hover-surface shrink-0"
-        style={{ color: 'var(--text-muted)' }}
-        title="통계 새로고침"
+    <>
+      <div
+        className="flex items-center gap-4 px-4 shrink-0"
+        style={{
+          height: 48, background: 'var(--bg-1)', borderBottom: '1px solid var(--line)',
+        }}
       >
-        <RefreshCw size={11} />
-      </button>
-
-      {/* 스페이서 */}
-      <div className="flex-1" />
-
-      {/* ── 팀원 프레전스 ── */}
-      <div className="flex items-center gap-2 shrink-0">
-        {members.length > 0 && (
-          <>
-            <div className="flex items-center" style={{ gap: '-4px' }}>
-              {/* 겹치는 아바타 스택 */}
-              <div className="flex">
-                {members.slice(0, 5).map((m, i) => (
-                  <div
-                    key={m.userId}
-                    className="relative"
-                    style={{ marginLeft: i > 0 ? '-8px' : 0, zIndex: members.length - i }}
-                  >
-                    <MemberAvatar member={m} showTooltip={false} />
-                  </div>
-                ))}
-                {members.length > 5 && (
-                  <div
-                    className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold -ml-2"
-                    style={{
-                      background: 'var(--surface-3)',
-                      border: '2px solid var(--background)',
-                      color: 'var(--text-secondary)',
-                    }}
-                  >
-                    +{members.length - 5}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* 현재 페이지별 그룹 표시 */}
-            <MembersOnPagePill members={members} currentSlug={currentSlug} />
-          </>
-        )}
-
-        {members.length === 0 && (
-          <div className="flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
-            <Users size={12} />
-            <span className="text-[11px]">나만 접속 중</span>
+        {/* 브랜드 */}
+        <Link href="/dashboard" className="flex items-center gap-2 shrink-0" style={{ width: 200 }}>
+          <div
+            className="av-1"
+            style={{
+              width: 24, height: 24, borderRadius: 6,
+              display: 'grid', placeItems: 'center',
+              fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 13,
+            }}
+          >
+            R
           </div>
-        )}
+          <span
+            style={{
+              fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 20,
+              letterSpacing: '-0.02em', color: 'var(--ink)',
+            }}
+          >
+            Reel
+          </span>
+        </Link>
 
-        {/* 팀원 초대/관리 버튼 */}
+        <div style={{ width: 1, height: 18, background: 'var(--line)' }} />
+
+        {/* 프로젝트 셀렉터 */}
+        <button
+          className="flex items-center gap-2"
+          style={{
+            padding: '4px 10px', borderRadius: 'var(--r-md)',
+            fontWeight: 500, fontSize: 13, color: 'var(--ink)',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-3)')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+        >
+          <Folder size={14} />
+          <span className="truncate" style={{ maxWidth: 200 }}>{projectName}</span>
+          <ChevronDown size={14} style={{ opacity: 0.5 }} />
+        </button>
+
+        {/* 진행률 */}
+        <div
+          className="flex items-center gap-2.5 shrink-0"
+          style={{
+            padding: '4px 10px', background: 'var(--bg-2)',
+            borderRadius: 'var(--r-md)', border: '1px solid var(--line)',
+            fontSize: 12,
+          }}
+        >
+          <span style={{ color: 'var(--ink-3)' }}>전체</span>
+          <div
+            style={{
+              width: 80, height: 4, background: 'var(--bg-4)',
+              borderRadius: 999, overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                height: '100%',
+                width: `${totalPct}%`,
+                background: 'linear-gradient(90deg, var(--accent), var(--accent-2))',
+                borderRadius: 999, transition: 'width 0.5s',
+              }}
+            />
+          </div>
+          <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{totalPct}%</span>
+        </div>
+
+        {/* 카운트 칩 */}
+        <div className="flex gap-1.5 shrink-0">
+          <StatChip dot="var(--warn)"   label="검토"   value={counts.review} />
+          <StatChip dot="var(--accent)" label="수정"   value={counts.revise} />
+          <StatChip dot="var(--violet)" label="생성중" value={counts.generating} pulse />
+        </div>
+
+        <div className="flex-1" />
+
+        {/* 검색 (placeholder UI) */}
+        <button
+          className="flex items-center gap-2"
+          style={{
+            width: 280, padding: '6px 10px',
+            background: 'var(--bg-2)', border: '1px solid var(--line)',
+            borderRadius: 'var(--r-md)',
+            color: 'var(--ink-3)', fontSize: 12,
+          }}
+          onMouseEnter={e => ((e.currentTarget as HTMLElement).style.borderColor = 'var(--line-strong)')}
+          onMouseLeave={e => ((e.currentTarget as HTMLElement).style.borderColor = 'var(--line)')}
+        >
+          <Search size={13} />
+          <span>Scene · Shot · Prompt 검색</span>
+          <span
+            className="kbd"
+            style={{ marginLeft: 'auto' }}
+          >⌘K</span>
+        </button>
+
+        {/* 프레젠스 아바타 스택 */}
+        <div className="flex items-center shrink-0">
+          {members.slice(0, 4).map((m, i) => (
+            <div
+              key={m.userId}
+              title={`${m.name} · ${m.pageLabel || '작업 중'}`}
+              style={{
+                width: 24, height: 24, borderRadius: '50%',
+                background: m.color, color: '#fff',
+                display: 'grid', placeItems: 'center',
+                fontSize: 10, fontWeight: 600,
+                marginLeft: i > 0 ? -6 : 0,
+                border: '2px solid var(--bg-1)',
+                zIndex: 10 - i,
+              }}
+            >
+              {getInitials(m.name)}
+            </div>
+          ))}
+          {members.length > 4 && (
+            <div
+              style={{
+                width: 24, height: 24, borderRadius: '50%',
+                background: 'var(--bg-3)', border: '2px solid var(--bg-1)',
+                display: 'grid', placeItems: 'center',
+                fontSize: 10, color: 'var(--ink-3)',
+                marginLeft: -6,
+              }}
+            >+{members.length - 4}</div>
+          )}
+        </div>
+
+        {/* 팀원 관리 버튼 */}
         <button
           onClick={() => setMembersModalOpen(true)}
-          className="flex items-center gap-1 px-2 py-1 rounded-md hover-surface text-[11px]"
-          style={{ color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
           title="팀원 관리"
+          style={{
+            width: 30, height: 30, borderRadius: 'var(--r-md)',
+            display: 'grid', placeItems: 'center',
+            color: 'var(--ink-3)',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-3)')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
         >
-          <UserPlus size={11} />
-          <span>팀원</span>
+          <UserPlus size={16} />
+        </button>
+
+        <button
+          title="알림 (준비 중)"
+          style={{
+            width: 30, height: 30, borderRadius: 'var(--r-md)',
+            display: 'grid', placeItems: 'center',
+            color: 'var(--ink-3)',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-3)')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+        >
+          <Bell size={16} />
         </button>
       </div>
 
@@ -473,26 +323,30 @@ export default function ProjectTopBar({ projectId, projectName }: ProjectTopBarP
         open={membersModalOpen}
         onClose={() => setMembersModalOpen(false)}
       />
-    </div>
+    </>
   )
 }
 
-// ─── 같은 페이지에 있는 팀원 pill ─────────────────────────────────────────────
-function MembersOnPagePill({
-  members, currentSlug,
-}: {
-  members: PresenceMember[]; currentSlug: string
-}) {
-  const samePageMembers = members.filter(m => m.page === currentSlug)
-  if (samePageMembers.length === 0) return null
-
+function StatChip({
+  dot, label, value, pulse,
+}: { dot: string; label: string; value: number; pulse?: boolean }) {
   return (
-    <div
-      className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px]"
-      style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }}
+    <button
+      className="flex items-center gap-1.5"
+      style={{
+        padding: '4px 10px', borderRadius: 'var(--r-md)',
+        background: 'var(--bg-2)', border: '1px solid var(--line)',
+        color: 'var(--ink-3)', fontSize: 12,
+      }}
+      onMouseEnter={e => ((e.currentTarget as HTMLElement).style.borderColor = 'var(--line-strong)')}
+      onMouseLeave={e => ((e.currentTarget as HTMLElement).style.borderColor = 'var(--line)')}
     >
-      <Users size={10} />
-      <span>이 페이지에 {samePageMembers.length}명</span>
-    </div>
+      <span
+        className={pulse ? 'pulse' : ''}
+        style={{ width: 6, height: 6, borderRadius: '50%', background: dot }}
+      />
+      <span>{label}</span>
+      <span style={{ color: 'var(--ink)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+    </button>
   )
 }
