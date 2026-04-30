@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import type { Scene, Asset, SatisfactionScore } from '@/types'
 import Badge from '@/components/ui/Badge'
+import Pill from '@/components/ui/Pill'
 import SatisfactionRating from '@/components/ui/SatisfactionRating'
 import SceneTreeView from '@/components/scene/SceneTreeView'
 import CameraReferencePanel, { buildCameraPrompt } from '@/components/ui/CameraReferencePanel'
@@ -85,12 +86,12 @@ function GeneratingCard({ attempt, onCancel }: { attempt: I2VAttempt; onCancel?:
   }
 
   return (
-    <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}>
+    <div className="overflow-hidden" style={{ border: '1px solid var(--line)', background: 'var(--bg-2)', borderRadius: 'var(--r-lg)' }}>
       {/* Header — T2I와 동일한 톤 */}
-      <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
-        <Loader2 size={14} className="animate-spin shrink-0" style={{ color: 'var(--warning)' }} />
-        <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>영상 생성 중</span>
-        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{duration}초 · Kling</span>
+      <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: '1px solid var(--line)', background: 'var(--bg-1)' }}>
+        <Loader2 size={14} className="animate-spin shrink-0" style={{ color: 'var(--warn)' }} />
+        <span className="text-sm font-medium" style={{ color: 'var(--ink)' }}>영상 생성 중</span>
+        <span className="text-xs" style={{ color: 'var(--ink-4)' }}>{duration}초 · Kling</span>
         <div className="flex-1" />
         {!attempt._optimistic && onCancel && (
           <button
@@ -98,8 +99,8 @@ function GeneratingCard({ attempt, onCancel }: { attempt: I2VAttempt; onCancel?:
             disabled={cancelling}
             className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
             style={{
-              background: 'var(--danger-bg)',
-              border: '1px solid var(--danger)',
+              background: 'var(--danger-soft)',
+              border: '1px solid var(--danger-soft)',
               color: 'var(--danger)',
             }}
           >
@@ -110,14 +111,14 @@ function GeneratingCard({ attempt, onCancel }: { attempt: I2VAttempt; onCancel?:
             {cancelling ? '취소 중...' : '중지'}
           </button>
         )}
-        <Badge variant="warning">생성중</Badge>
+        <Pill variant="gen" showDot>생성중</Pill>
       </div>
 
       {/* Body — T2I 패턴: 비디오 비율 스켈레톤 1개 + 프롬프트 라인 */}
       <div className="p-4 space-y-3">
         <div
           className="aspect-video rounded-lg animate-pulse relative overflow-hidden"
-          style={{ background: 'var(--surface-3)' }}
+          style={{ background: 'var(--bg-3)' }}
         >
           {sourceImg && (
             <img
@@ -128,7 +129,7 @@ function GeneratingCard({ attempt, onCancel }: { attempt: I2VAttempt; onCancel?:
           )}
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="flex flex-col items-center gap-2">
-              <Loader2 size={28} className="animate-spin" style={{ color: 'var(--warning)' }} />
+              <Loader2 size={28} className="animate-spin" style={{ color: 'var(--warn)' }} />
               <span className="text-xs" style={{ color: 'var(--text-muted)' }}>완성까지 1~3분 소요</span>
             </div>
           </div>
@@ -153,8 +154,13 @@ function VideoCard({ output, onScore, onFeedback, onArchive }: {
 }) {
   const videoUrl = output.asset?.url
   return (
-    <div className="rounded-xl overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
-      <div className="aspect-video bg-[var(--bg-3)] relative">
+    <div
+      className="overflow-hidden transition-shadow"
+      style={{ borderRadius: 'var(--r-lg)', border: '1px solid var(--line)', background: 'var(--bg-2)' }}
+      onMouseEnter={e => (e.currentTarget.style.boxShadow = 'var(--shadow-md)')}
+      onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
+    >
+      <div className="aspect-video relative" style={{ background: 'var(--bg-3)' }}>
         {videoUrl ? (
           <video src={videoUrl} controls className="w-full h-full object-contain" preload="metadata" />
         ) : (
@@ -163,13 +169,13 @@ function VideoCard({ output, onScore, onFeedback, onArchive }: {
           </div>
         )}
         {output.archived && (
-          <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
-            style={{ background: 'var(--ok-soft)', color: 'var(--ok)' }}>
-            <CheckCircle2 size={11} /> 아카이브
+          <div className="absolute top-2 right-2"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 999, fontSize: 10, fontWeight: 500, background: 'var(--ok-soft)', color: 'var(--ok)', border: '1px solid var(--ok-soft)' }}>
+            <CheckCircle2 size={10} /> 아카이브
           </div>
         )}
       </div>
-      <div className="p-3 space-y-2" style={{ background: 'var(--surface)' }}>
+      <div className="p-3 space-y-2" style={{ background: 'var(--bg-1)' }}>
         <SatisfactionRating
           value={output.satisfaction_score}
           onChange={(score) => onScore(output.id, score)}
@@ -204,10 +210,10 @@ function AttemptRow({ attempt, onRetry, onScore, onFeedback, onArchive }: {
   const sourceImg = attempt.metadata?.source_image_url
 
   const statusEl = {
-    pending:    <Badge variant="muted">대기</Badge>,
-    generating: <Badge variant="warning">생성중</Badge>,
-    done:       <Badge variant="success">완료</Badge>,
-    failed:     <Badge variant="danger">실패</Badge>,
+    pending:    <Pill variant="draft" showDot>대기</Pill>,
+    generating: <Pill variant="gen" showDot>생성중</Pill>,
+    done:       <Pill variant="approved" showDot>완료</Pill>,
+    failed:     <Pill variant="danger" showDot>실패</Pill>,
   }[attempt.status]
 
   return (

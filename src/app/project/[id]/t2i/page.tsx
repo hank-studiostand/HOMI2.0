@@ -11,6 +11,7 @@ import {
 import type { Scene, PromptAttempt, SatisfactionScore, Asset, RootAssetSeed } from '@/types'
 import Link from 'next/link'
 import Badge from '@/components/ui/Badge'
+import Pill from '@/components/ui/Pill'
 import SatisfactionRating from '@/components/ui/SatisfactionRating'
 import SceneTreeView from '@/components/scene/SceneTreeView'
 import CameraReferencePanel, { buildCameraPrompt } from '@/components/ui/CameraReferencePanel'
@@ -201,10 +202,10 @@ function AttemptNode({
   }
 
   const statusBadge = {
-    pending:    <Badge variant="muted">대기</Badge>,
-    generating: <Badge variant="warning">생성중</Badge>,
-    done:       <Badge variant="success">완료</Badge>,
-    failed:     <Badge variant="danger">실패</Badge>,
+    pending:    <Pill variant="draft" showDot>대기</Pill>,
+    generating: <Pill variant="gen" showDot>생성중</Pill>,
+    done:       <Pill variant="approved" showDot>완료</Pill>,
+    failed:     <Pill variant="danger" showDot>실패</Pill>,
   }[attempt.status]
 
   return (
@@ -238,15 +239,21 @@ function AttemptNode({
             {attempt.outputs && attempt.outputs.length > 0 && (
               <div className="grid grid-cols-2 gap-2">
                 {attempt.outputs.map(output => (
-                  <div key={output.id} className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-                    <div className="aspect-video bg-[var(--bg-3)] relative">
+                  <div
+                    key={output.id}
+                    className="rounded-lg overflow-hidden transition-shadow"
+                    style={{ border: '1px solid var(--line)', background: 'var(--bg-2)' }}
+                    onMouseEnter={e => (e.currentTarget.style.boxShadow = 'var(--shadow-md)')}
+                    onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
+                  >
+                    <div className="aspect-video relative" style={{ background: 'var(--bg-3)' }}>
                       {output.url
                         ? <img src={output.url} alt="" className="w-full h-full object-cover" />
                         : <div className="flex items-center justify-center h-full">
                             <Loader2 size={18} className="animate-spin" />
                           </div>
                       }
-                      {output.archived && <div className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-400" />}
+                      {output.archived && <div className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full" style={{ background: 'var(--ok)' }} />}
                     </div>
                     <div className="p-2 space-y-1.5">
                       <SatisfactionRating
@@ -256,14 +263,22 @@ function AttemptNode({
                         onFeedbackCommit={(fb) => onFeedback(output.id, fb)}
                         size="sm"
                       />
-                      <button onClick={() => onArchive(output.id)}
-                        className={cn('w-full text-[11px] py-0.5 rounded transition-all',
-                          output.archived ? 'bg-[var(--ok-soft)] ' : 'bg-[var(--bg-3)]  hover:bg-[var(--bg-4)]')}>
+                      <button
+                        onClick={() => onArchive(output.id)}
+                        className={cn('w-full text-[11px] py-1 rounded transition-all font-medium',
+                          output.archived ? '' : 'hover:opacity-80')}
+                        style={output.archived
+                          ? { background: 'var(--ok-soft)', color: 'var(--ok)', border: '1px solid var(--ok-soft)' }
+                          : { background: 'var(--bg-3)', color: 'var(--ink-3)', border: '1px solid var(--line)' }}
+                      >
                         {output.archived ? '✓ 아카이브됨' : '아카이브'}
                       </button>
                       {output.url && (
-                        <button onClick={() => onSendToReference(output.id)}
-                          className="w-full flex items-center justify-center gap-1 text-[11px] py-0.5 rounded transition-all bg-[var(--accent-soft)] hover:bg-[var(--accent-soft)]">
+                        <button
+                          onClick={() => onSendToReference(output.id)}
+                          className="w-full flex items-center justify-center gap-1 text-[11px] py-1 rounded transition-all font-medium hover:opacity-80"
+                          style={{ background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--accent-soft)' }}
+                        >
                           <BookImage size={10} /> 레퍼런스로
                         </button>
                       )}

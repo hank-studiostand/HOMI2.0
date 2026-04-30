@@ -59,17 +59,22 @@ export default function SceneCard({ scene, onUpdate, onGeneratePrompt, isGenerat
 
   return (
     <div
-      className="rounded-xl border prompt-card overflow-hidden"
+      className="prompt-card overflow-hidden"
       style={{
-        background: 'var(--surface)',
-        borderColor: expanded ? 'var(--accent)' : 'var(--border)',
-        borderLeft: '4px solid var(--accent)',
+        background: 'var(--bg-2)',
+        border: '1px solid var(--line)',
+        borderLeft: '3px solid var(--accent)',
+        borderRadius: 'var(--r-lg)',
       }}
     >
       {/* Header */}
       <div
-        className="flex items-center gap-3 p-4"
-        style={{ background: expanded ? 'var(--accent-subtle)' : 'transparent' }}
+        className="flex items-center gap-3"
+        style={{
+          padding: '14px 16px',
+          background: expanded ? 'var(--accent-soft)' : 'var(--bg-1)',
+          borderBottom: expanded ? '1px solid var(--line)' : 'none',
+        }}
       >
         <button onClick={handleToggleExpand}
           className="transition-colors" style={{ color: 'var(--accent)' }}>
@@ -147,35 +152,35 @@ export default function SceneCard({ scene, onUpdate, onGeneratePrompt, isGenerat
 
       {/* Expanded Content */}
       {expanded && (
-        <div className="px-4 pb-4 space-y-4 border-t" style={{ borderColor: 'var(--border)' }}>
+        <div className="space-y-4" style={{ padding: '16px' }}>
           {/* 씬 경계 편집 원본 */}
           {originalContent && (
-            <div className="pt-4">
+            <div>
               <label
-                className="text-xs font-semibold mb-2 block uppercase tracking-wider"
-                style={{ color: 'var(--text-muted)' }}
+                className="block uppercase tracking-wider"
+                style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-4)', letterSpacing: '0.04em', marginBottom: 6 }}
               >
                 대본 원문 · 씬 경계 편집
               </label>
               <div
-                className="p-4 rounded-lg"
                 style={{
-                  background: 'var(--surface-2)',
-                  border: '1px solid var(--border)',
-                  borderLeft: '3px solid var(--text-muted)',
+                  padding: 14,
+                  background: 'var(--bg-1)',
+                  border: '1px solid var(--line)',
+                  borderRadius: 'var(--r-md)',
                 }}
               >
-                <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed"
-                  style={{ color: 'var(--text-secondary)' }}>{originalContent}</pre>
+                <pre className="whitespace-pre-wrap font-sans leading-relaxed"
+                  style={{ fontSize: 13, color: 'var(--ink-3)', margin: 0 }}>{originalContent}</pre>
               </div>
             </div>
           )}
 
           {/* Scene Content */}
-          <div className="pt-4">
+          <div>
             <label
-              className="text-xs font-semibold mb-2 block uppercase tracking-wider"
-              style={{ color: 'var(--accent)' }}
+              className="block uppercase tracking-wider"
+              style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', letterSpacing: '0.04em', marginBottom: 6 }}
             >
               씬 내용 · AI 묘사
             </label>
@@ -199,15 +204,20 @@ export default function SceneCard({ scene, onUpdate, onGeneratePrompt, isGenerat
                 </div>
               </div>
             ) : (
-              <div onClick={() => startEdit('content')}
-                className="p-4 rounded-lg cursor-pointer transition-colors"
+              <div
+                onClick={() => startEdit('content')}
+                className="cursor-pointer transition-colors"
                 style={{
-                  background: 'var(--surface)',
-                  border: '1px solid var(--border)',
-                  borderLeft: '3px solid var(--accent)',
-                  color: 'var(--text-primary)',
-                }}>
-                <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">{scene.content}</pre>
+                  padding: 14,
+                  background: 'var(--bg-1)',
+                  border: '1px solid var(--line)',
+                  borderRadius: 'var(--r-md)',
+                  color: 'var(--ink)',
+                }}
+                onMouseEnter={e => ((e.currentTarget as HTMLElement).style.borderColor = 'var(--accent-line)')}
+                onMouseLeave={e => ((e.currentTarget as HTMLElement).style.borderColor = 'var(--line)')}
+              >
+                <pre className="whitespace-pre-wrap font-sans leading-relaxed" style={{ fontSize: 13, margin: 0 }}>{scene.content}</pre>
               </div>
             )}
           </div>
