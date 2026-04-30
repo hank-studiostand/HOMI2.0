@@ -37,11 +37,11 @@ const LABEL_PRESETS = [
 // ── 씬별 색상 팔레트 ──────────────────────────────────────────
 const PALETTE = [
   { accent: 'var(--accent)', bg: 'var(--accent-soft)',  border: 'var(--accent-soft)' },
-  { accent: 'var(--pink)', bg: 'rgba(236,72,153,0.06)',  border: 'rgba(236,72,153,0.18)' },
-  { accent: 'var(--ok)', bg: 'rgba(52,211,153,0.06)',  border: 'rgba(52,211,153,0.18)' },
-  { accent: 'var(--warn)', bg: 'var(--warn-soft)',  border: 'var(--warn-soft)' },
-  { accent: '#38bdf8', bg: 'rgba(14,165,233,0.06)',  border: 'rgba(14,165,233,0.18)' },
-  { accent: '#c084fc', bg: 'rgba(168,85,247,0.06)',  border: 'rgba(168,85,247,0.18)' },
+  { accent: 'var(--pink)',   bg: 'var(--pink-soft)',   border: 'var(--pink-soft)' },
+  { accent: 'var(--ok)',     bg: 'var(--ok-soft)',     border: 'var(--ok-soft)' },
+  { accent: 'var(--warn)',   bg: 'var(--warn-soft)',   border: 'var(--warn-soft)' },
+  { accent: 'var(--info)',   bg: 'var(--info-soft)',   border: 'var(--info-soft)' },
+  { accent: 'var(--violet)', bg: 'var(--violet-soft)', border: 'var(--violet-soft)' },
 ]
 
 let _uid = 0
@@ -229,8 +229,14 @@ function RootAssetMarksEditor({
 
       {open && (
         <div
-          className="absolute top-full left-0 mt-1 z-20 rounded-lg shadow-xl min-w-[280px] overflow-hidden"
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+          className="absolute top-full left-0 mt-1 z-20 overflow-hidden"
+          style={{
+            background: 'var(--bg-2)',
+            border: '1px solid var(--line)',
+            borderRadius: 'var(--r-lg)',
+            boxShadow: 'var(--shadow-lg)',
+            minWidth: 280,
+          }}
         >
           <div className="p-3 space-y-2">
             {categories.map(cat => (
@@ -294,8 +300,14 @@ function LabelEditor({
 
       {open && (
         <div
-          className="absolute top-full left-0 mt-1 z-20 rounded-lg shadow-xl min-w-[220px] overflow-hidden"
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+          className="absolute top-full left-0 mt-1 z-20 overflow-hidden"
+          style={{
+            background: 'var(--bg-2)',
+            border: '1px solid var(--line)',
+            borderRadius: 'var(--r-lg)',
+            boxShadow: 'var(--shadow-lg)',
+            minWidth: 220,
+          }}
         >
           {/* 모드 탭 */}
           <div className="flex border-b" style={{ borderColor: 'var(--border)' }}>
@@ -851,8 +863,17 @@ export default function SceneEditorPage() {
           {/* 씬 추가 버튼 */}
           <button
             onClick={addScene}
-            className="mt-4 w-full py-3.5 rounded-lg text-sm flex items-center justify-center gap-2 transition-all hover-surface"
-            style={{ border: '1px dashed var(--border)', color: 'var(--text-muted)' }}
+            className="mt-4 w-full flex items-center justify-center gap-2 transition-all"
+            style={{
+              padding: 14,
+              borderRadius: 'var(--r-md)',
+              border: '1px dashed var(--line-2)',
+              fontSize: 13,
+              background: 'transparent',
+              color: 'var(--ink-4)',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent-line)'; (e.currentTarget as HTMLElement).style.color = 'var(--accent)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--line-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--ink-4)' }}
           >
             <Plus size={14} /> 씬 추가
           </button>

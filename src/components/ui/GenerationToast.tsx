@@ -52,9 +52,9 @@ function ToastCard({ item, onClose }: { item: ToastItem; onClose: (id: string) =
   const Icon = GEN_ICON[item.genType]
 
   const palette = {
-    info:    { bg: 'var(--surface)',    border: 'var(--accent)',   icon: 'var(--accent)',   text: 'var(--text-primary)' },
-    success: { bg: 'var(--surface)',    border: 'var(--success)',  icon: 'var(--success)',  text: 'var(--text-primary)' },
-    error:   { bg: 'var(--surface)',    border: 'var(--danger)',   icon: 'var(--danger)',   text: 'var(--text-primary)' },
+    info:    { bg: 'var(--bg-2)', border: 'var(--accent-line)', icon: 'var(--accent)', text: 'var(--ink)', soft: 'var(--accent-soft)' },
+    success: { bg: 'var(--bg-2)', border: 'var(--ok)',          icon: 'var(--ok)',     text: 'var(--ink)', soft: 'var(--ok-soft)' },
+    error:   { bg: 'var(--bg-2)', border: 'var(--danger)',      icon: 'var(--danger)', text: 'var(--ink)', soft: 'var(--danger-soft)' },
   }[item.type]
 
   const StatusIcon = item.type === 'info'
@@ -65,28 +65,39 @@ function ToastCard({ item, onClose }: { item: ToastItem; onClose: (id: string) =
 
   return (
     <div
-      className="relative flex items-start gap-3 px-4 py-3 rounded-xl shadow-2xl"
+      className="relative flex items-start gap-3"
       style={{
+        padding: '12px 14px',
+        borderRadius: 'var(--r-lg)',
+        boxShadow: 'var(--shadow-lg)',
         background:   palette.bg,
-        border:       `1px solid ${palette.border}`,
+        border:       `1px solid var(--line)`,
         minWidth:     '280px',
         maxWidth:     '360px',
         opacity:      visible ? 1 : 0,
         transform:    visible ? 'translateY(0)' : 'translateY(12px)',
         transition:   'opacity 0.25s ease, transform 0.25s ease',
-        backdropFilter: 'blur(12px)',
       }}
     >
       {/* Left accent bar */}
       <div
-        className="absolute left-0 top-3 bottom-3 w-0.5 rounded-full"
-        style={{ background: palette.border }}
+        className="absolute"
+        style={{
+          left: 0, top: 12, bottom: 12,
+          width: 3,
+          background: palette.border,
+          borderRadius: '0 2px 2px 0',
+        }}
       />
 
       {/* Gen type icon */}
       <div
-        className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center"
-        style={{ background: `${palette.border}18` }}
+        className="shrink-0 flex items-center justify-center"
+        style={{
+          width: 30, height: 30,
+          borderRadius: 'var(--r-md)',
+          background: palette.soft,
+        }}
       >
         <Icon size={14} style={{ color: palette.icon }} />
       </div>
@@ -104,11 +115,11 @@ function ToastCard({ item, onClose }: { item: ToastItem; onClose: (id: string) =
           </p>
         </div>
         {item.message && (
-          <p className="text-[11px] mt-0.5 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-[11px] mt-0.5 leading-relaxed" style={{ color: 'var(--ink-3)' }}>
             {item.message}
           </p>
         )}
-        <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>
+        <p className="text-[10px] mt-1" style={{ color: 'var(--ink-4)' }}>
           {GEN_LABEL[item.genType]}
         </p>
       </div>
