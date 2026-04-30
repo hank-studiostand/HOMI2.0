@@ -213,7 +213,7 @@ export default function SceneTreeView({
 
   if (isFlatList) {
     return (
-      <div className="space-y-1">
+      <div className="space-y-3">
         {scenes.map(scene => {
           const isCompleted = completedScenes.has(scene.id)
           const isExpanded  = isSceneExpanded(scene.id)
@@ -221,10 +221,18 @@ export default function SceneTreeView({
           return (
             <div
               key={scene.id}
-              className={cn('rounded border overflow-hidden transition-opacity', isCompleted && 'opacity-50')}
+              className={cn('overflow-hidden transition-all', isCompleted && 'opacity-50')}
               style={{
-                borderColor: isCompleted ? 'var(--success)' : 'var(--border)',
-                background: 'var(--surface)',
+                borderRadius: 'var(--r-lg)',
+                border: `1px solid ${isCompleted ? 'var(--ok)' : isExpanded ? 'var(--accent-line)' : 'var(--line)'}`,
+                background: 'var(--bg-2)',
+                boxShadow: isExpanded ? 'var(--shadow-md)' : 'none',
+              }}
+              onMouseEnter={(e) => {
+                if (!isExpanded && !isCompleted) (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-sm)'
+              }}
+              onMouseLeave={(e) => {
+                if (!isExpanded) (e.currentTarget as HTMLElement).style.boxShadow = 'none'
               }}
             >
               <button
@@ -259,7 +267,7 @@ export default function SceneTreeView({
 
   // ── 3단계 트리 ──
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
       {tree.map(seqNode => {
         const isSeqExpanded = expandedSeqs.has(seqNode.seq)
         const seqSceneIds   = seqNode.scenes.flatMap(sg => sg.cuts.map(c => c.id))
@@ -269,24 +277,26 @@ export default function SceneTreeView({
         return (
           <div
             key={seqNode.seq}
-            className="rounded border overflow-hidden"
+            className="overflow-hidden"
             style={{
-              borderColor: 'var(--border)',
-              background: 'var(--surface)',
-              borderLeft: '4px solid var(--warning)',
+              borderRadius: 'var(--r-lg)',
+              border: '1px solid var(--line)',
+              background: 'var(--bg-2)',
+              borderLeft: '4px solid var(--warn)',
+              boxShadow: isSeqExpanded ? 'var(--shadow-sm)' : 'none',
             }}
           >
             {/* ▶ 시퀀스 헤더 (1단계) — 가장 위계 */}
             <button
               onClick={() => toggleSeq(seqNode.seq)}
-              className="w-full flex items-center gap-2.5 px-3 py-3 text-left hover-surface transition-colors"
-              style={{ background: 'var(--warn-soft)' }}
+              className="w-full flex items-center gap-2.5 text-left hover-surface transition-colors"
+              style={{ padding: '12px 16px', background: 'var(--warn-soft)' }}
             >
               {isSeqExpanded
-                ? <ChevronDown size={16} style={{ color: 'var(--warning)' }} />
-                : <ChevronRight size={16} style={{ color: 'var(--warning)' }} />
+                ? <ChevronDown size={16} style={{ color: 'var(--warn)' }} />
+                : <ChevronRight size={16} style={{ color: 'var(--warn)' }} />
               }
-              <Film size={15} style={{ color: 'var(--warning)' }} />
+              <Film size={15} style={{ color: 'var(--warn)' }} />
               <span className="text-base font-semibold flex-1" style={{ color: 'var(--text-primary)' }}>
                 {seqNode.label}
               </span>
@@ -304,7 +314,12 @@ export default function SceneTreeView({
             </button>
 
             {isSeqExpanded && (
-              <div className="border-t" style={{ borderColor: 'var(--border)' }}>
+              <div className="flex flex-col" style={{
+                gap: 8,
+                padding: 12,
+                borderTop: '1px solid var(--line)',
+                background: 'var(--bg-1)',
+              }}>
                 {seqNode.scenes.map(sceneGroup => {
                   const groupKey = `${seqNode.seq}-${sceneGroup.sceneNum}`
                   const isGroupExpanded = expandedSceneGroups.has(groupKey)
@@ -321,17 +336,21 @@ export default function SceneTreeView({
                     return (
                       <div
                         key={scene.id}
-                        className={cn('border-b last:border-b-0 transition-opacity', isCompleted && 'opacity-50')}
-                        style={{ borderColor: 'var(--border-light)' }}
+                        className={cn('overflow-hidden transition-all', isCompleted && 'opacity-50')}
+                        style={{
+                          borderRadius: 'var(--r-md)',
+                          border: '1px solid var(--line)',
+                          borderLeft: '3px solid var(--accent)',
+                          background: 'var(--bg-2)',
+                          boxShadow: isExpanded ? 'var(--shadow-sm)' : 'none',
+                        }}
                       >
                         <button
                           onClick={() => toggleScene(scene.id)}
-                          className="w-full flex items-center gap-2.5 py-2.5 text-left hover-surface transition-colors"
+                          className="w-full flex items-center gap-2.5 text-left hover-surface transition-colors"
                           style={{
-                            paddingLeft: '24px',
-                            paddingRight: '12px',
-                            borderLeft: '3px solid var(--accent)',
-                            background: 'var(--accent-subtle)',
+                            padding: '10px 14px',
+                            background: isExpanded ? 'var(--accent-soft)' : 'transparent',
                           }}
                         >
                           {isExpanded
@@ -362,20 +381,24 @@ export default function SceneTreeView({
                   return (
                     <div
                       key={groupKey}
-                      className="border-b last:border-b-0"
-                      style={{ borderColor: 'var(--border-light)' }}
+                      className="overflow-hidden"
+                      style={{
+                        borderRadius: 'var(--r-md)',
+                        border: '1px solid var(--line)',
+                        borderLeft: '3px solid var(--accent)',
+                        background: 'var(--bg-2)',
+                      }}
                     >
                       {/* ▶ 씬 그룹 헤더 (2단계) — accent 컬러바 */}
                       <button
                         onClick={() => toggleSceneGroup(groupKey)}
                         className={cn(
-                          'w-full flex items-center gap-2.5 py-2.5 text-left hover-surface transition-colors',
+                          'w-full flex items-center gap-2.5 text-left hover-surface transition-colors',
                           groupCompleted && 'opacity-50',
                         )}
                         style={{
-                          paddingLeft: '24px', paddingRight: '12px',
-                          background: 'var(--accent-subtle)',
-                          borderLeft: '3px solid var(--accent)',
+                          padding: '10px 14px',
+                          background: 'var(--accent-soft)',
                         }}
                       >
                         {isGroupExpanded
@@ -391,24 +414,30 @@ export default function SceneTreeView({
                         </span>
                       </button>
 
-                      {isGroupExpanded && sceneGroup.cuts.map(scene => {
+                      {isGroupExpanded && (
+                        <div className="flex flex-col" style={{ gap: 6, padding: 8, background: 'var(--bg-1)', borderTop: '1px solid var(--line)' }}>
+                      {sceneGroup.cuts.map(scene => {
                         const isCompleted = completedScenes.has(scene.id)
                         const isExpanded  = isSceneExpanded(scene.id)
 
                         return (
                           <div
                             key={scene.id}
-                            className={cn('border-t transition-opacity', isCompleted && 'opacity-50')}
-                            style={{ borderColor: 'var(--border-light)' }}
+                            className={cn('overflow-hidden transition-all', isCompleted && 'opacity-50')}
+                            style={{
+                              borderRadius: 'var(--r-sm)',
+                              border: '1px solid var(--line)',
+                              borderLeft: '2px solid var(--ink-5)',
+                              background: 'var(--bg-2)',
+                            }}
                           >
                             {/* ▶ 컷 헤더 (3단계) — secondary 톤 컬러바 */}
                             <button
                               onClick={() => toggleScene(scene.id)}
-                              className="w-full flex items-center gap-2.5 py-2 text-left hover-surface transition-colors"
+                              className="w-full flex items-center gap-2.5 text-left hover-surface transition-colors"
                               style={{
-                                paddingLeft: '44px',
-                                paddingRight: '12px',
-                                borderLeft: '2px solid var(--text-muted)',
+                                padding: '8px 12px',
+                                background: isExpanded ? 'var(--bg-3)' : 'transparent',
                               }}
                             >
                               {isExpanded
@@ -433,6 +462,8 @@ export default function SceneTreeView({
                           </div>
                         )
                       })}
+                        </div>
+                      )}
                     </div>
                   )
                 })}
