@@ -519,8 +519,16 @@ async function uploadFiles(files: FileList | File[], category: RefCategory) {
           </label>
           <Link
             href={`/project/${projectId}/t2i`}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium text-white"
-            style={{ background: 'var(--accent)' }}
+            className="flex items-center gap-2 transition-all"
+            style={{
+              padding: '7px 14px',
+              borderRadius: 'var(--r-md)',
+              fontSize: 13, fontWeight: 500,
+              background: 'var(--accent)', color: '#fff',
+              border: '1px solid var(--accent)',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--accent-2)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent-2)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--accent)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)' }}
           >
             T2I로 이동 <ChevronRight size={14} />
           </Link>

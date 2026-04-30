@@ -327,16 +327,17 @@ export default function RootAssetsPage() {
       </div>
 
       {/* 탭 */}
-      <div className="px-6 py-3 border-b flex gap-2" style={{ borderColor: 'var(--border)' }}>
+      <div className="flex gap-1" style={{ padding: '10px 28px', borderBottom: '1px solid var(--line)' }}>
         <button
           onClick={() => setActiveTab('all')}
-          className={cn(
-            'px-3 py-1.5 rounded text-sm transition-all',
-            activeTab === 'all'
-              ? 'font-medium text-white'
-              : 'hover:bg-opacity-50'
-          )}
-          style={activeTab === 'all' ? { background: 'var(--accent)' } : { color: 'var(--text-secondary)' }}
+          className="transition-all"
+          style={{
+            padding: '6px 12px',
+            borderRadius: 'var(--r-md)',
+            fontSize: 12, fontWeight: 500,
+            background: activeTab === 'all' ? 'var(--bg-3)' : 'transparent',
+            color: activeTab === 'all' ? 'var(--ink)' : 'var(--ink-3)',
+          }}
         >
           전체
         </button>
@@ -344,13 +345,14 @@ export default function RootAssetsPage() {
           <button
             key={cat.key}
             onClick={() => setActiveTab(cat.key)}
-            className={cn(
-              'px-3 py-1.5 rounded text-sm transition-all flex items-center gap-1',
-              activeTab === cat.key
-                ? 'font-medium text-white'
-                : 'hover:bg-opacity-50'
-            )}
-            style={activeTab === cat.key ? { background: 'var(--accent)' } : { color: 'var(--text-secondary)' }}
+            className="flex items-center gap-1 transition-all"
+            style={{
+              padding: '6px 12px',
+              borderRadius: 'var(--r-md)',
+              fontSize: 12, fontWeight: 500,
+              background: activeTab === cat.key ? 'var(--bg-3)' : 'transparent',
+              color: activeTab === cat.key ? 'var(--ink)' : 'var(--ink-3)',
+            }}
           >
             <cat.icon size={13} />
             {cat.label}
@@ -361,17 +363,23 @@ export default function RootAssetsPage() {
       {/* 콘텐츠 */}
       <div className="flex-1 overflow-auto p-6">
         {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center">
-            <p className="text-sm mb-2" style={{ color: 'var(--text-secondary)' }}>
-              {activeTab === 'all' ? '에셋이 없습니다' : `${CATEGORIES.find(c => c.key === activeTab)?.label} 에셋이 없습니다`}
+          <div className="empty flex flex-col items-center" style={{ maxWidth: 480, margin: '64px auto' }}>
+            <p style={{ fontSize: 14, color: 'var(--ink-3)', marginBottom: 12 }}>
+              {activeTab === 'all' ? '에셋이 없어요' : `${CATEGORIES.find(c => c.key === activeTab)?.label} 에셋이 없어요`}
             </p>
             <button
               onClick={() => {
                 const catToAdd = activeTab === 'all' ? 'character' : (activeTab as RootAssetCategory)
                 addSeed(catToAdd)
               }}
-              className="flex items-center gap-1 px-3 py-1.5 rounded text-sm font-medium text-white"
-              style={{ background: 'var(--accent)' }}
+              className="flex items-center gap-1 transition-all"
+              style={{
+                padding: '7px 14px',
+                borderRadius: 'var(--r-md)',
+                fontSize: 13, fontWeight: 500,
+                background: 'var(--accent)', color: '#fff',
+                border: '1px solid var(--accent)',
+              }}
             >
               <Plus size={13} /> 추가
             </button>

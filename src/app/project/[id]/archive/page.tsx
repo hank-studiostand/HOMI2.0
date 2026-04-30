@@ -120,9 +120,20 @@ export default function ArchivePage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={downloadSelected} disabled={downloading || assets.length === 0}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50 transition-all hover:opacity-90"
-            style={{ background: 'var(--accent)' }}>
+          <button
+            onClick={downloadSelected}
+            disabled={downloading || assets.length === 0}
+            className="flex items-center gap-2 disabled:opacity-50 transition-all"
+            style={{
+              padding: '7px 14px',
+              borderRadius: 'var(--r-md)',
+              fontSize: 13, fontWeight: 500,
+              background: 'var(--accent)', color: '#fff',
+              border: '1px solid var(--accent)',
+            }}
+            onMouseEnter={e => { if (!downloading && assets.length > 0) { (e.currentTarget as HTMLElement).style.background = 'var(--accent-2)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent-2)' } }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--accent)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)' }}
+          >
             {downloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
             {selected.size > 0 ? `${selected.size}개 다운로드` : '전체 다운로드'}
           </button>
@@ -131,7 +142,7 @@ export default function ArchivePage() {
 
       <div className="flex-1 overflow-auto p-6">
         {assets.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center">
+          <div className="empty" style={{ maxWidth: 480, margin: '64px auto' }}>
             <Package size={40} className="mb-3" />
             <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>아카이빙된 에셋이 없습니다</p>
             <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>

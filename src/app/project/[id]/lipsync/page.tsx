@@ -82,9 +82,19 @@ export default function LipsyncPage() {
           <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>립싱크</h1>
           <p className="text-[13px] mt-1" style={{ color: 'var(--ink-3)' }}>영상에 음성을 합성하세요</p>
         </div>
-        <Link href={`/project/${projectId}/archive`}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white"
-          style={{ background: 'var(--accent)' }}>
+        <Link
+          href={`/project/${projectId}/archive`}
+          className="flex items-center gap-2 transition-all"
+          style={{
+            padding: '7px 14px',
+            borderRadius: 'var(--r-md)',
+            fontSize: 13, fontWeight: 500,
+            background: 'var(--accent)', color: '#fff',
+            border: '1px solid var(--accent)',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--accent-2)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent-2)' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--accent)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)' }}
+        >
           아카이브 <ChevronRight size={15} />
         </Link>
       </div>
@@ -92,14 +102,20 @@ export default function LipsyncPage() {
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-4xl mx-auto space-y-4">
           {videos.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-24 text-center">
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>아카이빙된 I2V 영상이 없습니다</p>
-              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>I2V 단계에서 영상을 아카이빙하면 여기에 나타납니다</p>
+            <div className="empty" style={{ maxWidth: 480, margin: '64px auto' }}>
+              <p style={{ fontSize: 14, color: 'var(--ink-3)', marginBottom: 6 }}>아카이빙된 I2V 영상이 없어요</p>
+              <p style={{ fontSize: 12, color: 'var(--ink-4)' }}>I2V 단계에서 영상을 아카이빙하면 여기에 나타납니다</p>
             </div>
           ) : (
             videos.map(video => (
-              <div key={video.id} className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
-                <div className="p-4" style={{ background: 'var(--surface)' }}>
+              <div
+                key={video.id}
+                className="overflow-hidden transition-shadow"
+                style={{ borderRadius: 'var(--r-lg)', border: '1px solid var(--line)', background: 'var(--bg-2)' }}
+                onMouseEnter={e => (e.currentTarget.style.boxShadow = 'var(--shadow-md)')}
+                onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
+              >
+                <div className="p-4" style={{ background: 'var(--bg-1)' }}>
                   <div className="flex items-center gap-3 mb-3">
                     <Badge variant="accent">영상</Badge>
                     <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{video.name}</span>
