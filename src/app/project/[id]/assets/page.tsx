@@ -32,9 +32,9 @@ export const REF_CATEGORIES = [
     key:      'character' as RefCategory,
     label:    '캐릭터',
     icon:     User2,
-    color:    '#818cf8',
-    bg:       'rgba(99,102,241,0.1)',
-    border:   'rgba(99,102,241,0.35)',
+    color:    'var(--accent)',
+    bg:       'var(--accent-soft)',
+    border:   'var(--accent-soft)',
     tag:      'character',
     desc:     '인물·캐릭터 레퍼런스',
   },
@@ -42,7 +42,7 @@ export const REF_CATEGORIES = [
     key:      'space'     as RefCategory,
     label:    '공간',
     icon:     MapPin,
-    color:    '#34d399',
+    color:    'var(--ok)',
     bg:       'rgba(52,211,153,0.1)',
     border:   'rgba(52,211,153,0.35)',
     tag:      'space',
@@ -52,7 +52,7 @@ export const REF_CATEGORIES = [
     key:      'object'    as RefCategory,
     label:    '오브제',
     icon:     Package,
-    color:    '#fb923c',
+    color:    'var(--accent-2)',
     bg:       'rgba(251,146,60,0.1)',
     border:   'rgba(251,146,60,0.35)',
     tag:      'object',
@@ -62,9 +62,9 @@ export const REF_CATEGORIES = [
     key:      'misc'      as RefCategory,
     label:    '기타',
     icon:     MoreHorizontal,
-    color:    '#a78bfa',
-    bg:       'rgba(167,139,250,0.1)',
-    border:   'rgba(167,139,250,0.35)',
+    color:    'var(--violet)',
+    bg:       'var(--violet-soft)',
+    border:   'var(--violet-soft)',
     tag:      'misc',
     desc:     '분류되지 않은 기타 레퍼런스',
   },
@@ -156,13 +156,13 @@ function AssetCard({
           {onToggleArchive && (
             <button onClick={e => { e.stopPropagation(); onToggleArchive(asset.id) }}
               className={cn('p-2 rounded-lg transition-all',
-                asset.archived ? 'bg-emerald-500/30 text-emerald-300' : 'bg-white/15 hover:bg-white/25 text-white')}>
+                asset.archived ? 'bg-[var(--ok-soft)] ' : 'bg-white/15 hover:bg-white/25 text-white')}>
               <Archive size={14} />
             </button>
           )}
           {onDelete && (
             <button onClick={e => { e.stopPropagation(); onDelete(asset.id) }}
-              className="p-2 rounded-lg bg-red-500/20 hover:bg-red-500/35 text-red-300 transition-all">
+              className="p-2 rounded-lg bg-red-500/20 hover:bg-red-500/35 transition-all">
               <Trash2 size={14} />
             </button>
           )}

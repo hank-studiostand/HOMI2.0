@@ -64,7 +64,7 @@ export default function SatisfactionRating({
           >
             <Star
               size={iconSize}
-              className={cn('transition-colors', n <= active ? 'fill-current text-amber-400' : 'text-zinc-600')}
+              className={cn('transition-colors', n <= active ? 'fill-current ' : '')}
             />
           </button>
         ))}

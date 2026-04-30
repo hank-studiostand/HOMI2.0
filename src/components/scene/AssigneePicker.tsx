@@ -18,7 +18,7 @@ interface Props {
   size?: 'sm' | 'md'
 }
 
-const AVATAR_COLORS = ['#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444','#14b8a6']
+const AVATAR_COLORS = ['var(--accent)','#8b5cf6','#ec4899','var(--warn)','var(--ok)','#3b82f6','#ef4444','#14b8a6']
 function colorFor(id: string) {
   let h = 0
   for (let i = 0; i < id.length; i++) h = id.charCodeAt(i) + ((h << 5) - h)

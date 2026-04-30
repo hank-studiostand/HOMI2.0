@@ -189,7 +189,7 @@ function RootAssetCard({
             </button>
             <button
               onClick={() => onDelete(seed.id)}
-              className="flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-xs border border-red-500/30 text-red-500 hover:bg-red-500/10"
+              className="flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-xs border border-red-500/30 hover:bg-red-500/10"
             >
               <Trash2 size={12} /> 삭제
             </button>

@@ -116,10 +116,10 @@ function ReferenceImagePicker({
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-all hover:bg-white/10"
+        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-all hover-surface"
         style={{
-          color: selected.size > 0 ? '#818cf8' : 'var(--text-muted)',
-          border: `1px solid ${selected.size > 0 ? 'rgba(99,102,241,0.5)' : 'var(--border)'}`,
+          color: selected.size > 0 ? 'var(--accent)' : 'var(--text-muted)',
+          border: `1px solid ${selected.size > 0 ? 'var(--accent-soft)' : 'var(--border)'}`,
         }}>
         <ImagePlus size={12} />
         {selected.size > 0 ? `레퍼런스 ${selected.size}장 선택됨` : '레퍼런스 이미지 추가'}
@@ -150,13 +150,13 @@ function ReferenceImagePicker({
                     isDisabled ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:opacity-90',
                   )}
                   style={{
-                    outline: isSel ? '2px solid #818cf8' : '2px solid transparent',
+                    outline: isSel ? '2px solid var(--accent)' : '2px solid transparent',
                     outlineOffset: '2px',
                   }}>
                   <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
                   {isSel && (
                     <div className="absolute inset-0 flex items-center justify-center"
-                      style={{ background: 'rgba(99,102,241,0.35)' }}>
+                      style={{ background: 'var(--accent-soft)' }}>
                       <span className="text-white text-xs font-bold">✓</span>
                     </div>
                   )}
@@ -211,7 +211,7 @@ function AttemptNode({
     <div className={depth > 0 ? 'attempt-tree-line' : ''}>
       <div className="rounded-xl border mb-3" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
         <div className="flex items-center gap-3 p-3">
-          <button onClick={() => setExpanded(!expanded)} className="text-zinc-500">
+          <button onClick={() => setExpanded(!expanded)} >
             {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
           </button>
           <span className="text-[11px] font-mono" style={{ color: 'var(--text-muted)' }}>
@@ -222,7 +222,7 @@ function AttemptNode({
           <div className="flex-1" />
           <button
             onClick={() => { setRetryPrompt(attempt.prompt); setShowRetry(!showRetry) }}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] transition-all hover:bg-white/10"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] transition-all hover-surface"
             style={{ color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
             <Plus size={11} /> 재시도
           </button>
@@ -239,11 +239,11 @@ function AttemptNode({
               <div className="grid grid-cols-2 gap-2">
                 {attempt.outputs.map(output => (
                   <div key={output.id} className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-                    <div className="aspect-video bg-zinc-900 relative">
+                    <div className="aspect-video bg-[var(--bg-3)] relative">
                       {output.url
                         ? <img src={output.url} alt="" className="w-full h-full object-cover" />
                         : <div className="flex items-center justify-center h-full">
-                            <Loader2 size={18} className="text-zinc-600 animate-spin" />
+                            <Loader2 size={18} className="animate-spin" />
                           </div>
                       }
                       {output.archived && <div className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-400" />}
@@ -258,12 +258,12 @@ function AttemptNode({
                       />
                       <button onClick={() => onArchive(output.id)}
                         className={cn('w-full text-[11px] py-0.5 rounded transition-all',
-                          output.archived ? 'bg-emerald-500/20 text-emerald-300' : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600')}>
+                          output.archived ? 'bg-[var(--ok-soft)] ' : 'bg-[var(--bg-3)]  hover:bg-[var(--bg-4)]')}>
                         {output.archived ? '✓ 아카이브됨' : '아카이브'}
                       </button>
                       {output.url && (
                         <button onClick={() => onSendToReference(output.id)}
-                          className="w-full flex items-center justify-center gap-1 text-[11px] py-0.5 rounded transition-all bg-indigo-500/15 text-indigo-300 hover:bg-indigo-500/25">
+                          className="w-full flex items-center justify-center gap-1 text-[11px] py-0.5 rounded transition-all bg-[var(--accent-soft)] hover:bg-[var(--accent-soft)]">
                           <BookImage size={10} /> 레퍼런스로
                         </button>
                       )}
@@ -275,7 +275,7 @@ function AttemptNode({
 
             {attempt.status === 'generating' && (
               <div className="grid grid-cols-2 gap-2">
-                {[1, 2, 3].map(n => <div key={n} className="aspect-video rounded-lg bg-zinc-800 animate-pulse" />)}
+                {[1, 2, 3].map(n => <div key={n} className="aspect-video rounded-lg bg-[var(--bg-3)] animate-pulse" />)}
               </div>
             )}
 
@@ -637,14 +637,14 @@ export default function T2IPage() {
         {/* ── 마스터 프롬프트 패널 ── */}
         <div className="p-4 border-b" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
           <div className="flex items-center gap-2 mb-2">
-            <Wand2 size={12} style={{ color: '#818cf8' }} />
+            <Wand2 size={12} style={{ color: 'var(--accent)' }} />
             <span className="text-[11px] font-semibold uppercase tracking-wider"
               style={{ color: 'var(--text-muted)' }}>마스터 프롬프트</span>
             {mpContent && editPrompt !== mpContent && (
               <button
                 onClick={() => setEditingPrompt(prev => ({ ...prev, [scene.id]: mpContent }))}
-                className="text-[10px] px-2 py-0.5 rounded ml-auto hover:bg-white/5"
-                style={{ color: '#818cf8' }}>
+                className="text-[10px] px-2 py-0.5 rounded ml-auto hover-surface"
+                style={{ color: 'var(--accent)' }}>
                 원본으로 초기화
               </button>
             )}
@@ -659,7 +659,7 @@ export default function T2IPage() {
               className="w-full px-3 py-2 rounded-lg text-xs resize-none"
               style={{
                 background: 'var(--surface-3)',
-                border:     `1px solid ${editPrompt !== mpContent ? 'rgba(99,102,241,0.5)' : 'var(--border)'}`,
+                border:     `1px solid ${editPrompt !== mpContent ? 'var(--accent-soft)' : 'var(--border)'}`,
                 color:      'var(--text-primary)',
               }}
             />
@@ -726,13 +726,13 @@ export default function T2IPage() {
               {!isShowingNew ? (
                 <button
                   onClick={() => setShowNewForm(prev => ({ ...prev, [scene.id]: true }))}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 mt-2 rounded-xl border-2 border-dashed text-xs transition-all hover:border-indigo-500/50 hover:text-indigo-400"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 mt-2 rounded-xl border-2 border-dashed text-xs transition-all hover:border-indigo-500/50 hover:"
                   style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
                   <Edit3 size={12} /> 다른 프롬프트로 새 시도
                 </button>
               ) : (
                 <div className="mt-2 p-3 rounded-xl border space-y-2.5"
-                  style={{ background: 'var(--surface)', borderColor: 'rgba(99,102,241,0.4)' }}>
+                  style={{ background: 'var(--surface)', borderColor: 'var(--accent-soft)' }}>
                   <label className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
                     새 시도 — 프롬프트 수정
                   </label>
@@ -778,7 +778,7 @@ export default function T2IPage() {
 
   if (loading) return (
     <div className="flex items-center justify-center h-full">
-      <Loader2 size={24} className="animate-spin text-zinc-600" />
+      <Loader2 size={24} className="animate-spin" />
     </div>
   )
 
@@ -794,7 +794,7 @@ export default function T2IPage() {
                 <>
                   씬별 이미지를 생성하고 만족도를 평가하세요
                   {referenceAssets.length > 0 && (
-                    <span className="ml-2 text-indigo-400">· 레퍼런스 {referenceAssets.length}장 사용 가능</span>
+                    <span className="ml-2">· 레퍼런스 {referenceAssets.length}장 사용 가능</span>
                   )}
                 </>
               ) : (
@@ -833,7 +833,7 @@ export default function T2IPage() {
       {/* 에러 */}
       {genError && (
         <div className="mx-6 mt-3 px-4 py-3 rounded-xl text-xs flex items-start gap-2 flex-shrink-0"
-          style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171' }}>
+          style={{ background: 'var(--danger-soft)', border: '1px solid var(--danger-soft)', color: 'var(--danger)' }}>
           <span className="flex-1 font-mono break-all">{genError}</span>
           <button onClick={() => setGenError(null)} className="opacity-60 hover:opacity-100 shrink-0">✕</button>
         </div>
@@ -971,7 +971,7 @@ export default function T2IPage() {
                         >
                           <img src={asset.thumbnail_url ?? asset.url} alt={asset.name} className="w-full h-full object-cover" />
                           {isSel && (
-                            <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(99,102,241,0.35)' }}>
+                            <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'var(--accent-soft)' }}>
                               <span className="text-white text-xs font-bold">✓</span>
                             </div>
                           )}

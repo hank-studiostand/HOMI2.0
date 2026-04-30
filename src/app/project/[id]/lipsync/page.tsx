@@ -73,7 +73,7 @@ export default function LipsyncPage() {
     }
   }
 
-  if (loading) return <div className="flex items-center justify-center h-full"><Loader2 size={24} className="animate-spin text-zinc-600" /></div>
+  if (loading) return <div className="flex items-center justify-center h-full"><Loader2 size={24} className="animate-spin" /></div>
 
   return (
     <div className="h-full flex flex-col">

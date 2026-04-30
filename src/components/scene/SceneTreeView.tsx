@@ -90,7 +90,7 @@ function CompleteButton({ completed, onClick }: { completed: boolean; onClick: (
 
 function SceneTag({ num, level }: { num: string; level?: 'seq' | 'scene' | 'cut' }) {
   const colors = {
-    seq:   { bg: 'rgba(251,191,36,0.12)', color: 'var(--warning)' },
+    seq:   { bg: 'var(--warn-soft)', color: 'var(--warning)' },
     scene: { bg: 'var(--accent-subtle)',  color: 'var(--accent)' },
     cut:   { bg: 'var(--surface-3)',      color: 'var(--text-secondary)' },
   }[level ?? 'cut']
@@ -280,7 +280,7 @@ export default function SceneTreeView({
             <button
               onClick={() => toggleSeq(seqNode.seq)}
               className="w-full flex items-center gap-2.5 px-3 py-3 text-left hover-surface transition-colors"
-              style={{ background: 'rgba(251,191,36,0.06)' }}
+              style={{ background: 'var(--warn-soft)' }}
             >
               {isSeqExpanded
                 ? <ChevronDown size={16} style={{ color: 'var(--warning)' }} />

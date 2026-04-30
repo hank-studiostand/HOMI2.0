@@ -107,7 +107,7 @@ export default function ArchivePage() {
     setDownloading(false)
   }
 
-  if (loading) return <div className="flex items-center justify-center h-full"><Loader2 size={24} className="animate-spin text-zinc-600" /></div>
+  if (loading) return <div className="flex items-center justify-center h-full"><Loader2 size={24} className="animate-spin" /></div>
 
   return (
     <div className="h-full flex flex-col">
@@ -132,7 +132,7 @@ export default function ArchivePage() {
       <div className="flex-1 overflow-auto p-6">
         {assets.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <Package size={40} className="text-zinc-700 mb-3" />
+            <Package size={40} className="mb-3" />
             <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>아카이빙된 에셋이 없습니다</p>
             <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
               T2I·I2V·립싱크 단계에서 결과물을 아카이빙하면 여기에 모입니다
@@ -150,16 +150,16 @@ export default function ArchivePage() {
                   {/* 씬 헤더 */}
                   <button
                     onClick={() => toggleCollapseScene(groupKey)}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-colors"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left hover-surface transition-colors"
                     style={{ background: 'var(--surface)' }}>
-                    {isCollapsed ? <ChevronRight size={15} className="text-zinc-500" /> : <ChevronDown size={15} className="text-zinc-500" />}
+                    {isCollapsed ? <ChevronRight size={15}  /> : <ChevronDown size={15}  />}
                     <Badge variant="accent" className="font-mono text-xs">S{group.sceneNumber}</Badge>
                     <span className="text-sm font-medium flex-1" style={{ color: 'var(--text-primary)' }}>
                       {group.title}
                     </span>
                     <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
                       {group.assets.length}개
-                      {selectedInGroup > 0 && <span className="ml-2 text-indigo-400">{selectedInGroup}개 선택</span>}
+                      {selectedInGroup > 0 && <span className="ml-2">{selectedInGroup}개 선택</span>}
                     </span>
                   </button>
 

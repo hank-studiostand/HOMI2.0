@@ -24,9 +24,9 @@ function extractSceneNumber(content: string): string | undefined {
 
 // ── 씬 라벨 프리셋 ────────────────────────────────────────────
 const LABEL_PRESETS = [
-  { key: 'opening',    label: '오프닝',   color: '#6366f1' },
-  { key: 'daily',      label: '일상',     color: '#22c55e' },
-  { key: 'tension',    label: '긴장',     color: '#f59e0b' },
+  { key: 'opening',    label: '오프닝',   color: 'var(--accent)' },
+  { key: 'daily',      label: '일상',     color: 'var(--ok)' },
+  { key: 'tension',    label: '긴장',     color: 'var(--warn)' },
   { key: 'conflict',   label: '갈등',     color: '#ef4444' },
   { key: 'turning',    label: '전환',     color: '#8b5cf6' },
   { key: 'climax',     label: '절정',     color: '#ec4899' },
@@ -36,10 +36,10 @@ const LABEL_PRESETS = [
 
 // ── 씬별 색상 팔레트 ──────────────────────────────────────────
 const PALETTE = [
-  { accent: '#818cf8', bg: 'rgba(99,102,241,0.06)',  border: 'rgba(99,102,241,0.18)' },
-  { accent: '#f472b6', bg: 'rgba(236,72,153,0.06)',  border: 'rgba(236,72,153,0.18)' },
-  { accent: '#34d399', bg: 'rgba(52,211,153,0.06)',  border: 'rgba(52,211,153,0.18)' },
-  { accent: '#fbbf24', bg: 'rgba(245,158,11,0.06)',  border: 'rgba(245,158,11,0.18)' },
+  { accent: 'var(--accent)', bg: 'var(--accent-soft)',  border: 'var(--accent-soft)' },
+  { accent: 'var(--pink)', bg: 'rgba(236,72,153,0.06)',  border: 'rgba(236,72,153,0.18)' },
+  { accent: 'var(--ok)', bg: 'rgba(52,211,153,0.06)',  border: 'rgba(52,211,153,0.18)' },
+  { accent: 'var(--warn)', bg: 'var(--warn-soft)',  border: 'var(--warn-soft)' },
   { accent: '#38bdf8', bg: 'rgba(14,165,233,0.06)',  border: 'rgba(14,165,233,0.18)' },
   { accent: '#c084fc', bg: 'rgba(168,85,247,0.06)',  border: 'rgba(168,85,247,0.18)' },
 ]
@@ -180,9 +180,9 @@ function SceneNumberInput({
       onClick={() => { setDraft(value ?? ''); setEditing(true) }}
       className="flex items-center gap-1 px-2 py-1 rounded text-xs transition-all hover:opacity-80"
       style={{
-        background: value ? 'rgba(99,102,241,0.1)' : 'var(--surface-2)',
-        border: `1px solid ${value ? 'rgba(99,102,241,0.4)' : 'var(--border)'}`,
-        color: value ? '#818cf8' : 'var(--text-muted)',
+        background: value ? 'var(--accent-soft)' : 'var(--surface-2)',
+        border: `1px solid ${value ? 'var(--accent-soft)' : 'var(--border)'}`,
+        color: value ? 'var(--accent)' : 'var(--text-muted)',
         fontFamily: 'monospace',
       }}
       title="씬 번호 편집 (예: 1-2-3)"
@@ -217,9 +217,9 @@ function RootAssetMarksEditor({
         onClick={() => setOpen(v => !v)}
         className="flex items-center gap-1 px-2 py-1 rounded text-xs transition-all hover:opacity-80"
         style={{
-          background: Object.values(marks).some(v => v.trim()) ? 'rgba(34,197,94,0.1)' : 'var(--surface-2)',
-          border: `1px solid ${Object.values(marks).some(v => v.trim()) ? 'rgba(34,197,94,0.4)' : 'var(--border)'}`,
-          color: Object.values(marks).some(v => v.trim()) ? '#22c55e' : 'var(--text-muted)',
+          background: Object.values(marks).some(v => v.trim()) ? 'var(--ok-soft)' : 'var(--surface-2)',
+          border: `1px solid ${Object.values(marks).some(v => v.trim()) ? 'var(--ok-soft)' : 'var(--border)'}`,
+          color: Object.values(marks).some(v => v.trim()) ? 'var(--ok)' : 'var(--text-muted)',
         }}
         title="루트 에셋 마크 편집"
       >

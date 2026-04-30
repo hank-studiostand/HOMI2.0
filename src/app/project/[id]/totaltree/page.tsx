@@ -274,7 +274,7 @@ function ScenePipelineContent({ scene }: { scene: SceneData }) {
           </div>
           {/* 레퍼런스 */}
           <div className="p-3 rounded" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-            <SectionHeader icon={FolderOpen} label="레퍼런스" count={scene.referenceAssets.length} color="#fb923c" />
+            <SectionHeader icon={FolderOpen} label="레퍼런스" count={scene.referenceAssets.length} color="var(--accent-2)" />
             {scene.referenceAssets.length > 0 ? (
               <div className="grid grid-cols-2 gap-1">
                 {scene.referenceAssets.slice(0, 4).map(a => (
@@ -292,12 +292,12 @@ function ScenePipelineContent({ scene }: { scene: SceneData }) {
           </div>
           {/* I2V / T2V */}
           <div className="p-3 rounded" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-            <SectionHeader icon={Video} label="I2V / T2V" count={scene.i2vAttempts.length + scene.t2vAttempts.length} color="#a78bfa" />
+            <SectionHeader icon={Video} label="I2V / T2V" count={scene.i2vAttempts.length + scene.t2vAttempts.length} color="var(--violet)" />
             <VideoGrid attempts={[...scene.i2vAttempts, ...scene.t2vAttempts]} />
           </div>
           {/* 립싱크 */}
           <div className="p-3 rounded" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-            <SectionHeader icon={Mic} label="립싱크" count={scene.lipsyncAttempts.length} color="#f472b6" />
+            <SectionHeader icon={Mic} label="립싱크" count={scene.lipsyncAttempts.length} color="var(--pink)" />
             <VideoGrid attempts={scene.lipsyncAttempts} />
           </div>
         </div>
@@ -326,7 +326,7 @@ function ScenePipelineContent({ scene }: { scene: SceneData }) {
           {/* 레퍼런스 에셋 */}
           {scene.referenceAssets.length > 0 && (
             <div>
-              <SectionHeader icon={FolderOpen} label="레퍼런스 에셋" count={scene.referenceAssets.length} color="#fb923c" />
+              <SectionHeader icon={FolderOpen} label="레퍼런스 에셋" count={scene.referenceAssets.length} color="var(--accent-2)" />
               <div className="grid grid-cols-8 gap-2">
                 {scene.referenceAssets.map(a => (
                   <div key={a.id} className="aspect-square rounded overflow-hidden" style={{ border: '1px solid var(--border)' }}>
@@ -381,7 +381,7 @@ function ScenePipelineContent({ scene }: { scene: SceneData }) {
           {/* I2V / T2V */}
           {(scene.i2vAttempts.length + scene.t2vAttempts.length) > 0 && (
             <div>
-              <SectionHeader icon={Video} label="영상 생성 이력 (I2V / T2V)" count={scene.i2vAttempts.length + scene.t2vAttempts.length} color="#a78bfa" />
+              <SectionHeader icon={Video} label="영상 생성 이력 (I2V / T2V)" count={scene.i2vAttempts.length + scene.t2vAttempts.length} color="var(--violet)" />
               <div className="space-y-2">
                 {[...scene.i2vAttempts, ...scene.t2vAttempts].map(attempt => (
                   <div key={attempt.id} className="p-3 rounded" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
@@ -406,7 +406,7 @@ function ScenePipelineContent({ scene }: { scene: SceneData }) {
           {/* 립싱크 */}
           {scene.lipsyncAttempts.length > 0 && (
             <div>
-              <SectionHeader icon={Mic} label="립싱크 이력" count={scene.lipsyncAttempts.length} color="#f472b6" />
+              <SectionHeader icon={Mic} label="립싱크 이력" count={scene.lipsyncAttempts.length} color="var(--pink)" />
               <div className="space-y-2">
                 {scene.lipsyncAttempts.map(attempt => (
                   <div key={attempt.id} className="p-3 rounded" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>

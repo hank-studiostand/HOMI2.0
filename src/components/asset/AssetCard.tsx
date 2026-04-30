@@ -49,7 +49,7 @@ export default function AssetCard({
       onClick={() => selectable && onSelect?.(asset.id)}
     >
       {/* Media Preview */}
-      <div className="relative aspect-video bg-zinc-900">
+      <div className="relative aspect-video bg-[var(--bg-3)]">
         {isVideo ? (
           <video src={asset.url} className="w-full h-full object-cover" muted loop
             onMouseEnter={e => (e.target as HTMLVideoElement).play()}
@@ -59,7 +59,7 @@ export default function AssetCard({
             className="w-full h-full object-cover" />
         ) : (
           <div className="flex items-center justify-center h-full">
-            <Icon size={32} className="text-zinc-700" />
+            <Icon size={32}  />
           </div>
         )}
 
@@ -67,15 +67,15 @@ export default function AssetCard({
         <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
           {onDownload && (
             <button onClick={e => { e.stopPropagation(); onDownload(asset.id) }}
-              className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-all">
+              className="p-2 rounded-lg bg-white/10 hover-surface text-white transition-all">
               <Download size={16} />
             </button>
           )}
           {onToggleArchive && (
             <button onClick={e => { e.stopPropagation(); onToggleArchive(asset.id) }}
               className={cn('p-2 rounded-lg transition-all', asset.archived
-                ? 'bg-emerald-500/30 text-emerald-300'
-                : 'bg-white/10 hover:bg-white/20 text-white')}>
+                ? 'bg-[var(--ok-soft)] '
+                : 'bg-white/10 hover-surface text-white')}>
               <Archive size={16} />
             </button>
           )}

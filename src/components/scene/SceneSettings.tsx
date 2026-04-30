@@ -101,7 +101,7 @@ function ToggleGroup<T extends string>({
               'px-2.5 py-1 rounded-md text-xs font-medium transition-all',
               value === opt.value
                 ? 'text-white'
-                : 'hover:bg-white/10'
+                : 'hover-surface'
             )}
             style={value === opt.value
               ? { background: 'var(--accent)' }

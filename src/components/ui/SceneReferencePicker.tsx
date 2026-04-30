@@ -169,9 +169,9 @@ export default function SceneReferencePicker({
         onClick={() => setOpen(v => !v)}
         className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-all"
         style={{
-          border:     `1px solid ${total > 0 ? 'rgba(129,140,248,0.5)' : 'var(--border)'}`,
-          color:      total > 0 ? '#818cf8' : 'var(--text-muted)',
-          background: total > 0 ? 'rgba(99,102,241,0.08)' : 'transparent',
+          border:     `1px solid ${total > 0 ? 'var(--accent-soft)' : 'var(--border)'}`,
+          color:      total > 0 ? 'var(--accent)' : 'var(--text-muted)',
+          background: total > 0 ? 'var(--accent-soft)' : 'transparent',
         }}
       >
         <Images size={13} />

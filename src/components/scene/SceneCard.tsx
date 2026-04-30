@@ -83,14 +83,14 @@ export default function SceneCard({ scene, onUpdate, onGeneratePrompt, isGenerat
               className="w-20 px-2 py-0.5 rounded text-sm font-mono"
               style={{ background: 'var(--surface-3)', border: '1px solid var(--accent)', color: 'var(--text-primary)' }}
               autoFocus onKeyDown={e => { if(e.key === 'Enter') saveEdit(); if(e.key === 'Escape') setEditing(null) }} />
-            <button onClick={saveEdit}><Check size={14} className="text-emerald-400" /></button>
-            <button onClick={() => setEditing(null)}><X size={14} className="text-red-400" /></button>
+            <button onClick={saveEdit}><Check size={14}  /></button>
+            <button onClick={() => setEditing(null)}><X size={14}  /></button>
           </div>
         ) : (
           <button onClick={() => startEdit('number')}
             className="flex items-center gap-1 group">
             <Badge variant="accent" className="font-mono">S{scene.scene_number}</Badge>
-            <Edit2 size={11} className="text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <Edit2 size={11} className="opacity-0 group-hover:opacity-100 transition-opacity" />
           </button>
         )}
 
@@ -105,8 +105,8 @@ export default function SceneCard({ scene, onUpdate, onGeneratePrompt, isGenerat
                 className="flex-1 px-2 py-0.5 rounded text-sm"
                 style={{ background: 'var(--surface-3)', border: '1px solid var(--accent)', color: 'var(--text-primary)' }}
                 autoFocus onKeyDown={e => { if(e.key === 'Enter' && !composing.current) saveEdit(); if(e.key === 'Escape') setEditing(null) }} />
-              <button onClick={saveEdit}><Check size={14} className="text-emerald-400" /></button>
-              <button onClick={() => setEditing(null)}><X size={14} className="text-red-400" /></button>
+              <button onClick={saveEdit}><Check size={14}  /></button>
+              <button onClick={() => setEditing(null)}><X size={14}  /></button>
             </div>
           ) : (
             <button onClick={() => startEdit('title')}
@@ -114,7 +114,7 @@ export default function SceneCard({ scene, onUpdate, onGeneratePrompt, isGenerat
               <span className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
                 {scene.title || '제목 없음'}
               </span>
-              <Edit2 size={11} className="text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <Edit2 size={11} className="opacity-0 group-hover:opacity-100 transition-opacity" />
             </button>
           )}
         </div>
@@ -190,7 +190,7 @@ export default function SceneCard({ scene, onUpdate, onGeneratePrompt, isGenerat
                   <button onClick={saveEdit} className="flex items-center gap-1 px-3 py-1.5 rounded text-xs bg-emerald-600 text-white">
                     <Check size={12} /> 저장
                   </button>
-                  <button onClick={() => setEditing(null)} className="flex items-center gap-1 px-3 py-1.5 rounded text-xs bg-zinc-700 text-zinc-300">
+                  <button onClick={() => setEditing(null)} className="flex items-center gap-1 px-3 py-1.5 rounded text-xs bg-[var(--bg-3)]">
                     <X size={12} /> 취소
                   </button>
                 </div>
@@ -214,13 +214,13 @@ export default function SceneCard({ scene, onUpdate, onGeneratePrompt, isGenerat
             <div
               className="p-4 rounded-lg"
               style={{
-                background: 'rgba(99,102,241,0.06)',
-                border: '1px solid rgba(99,102,241,0.3)',
-                borderLeft: '3px solid #818cf8',
+                background: 'var(--accent-soft)',
+                border: '1px solid var(--accent-soft)',
+                borderLeft: '3px solid var(--accent)',
               }}
             >
               <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#a5b4fc' }}>
+                <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--accent)' }}>
                   마스터 프롬프트 · 생성용 영문
                 </label>
                 <div className="flex items-center gap-2">
@@ -229,9 +229,9 @@ export default function SceneCard({ scene, onUpdate, onGeneratePrompt, isGenerat
                     onClick={() => copyPrompt(masterPrompt?.content ?? '')}
                     className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] transition-all hover:opacity-80"
                     style={{
-                      background: copied ? 'rgba(52,211,153,0.15)' : 'rgba(99,102,241,0.15)',
-                      color: copied ? '#34d399' : '#818cf8',
-                      border: `1px solid ${copied ? 'rgba(52,211,153,0.3)' : 'rgba(99,102,241,0.3)'}`,
+                      background: copied ? 'rgba(52,211,153,0.15)' : 'var(--accent-soft)',
+                      color: copied ? 'var(--ok)' : 'var(--accent)',
+                      border: `1px solid ${copied ? 'rgba(52,211,153,0.3)' : 'var(--accent-soft)'}`,
                     }}
                   >
                     {copied
@@ -246,11 +246,11 @@ export default function SceneCard({ scene, onUpdate, onGeneratePrompt, isGenerat
               {masterPrompt?.negative_prompt && (
                 <div className="mt-2 pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
                   <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-[10px] text-red-400/70">Negative</span>
+                    <span className="text-[10px] /70">Negative</span>
                     <button
                       onClick={() => copyPrompt(masterPrompt?.negative_prompt ?? '')}
                       className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-all hover:opacity-80"
-                      style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}
+                      style={{ background: 'var(--danger-soft)', color: 'var(--danger)', border: '1px solid var(--danger-soft)' }}
                     >
                       <Copy size={9} /> 복사
                     </button>

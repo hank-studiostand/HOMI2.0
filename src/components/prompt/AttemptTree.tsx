@@ -28,10 +28,10 @@ function ReferenceImagePicker({
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-all hover:bg-white/10"
+        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-all hover-surface"
         style={{
-          color: selected.size > 0 ? '#818cf8' : 'var(--text-muted)',
-          border: `1px solid ${selected.size > 0 ? 'rgba(99,102,241,0.5)' : 'var(--border)'}`,
+          color: selected.size > 0 ? 'var(--accent)' : 'var(--text-muted)',
+          border: `1px solid ${selected.size > 0 ? 'var(--accent-soft)' : 'var(--border)'}`,
         }}>
         <ImagePlus size={12} />
         {selected.size > 0 ? `레퍼런스 ${selected.size}장 선택됨` : '레퍼런스 이미지 추가'}
@@ -62,13 +62,13 @@ function ReferenceImagePicker({
                     isDisabled ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:opacity-90',
                   )}
                   style={{
-                    outline: isSel ? '2px solid #818cf8' : '2px solid transparent',
+                    outline: isSel ? '2px solid var(--accent)' : '2px solid transparent',
                     outlineOffset: '2px',
                   }}>
                   <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
                   {isSel && (
                     <div className="absolute inset-0 flex items-center justify-center"
-                      style={{ background: 'rgba(99,102,241,0.35)' }}>
+                      style={{ background: 'var(--accent-soft)' }}>
                       <span className="text-white text-xs font-bold">✓</span>
                     </div>
                   )}
@@ -135,7 +135,7 @@ function AttemptNode({
 
         {/* Attempt Header */}
         <div className="flex items-center gap-3 p-4">
-          <button onClick={() => setExpanded(!expanded)} className="text-zinc-500">
+          <button onClick={() => setExpanded(!expanded)} >
             {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
           </button>
           <GitBranch size={14} style={{ color: 'var(--text-muted)' }} />
@@ -146,14 +146,14 @@ function AttemptNode({
           {statusBadge}
           {/* 레퍼런스 첨부 표시 */}
           {(attempt as any).metadata?.reference_count > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8' }}>
+            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
               레퍼런스 {(attempt as any).metadata.reference_count}장
             </span>
           )}
           <div className="flex-1" />
           <button
             onClick={() => setShowRetry(!showRetry)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs transition-all hover:bg-white/10"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs transition-all hover-surface"
             style={{ color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
             <Plus size={12} /> 재시도
           </button>
@@ -173,12 +173,12 @@ function AttemptNode({
                 {attempt.outputs.map(output => (
                   <div key={output.id} className="rounded-lg overflow-hidden"
                     style={{ border: '1px solid var(--border)' }}>
-                    <div className="aspect-video bg-zinc-800 relative">
+                    <div className="aspect-video bg-[var(--bg-3)] relative">
                       {output.url ? (
                         <img src={output.url} alt="" className="w-full h-full object-cover" />
                       ) : (
                         <div className="flex items-center justify-center h-full">
-                          <Loader2 size={20} className="text-zinc-600 animate-spin" />
+                          <Loader2 size={20} className="animate-spin" />
                         </div>
                       )}
                       {output.archived && (
@@ -196,8 +196,8 @@ function AttemptNode({
                         className={cn(
                           'w-full text-[11px] py-0.5 rounded transition-all',
                           output.archived
-                            ? 'bg-emerald-500/20 text-emerald-300'
-                            : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600'
+                            ? 'bg-[var(--ok-soft)] '
+                            : 'bg-[var(--bg-3)]  hover:bg-[var(--bg-4)]'
                         )}>
                         {output.archived ? '✓ 아카이브됨' : '아카이브'}
                       </button>
@@ -205,7 +205,7 @@ function AttemptNode({
                       {output.url && (
                         <button
                           onClick={() => onSendToReference(output.id)}
-                          className="w-full flex items-center justify-center gap-1 text-[11px] py-0.5 rounded transition-all bg-indigo-500/15 text-indigo-300 hover:bg-indigo-500/25">
+                          className="w-full flex items-center justify-center gap-1 text-[11px] py-0.5 rounded transition-all bg-[var(--accent-soft)] hover:bg-[var(--accent-soft)]">
                           <BookImage size={10} /> 레퍼런스로
                         </button>
                       )}
@@ -219,7 +219,7 @@ function AttemptNode({
             {attempt.status === 'generating' && (
               <div className="grid grid-cols-2 gap-2">
                 {[1, 2, 3].map(n => (
-                  <div key={n} className="aspect-video rounded-lg bg-zinc-800 animate-pulse" />
+                  <div key={n} className="aspect-video rounded-lg bg-[var(--bg-3)] animate-pulse" />
                 ))}
               </div>
             )}
@@ -360,13 +360,13 @@ export default function AttemptTree({
           {!showNewForm ? (
             <button
               onClick={() => { setNewPrompt(masterPrompt ?? ''); setNewSelectedRefs(new Set()); setShowNewForm(true) }}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed text-sm transition-all hover:border-indigo-500/50 hover:text-indigo-400"
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed text-sm transition-all hover:border-indigo-500/50 hover:"
               style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
               <Edit3 size={14} /> 새 시도 추가 (프롬프트 수정)
             </button>
           ) : (
             <div className="space-y-3 p-4 rounded-xl border"
-              style={{ background: 'var(--surface)', borderColor: 'rgba(99,102,241,0.4)' }}>
+              style={{ background: 'var(--surface)', borderColor: 'var(--accent-soft)' }}>
               <label className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                 새 시도 — 프롬프트 수정
               </label>

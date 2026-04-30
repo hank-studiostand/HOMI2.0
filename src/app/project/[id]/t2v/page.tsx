@@ -18,15 +18,15 @@ const ENGINES = [
     id:    'kling3',
     label: 'Kling 3.0',
     desc:  'std / pro 모드 · 최대 10초',
-    color: '#f59e0b',
-    bg:    'rgba(245,158,11,0.12)',
+    color: 'var(--warn)',
+    bg:    'var(--warn-soft)',
   },
   {
     id:    'kling3-omni',
     label: 'Kling 3.0 Omni',
     desc:  '멀티샷 · 네이티브 오디오 지원',
-    color: '#a78bfa',
-    bg:    'rgba(167,139,250,0.12)',
+    color: 'var(--violet)',
+    bg:    'var(--violet-soft)',
   },
   {
     id:    'seedance-2',
@@ -88,7 +88,7 @@ function VideoNode({
     <div className="rounded-xl border mb-3"
       style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
       <div className="flex items-center gap-2.5 p-3">
-        <button onClick={() => setExpanded(v => !v)} className="text-zinc-500">
+        <button onClick={() => setExpanded(v => !v)} >
           {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </button>
 
@@ -135,8 +135,8 @@ function VideoNode({
             <div key={output.id} className="rounded-xl overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
               {output.url
                 ? <video src={output.url} className="w-full max-h-64 object-contain bg-black" controls muted />
-                : <div className="h-36 flex items-center justify-center bg-zinc-900">
-                    <Loader2 size={22} className="animate-spin text-zinc-600" />
+                : <div className="h-36 flex items-center justify-center bg-[var(--bg-3)]">
+                    <Loader2 size={22} className="animate-spin" />
                   </div>
               }
               <div className="p-3 flex items-center gap-4" style={{ background: 'var(--surface)' }}>
@@ -149,8 +149,8 @@ function VideoNode({
                   onClick={() => onArchive(output.id)}
                   className={cn('text-[11px] px-2.5 py-1 rounded-lg transition-all',
                     output.archived
-                      ? 'bg-emerald-500/20 text-emerald-300'
-                      : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600')}>
+                      ? 'bg-[var(--ok-soft)] '
+                      : 'bg-[var(--bg-3)]  hover:bg-[var(--bg-3)]')}>
                   {output.archived ? '✓ 아카이브됨' : '아카이브'}
                 </button>
                 {output.archived && (
@@ -188,7 +188,7 @@ function GenerateForm({
 
   return (
     <div className="p-4 rounded-xl border space-y-4"
-      style={{ background: 'var(--surface)', borderColor: 'rgba(99,102,241,0.35)' }}>
+      style={{ background: 'var(--surface)', borderColor: 'var(--accent-soft)' }}>
       <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
         {hasAttempts ? '새 시도 추가' : 'T2V 영상 생성'}
       </p>
@@ -491,7 +491,7 @@ export default function T2VPage() {
 
   if (loading) return (
     <div className="flex items-center justify-center h-full">
-      <Loader2 size={24} className="animate-spin text-zinc-600" />
+      <Loader2 size={24} className="animate-spin" />
     </div>
   )
 
@@ -501,9 +501,9 @@ export default function T2VPage() {
         <div>
           <h1 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>T2V — 텍스트→영상</h1>
           <p className="text-xs mt-0.5 flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
-            <span style={{ color: '#f59e0b' }}>Kling 3.0</span>
+            <span style={{ color: 'var(--warn)' }}>Kling 3.0</span>
             <span>·</span>
-            <span style={{ color: '#a78bfa' }}>Kling 3.0 Omni</span>
+            <span style={{ color: 'var(--violet)' }}>Kling 3.0 Omni</span>
           </p>
         </div>
         <Link href={`/project/${projectId}/i2v`}
@@ -515,7 +515,7 @@ export default function T2VPage() {
 
       {genError && (
         <div className="mx-6 mt-3 px-4 py-3 rounded-xl text-xs flex items-start gap-2 flex-shrink-0"
-          style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171' }}>
+          style={{ background: 'var(--danger-soft)', border: '1px solid var(--danger-soft)', color: 'var(--danger)' }}>
           <span className="flex-1 font-mono break-all">⚠️ {genError}</span>
           <button onClick={() => setGenError(null)} className="opacity-60 hover:opacity-100 shrink-0">✕</button>
         </div>
@@ -558,7 +558,7 @@ export default function T2VPage() {
                     {!isShowingForm ? (
                       <button
                         onClick={() => setShowForm(prev => ({ ...prev, [scene.id]: true }))}
-                        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed text-sm transition-all hover:border-indigo-500/50 hover:text-indigo-400"
+                        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed text-sm transition-all hover:border-[var(--accent-line)] hover:"
                         style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
                         <Edit3 size={14} />
                         {sceneAttempts.length === 0 ? '새 영상 생성' : '새 시도 추가'}

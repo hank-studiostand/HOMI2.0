@@ -44,9 +44,9 @@ export default function ScriptPage() {
   return (
     <div className="h-full flex flex-col">
       {error && (
-        <div className="mx-6 mt-4 px-4 py-3 rounded-xl text-sm bg-red-500/10 border border-red-500/30 text-red-400 flex items-center justify-between">
+        <div className="mx-6 mt-4 px-4 py-3 rounded-xl text-sm bg-red-500/10 border border-red-500/30 flex items-center justify-between">
           <span>⚠️ {error}</span>
-          <button onClick={() => setError(null)} className="text-red-400/60 hover:text-red-400 ml-4">✕</button>
+          <button onClick={() => setError(null)} className="/60 hover: ml-4">✕</button>
         </div>
       )}
       {/* Header */}
@@ -57,8 +57,8 @@ export default function ScriptPage() {
         </div>
         <div className="flex items-center gap-3">
           <button onClick={save} disabled={saving}
-            className="px-3 py-2 rounded-lg text-sm transition-all hover:bg-white/5"
-            style={{ color: saved ? '#34d399' : 'var(--text-secondary)' }}>
+            className="px-3 py-2 rounded-lg text-sm transition-all hover-surface"
+            style={{ color: saved ? 'var(--ok)' : 'var(--text-secondary)' }}>
             {saving ? '저장중...' : saved ? '✓ 저장됨' : '저장'}
           </button>
           <button onClick={goToSceneEditor} disabled={!content.trim()}

@@ -47,9 +47,9 @@ interface I2VOutput {
 
 function Toast({ message, type }: { message: string; type: 'info' | 'success' | 'error' }) {
   const colors = {
-    info:    { bg: 'rgba(99,102,241,0.15)',  border: 'rgba(99,102,241,0.4)',  color: '#a5b4fc' },
-    success: { bg: 'rgba(16,185,129,0.15)',  border: 'rgba(16,185,129,0.4)', color: '#6ee7b7' },
-    error:   { bg: 'rgba(239,68,68,0.15)',   border: 'rgba(239,68,68,0.4)',  color: '#fca5a5' },
+    info:    { bg: 'var(--accent-soft)',  border: 'var(--accent-soft)',  color: 'var(--accent)' },
+    success: { bg: 'var(--ok-soft)',  border: 'var(--ok-soft)', color: 'var(--ok)' },
+    error:   { bg: 'var(--danger-soft)',   border: 'var(--danger-soft)',  color: 'var(--danger)' },
   }[type]
   return (
     <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-medium shadow-xl"
@@ -154,17 +154,17 @@ function VideoCard({ output, onScore, onFeedback, onArchive }: {
   const videoUrl = output.asset?.url
   return (
     <div className="rounded-xl overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
-      <div className="aspect-video bg-zinc-900 relative">
+      <div className="aspect-video bg-[var(--bg-3)] relative">
         {videoUrl ? (
           <video src={videoUrl} controls className="w-full h-full object-contain" preload="metadata" />
         ) : (
           <div className="flex items-center justify-center h-full">
-            <Loader2 size={24} className="animate-spin text-zinc-600" />
+            <Loader2 size={24} className="animate-spin" />
           </div>
         )}
         {output.archived && (
           <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
-            style={{ background: 'rgba(16,185,129,0.2)', color: '#34d399' }}>
+            style={{ background: 'var(--ok-soft)', color: 'var(--ok)' }}>
             <CheckCircle2 size={11} /> 아카이브
           </div>
         )}
@@ -180,9 +180,9 @@ function VideoCard({ output, onScore, onFeedback, onArchive }: {
         <button onClick={() => onArchive(output.id)}
           className="w-full py-2 rounded-lg text-sm font-medium transition-all"
           style={{
-            background: output.archived ? 'rgba(16,185,129,0.15)' : 'var(--surface-3)',
-            color: output.archived ? '#34d399' : 'var(--text-secondary)',
-            border: `1px solid ${output.archived ? 'rgba(16,185,129,0.4)' : 'var(--border)'}`,
+            background: output.archived ? 'var(--ok-soft)' : 'var(--surface-3)',
+            color: output.archived ? 'var(--ok)' : 'var(--text-secondary)',
+            border: `1px solid ${output.archived ? 'var(--ok-soft)' : 'var(--border)'}`,
           }}>
           {output.archived ? '✓ 아카이브됨' : '아카이브'}
         </button>
@@ -213,7 +213,7 @@ function AttemptRow({ attempt, onRetry, onScore, onFeedback, onArchive }: {
   return (
     <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
       <button onClick={() => setExpanded(v => !v)}
-        className="w-full flex items-center gap-3 p-3 text-left transition-colors hover:bg-white/5"
+        className="w-full flex items-center gap-3 p-3 text-left transition-colors hover-surface"
         style={{ background: 'var(--surface)' }}>
         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         {sourceImg ? (
@@ -238,10 +238,10 @@ function AttemptRow({ attempt, onRetry, onScore, onFeedback, onArchive }: {
         <div className="p-4 border-t space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--background)' }}>
           {attempt.status === 'failed' && (
             <div className="space-y-1.5 p-3 rounded-xl"
-              style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+              style={{ background: 'var(--danger-soft)', border: '1px solid var(--danger-soft)' }}>
               <div className="flex items-center gap-2">
-                <XCircle size={14} className="text-red-400 shrink-0" />
-                <p className="text-xs font-medium text-red-400">생성 실패</p>
+                <XCircle size={14} className="shrink-0" />
+                <p className="text-xs font-medium">생성 실패</p>
               </div>
               {attempt.metadata?._error && (
                 <p className="text-[11px] leading-relaxed pl-5 break-all"
@@ -256,7 +256,7 @@ function AttemptRow({ attempt, onRetry, onScore, onFeedback, onArchive }: {
           ))}
           {(attempt.status === 'done' || attempt.status === 'failed') && sourceImg && (
             <button onClick={() => onRetry(attempt.scene_id, attempt.prompt, sourceImg)}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-all hover:bg-white/10"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-all hover-surface"
               style={{ color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
               <RefreshCw size={12} /> 재시도
             </button>
@@ -668,13 +668,13 @@ export default function I2VPage() {
                           onClick={() => setSelectedSource(prev => ({ ...prev, [scene.id]: img.url }))}
                           className="shrink-0 relative w-20 h-20 rounded-xl overflow-hidden transition-all"
                           style={{
-                            border: `2px solid ${selectedSource[scene.id] === img.url ? '#818cf8' : 'transparent'}`,
-                            boxShadow: selectedSource[scene.id] === img.url ? '0 0 0 3px rgba(99,102,241,0.25)' : 'none',
+                            border: `2px solid ${selectedSource[scene.id] === img.url ? 'var(--accent)' : 'transparent'}`,
+                            boxShadow: selectedSource[scene.id] === img.url ? '0 0 0 3px var(--accent-soft)' : 'none',
                           }}>
                           <img src={img.thumbnail_url ?? img.url} className="w-full h-full object-cover" alt="" />
                           {selectedSource[scene.id] === img.url && (
                             <div className="absolute inset-0 flex items-center justify-center"
-                              style={{ background: 'rgba(99,102,241,0.3)' }}>
+                              style={{ background: 'var(--accent-soft)' }}>
                               <CheckCircle2 size={18} className="text-white" />
                             </div>
                           )}
@@ -685,10 +685,10 @@ export default function I2VPage() {
                 )}
                 {referenceAssets.length > 0 && (() => {
                   const groups: { key: string; label: string; color: string; items: Asset[] }[] = [
-                    { key: 'character', label: '캐릭터', color: '#818cf8', items: referenceAssets.filter(a => a.tags?.includes('character')) },
-                    { key: 'space',     label: '공간',   color: '#34d399', items: referenceAssets.filter(a => a.tags?.includes('space')) },
-                    { key: 'object',    label: '오브제', color: '#fb923c', items: referenceAssets.filter(a => a.tags?.includes('object')) },
-                    { key: 'misc',      label: '기타',   color: '#a78bfa', items: referenceAssets.filter(a => a.tags?.includes('misc') || (!a.tags?.includes('character') && !a.tags?.includes('space') && !a.tags?.includes('object'))) },
+                    { key: 'character', label: '캐릭터', color: 'var(--accent)', items: referenceAssets.filter(a => a.tags?.includes('character')) },
+                    { key: 'space',     label: '공간',   color: 'var(--ok)', items: referenceAssets.filter(a => a.tags?.includes('space')) },
+                    { key: 'object',    label: '오브제', color: 'var(--accent-2)', items: referenceAssets.filter(a => a.tags?.includes('object')) },
+                    { key: 'misc',      label: '기타',   color: 'var(--violet)', items: referenceAssets.filter(a => a.tags?.includes('misc') || (!a.tags?.includes('character') && !a.tags?.includes('space') && !a.tags?.includes('object'))) },
                   ].filter(g => g.items.length > 0)
                   return (
                     <div className="space-y-2">
@@ -778,9 +778,9 @@ export default function I2VPage() {
                   onClick={() => setAspectRatios(prev => ({ ...prev, [scene.id]: r }))}
                   className="px-2.5 py-1 rounded-lg text-xs font-medium transition-all"
                   style={{
-                    background: (aspectRatios[scene.id] ?? '16:9') === r ? 'rgba(99,102,241,0.2)' : 'var(--surface-3)',
-                    color: (aspectRatios[scene.id] ?? '16:9') === r ? '#818cf8' : 'var(--text-secondary)',
-                    border: `1px solid ${(aspectRatios[scene.id] ?? '16:9') === r ? 'rgba(99,102,241,0.5)' : 'var(--border)'}`,
+                    background: (aspectRatios[scene.id] ?? '16:9') === r ? 'var(--accent-soft)' : 'var(--surface-3)',
+                    color: (aspectRatios[scene.id] ?? '16:9') === r ? 'var(--accent)' : 'var(--text-secondary)',
+                    border: `1px solid ${(aspectRatios[scene.id] ?? '16:9') === r ? 'var(--accent-soft)' : 'var(--border)'}`,
                   }}>
                   {r}
                 </button>
@@ -793,14 +793,14 @@ export default function I2VPage() {
               onClick={() => handleGenerate(scene.id)}
               disabled={!selectedSource[scene.id] || !(prompts[scene.id]?.trim())}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
+              style={{ background: 'linear-gradient(135deg, var(--accent), #8b5cf6)' }}>
               <Sparkles size={14} />
               영상 생성
             </button>
           </div>
 
           {!selectedSource[scene.id] && sourceImages.length > 0 && (
-            <p className="text-xs" style={{ color: '#f59e0b' }}>↑ 소스 이미지를 먼저 선택해주세요</p>
+            <p className="text-xs" style={{ color: 'var(--warn)' }}>↑ 소스 이미지를 먼저 선택해주세요</p>
           )}
         </div>
       </div>
@@ -809,7 +809,7 @@ export default function I2VPage() {
 
   if (loading) return (
     <div className="flex items-center justify-center h-full">
-      <Loader2 size={24} className="animate-spin text-zinc-600" />
+      <Loader2 size={24} className="animate-spin" />
     </div>
   )
 
@@ -824,7 +824,7 @@ export default function I2VPage() {
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>아카이빙된 이미지를 Kling으로 영상 변환</p>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={fetchData} className="p-2 rounded-lg transition-colors hover:bg-white/10" style={{ color: 'var(--text-muted)' }}>
+          <button onClick={fetchData} className="p-2 rounded-lg transition-colors hover-surface" style={{ color: 'var(--text-muted)' }}>
             <RefreshCw size={15} />
           </button>
           <Link href={`/project/${projectId}/lipsync`}
