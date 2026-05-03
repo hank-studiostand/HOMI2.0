@@ -58,8 +58,7 @@ export default function MediaBrowser({ type }: Props) {
   const [filterEngine, setFilterEngine] = useState<string>('all')
   const [search, setSearch] = useState('')
 
-  useEffect(() => {
-    void (async () => {
+  const loadAll = async () => {
       setLoading(true)
 
       const { data: scenes } = await supabase
@@ -96,7 +95,7 @@ export default function MediaBrowser({ type }: Props) {
         if (!sc) continue
         for (const o of (a.outputs ?? [])) {
           const url = o.url ?? o.asset?.url ?? null
-          if (!url) continue // 진행중인건 브라우저에서 제외
+          if (!url) continue
           all.push({
             id: o.id,
             attempt_id: a.id,
@@ -113,7 +112,6 @@ export default function MediaBrowser({ type }: Props) {
           })
         }
       }
-      // 씬 번호 asc (1-1 → 22-1-1 자연 정렬), 같은 씬 내에서는 시간 desc (최신 먼저)
       all.sort((a, b) => {
         const c = compareSceneNumbers(a.scene_number, b.scene_number)
         if (c !== 0) return c
@@ -121,7 +119,26 @@ export default function MediaBrowser({ type }: Props) {
       })
       setItems(all)
       setLoading(false)
-    })()
+  }
+
+  useEffect(() => {
+    void loadAll()
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const debouncedReload = () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => { void loadAll() }, 400)
+    }
+    const ch = supabase
+      .channel(`media-browser-${type}-${projectId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'prompt_attempts' }, debouncedReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attempt_outputs' }, debouncedReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shot_decisions' }, debouncedReload)
+      .subscribe()
+    return () => {
+      if (timer) clearTimeout(timer)
+      supabase.removeChannel(ch)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, type, supabase])
 
   // 엔진 옵션 (현재 결과에서 추출)

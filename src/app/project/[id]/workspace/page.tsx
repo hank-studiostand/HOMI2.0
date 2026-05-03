@@ -287,6 +287,49 @@ export default function WorkspacePage() {
     return () => { supabase.removeChannel(ch) }
   }, [activeId, supabase])
 
+  // Realtime — prompt_attempts / attempt_outputs / shot_decisions
+  // 다른 사용자가 같은 씬에서 생성 / 결정하면 즉시 동기화 (debounced reload)
+  useEffect(() => {
+    if (!activeId) return
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const debouncedReload = () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => { void loadSceneData(activeId) }, 350)
+    }
+    const ch = supabase
+      .channel(`workspace-live-${activeId}`)
+      // 이 씬의 attempt 변경 (생성/완료/실패)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'prompt_attempts', filter: `scene_id=eq.${activeId}` },
+        debouncedReload,
+      )
+      // attempt_outputs는 scene_id 컬럼이 없어 attempt를 통해서만 — 일단 scene 단위 reload
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'attempt_outputs' },
+        (payload) => {
+          // attempt_id 매칭으로 빠른 필터 (모든 outputs 변경에 reload 안 하도록)
+          const row = (payload.new ?? payload.old) as any
+          if (!row?.attempt_id) return
+          // 이 씬에 속한 attempt인지는 attempts 배열에서 검사
+          const isOurs = attempts.some(a => a.id === row.attempt_id)
+          if (isOurs) debouncedReload()
+        },
+      )
+      // shot_decisions 변경 (다른 사람이 결정 누름)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'shot_decisions', filter: `scene_id=eq.${activeId}` },
+        debouncedReload,
+      )
+      .subscribe()
+    return () => {
+      if (timer) clearTimeout(timer)
+      supabase.removeChannel(ch)
+    }
+  }, [activeId, supabase, loadSceneData, attempts])
+
   const active = scenes.find(s => s.id === activeId) || null
   // 버전별 attempts 매칭 (attempt.prompt가 version.content로 시작하면 그 버전의 시도)
   const attemptsByVersion = new Map<string, AttemptMeta[]>()
@@ -813,6 +856,7 @@ export default function WorkspacePage() {
             sceneDefaultRootIds={(active as any).selected_root_asset_image_ids ?? {}}
             recentOutputs={candidates}
             recentAttempts={attempts}
+            selectedOutputId={selectedIds[0] ?? null}
             onJumpToResults={() => setCenterTab('results')}
             onSelectOutput={(id) => setSelectedIds([id])}
             onQuickDecide={async (id, dec) => {
@@ -920,11 +964,18 @@ export default function WorkspacePage() {
                 }
               }
 
+              // I2V는 source image 필수 — 없으면 막기
+              if (genType === 'i2v' && !focused?.url) {
+                alert('I2V 영상 생성에는 소스 이미지가 필요해요.\n좌측 "최근 결과"에서 이미지를 클릭해 소스로 선택하세요.')
+                return
+              }
+
               setGenerating(true)
 
               // 옵티미스틱 placeholder — T2I는 4장, I2V는 1장이 일반적
               const placeholderCount = genType === 't2i' ? 4 : 1
               const tempAttempt = `temp_a_${Date.now()}`
+              const sourceUrlForI2V = focused?.url ?? null
               const placeholders: OutputItem[] = Array.from({ length: placeholderCount }, (_, i) => ({
                 id: `temp_${Date.now()}_${i}_${Math.random().toString(36).slice(2,7)}`,
                 attempt_id: tempAttempt, url: null, archived: false,
@@ -935,39 +986,48 @@ export default function WorkspacePage() {
               }))
               setOutputs(prev => [...prev, ...placeholders])
 
-              try {
-                const { data: attempt, error } = await supabase
-                  .from('prompt_attempts')
-                  .insert({
-                    scene_id: active.id, type: genType, engine: genEngine,
-                    prompt: fullPrompt, status: 'generating', depth: 0,
-                  })
-                  .select().single()
-                if (error || !attempt) {
-                  alert('시도 생성 실패: ' + (error?.message ?? ''))
-                  setOutputs(prev => prev.filter(o => o.attempt_id !== tempAttempt))
-                  return
-                }
-                const url = genType === 't2i' ? '/api/t2i/generate' : '/api/i2v/generate'
-                const body = genType === 't2i'
-                  ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, projectId, sceneId: active.id, aspectRatio: genRatio, referenceImageUrls: refUrls.length > 0 ? refUrls : undefined }
-                  : { attemptId: attempt.id, prompt: fullPrompt, sourceImageUrl: focused?.url, projectId, sceneId: active.id, duration: 5, aspectRatio: genRatio }
-                const r = await fetch(url, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(body),
+              // 1단계 — attempt insert (짧음, 락 유지)
+              const { data: attempt, error } = await supabase
+                .from('prompt_attempts')
+                .insert({
+                  scene_id: active.id, type: genType, engine: genEngine,
+                  prompt: fullPrompt, status: 'generating', depth: 0,
                 })
-                if (!r.ok) {
-                  const j = await r.json().catch(() => ({}))
-                  alert('생성 실패: ' + (j.error ?? r.statusText))
-                  await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attempt.id)
-                  setOutputs(prev => prev.filter(o => o.attempt_id !== tempAttempt))
-                  return
-                }
-                await loadSceneData(active.id)
-              } finally {
+                .select().single()
+              if (error || !attempt) {
+                alert('시도 생성 실패: ' + (error?.message ?? ''))
+                setOutputs(prev => prev.filter(o => o.attempt_id !== tempAttempt))
                 setGenerating(false)
+                return
               }
+
+              // 2단계 — API 호출 (긴 작업 — fire-and-forget으로 백그라운드)
+              // 락은 즉시 해제해서 사용자가 다른 큐를 동시에 돌릴 수 있게.
+              setGenerating(false)
+
+              void (async () => {
+                try {
+                  const url = genType === 't2i' ? '/api/t2i/generate' : '/api/i2v/generate'
+                  const body = genType === 't2i'
+                    ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, projectId, sceneId: active.id, aspectRatio: genRatio, referenceImageUrls: refUrls.length > 0 ? refUrls : undefined }
+                    : { attemptId: attempt.id, prompt: fullPrompt, sourceImageUrl: sourceUrlForI2V, projectId, sceneId: active.id, duration: 5, aspectRatio: genRatio }
+                  const r = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                  })
+                  if (!r.ok) {
+                    const j = await r.json().catch(() => ({}))
+                    alert('생성 실패: ' + (j.error ?? r.statusText))
+                    await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attempt.id)
+                    setOutputs(prev => prev.filter(o => o.attempt_id !== tempAttempt))
+                    return
+                  }
+                  if (active && active.id) await loadSceneData(active.id)
+                } catch (e: any) {
+                  console.error('[onGenerate background]', e)
+                }
+              })()
             }}
           />
         ) : compareMode ? (
@@ -1639,7 +1699,7 @@ function GeneratePanel({
   referenceAssets, camera, onCameraSelect, onCameraDeselect,
   refSel, onRefSelChange, scene,
   rootAssets, rootSel, onRootSelChange, sceneDefaultRootIds,
-  recentOutputs, recentAttempts, onJumpToResults,
+  recentOutputs, recentAttempts, selectedOutputId, onJumpToResults,
   onSelectOutput, onQuickDecide, onQuickRate,
   optimizing, onOptimize,
 }: {
@@ -1669,6 +1729,7 @@ function GeneratePanel({
   sceneDefaultRootIds: Record<string, string[]>
   recentOutputs: OutputItem[]
   recentAttempts: AttemptMeta[]
+  selectedOutputId: string | null
   onJumpToResults: () => void
   onSelectOutput: (id: string) => void
   onQuickDecide: (id: string, decision: 'approved' | 'revise_requested' | 'removed') => Promise<void> | void
@@ -1731,6 +1792,8 @@ function GeneratePanel({
             <InlineResultStrip
               outputs={recentOutputs.slice(0, 8)}
               attempts={recentAttempts}
+              selectedOutputId={selectedOutputId}
+              isI2VMode={type === 'i2v'}
               onSelect={onSelectOutput}
               onQuickDecide={onQuickDecide}
               onQuickRate={onQuickRate}
@@ -1865,6 +1928,51 @@ function GeneratePanel({
           projectId={projectId}
         />
 
+        {/* I2V 소스 표시 (i2v 모드일 때만) */}
+        {type === 'i2v' && (
+          <div
+            style={{
+              marginTop: 10, padding: 10,
+              borderRadius: 'var(--r-md)',
+              background: selectedOutputId
+                ? (recentOutputs.find(o => o.id === selectedOutputId)?.url ? 'var(--accent-soft)' : 'var(--bg-2)')
+                : 'var(--warn-soft)',
+              border: `1px solid ${selectedOutputId && recentOutputs.find(o => o.id === selectedOutputId)?.url ? 'var(--accent-line)' : 'var(--warn)'}`,
+            }}
+          >
+            <div className="field-label" style={{ marginBottom: 6 }}>영상 변환 소스 (I2V)</div>
+            {(() => {
+              const sel = recentOutputs.find(o => o.id === selectedOutputId)
+              const valid = sel && sel.url && sel.type === 't2i'
+              if (valid) {
+                return (
+                  <div className="flex items-center" style={{ gap: 10 }}>
+                    <img
+                      src={sel.url ?? ''}
+                      alt=""
+                      style={{
+                        width: 80, height: 45, objectFit: 'cover',
+                        borderRadius: 'var(--r-sm)',
+                        border: '2px solid var(--accent)',
+                      }}
+                    />
+                    <div style={{ flex: 1, fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.5 }}>
+                      이 이미지를 영상으로 변환합니다.<br/>
+                      <span style={{ color: 'var(--ink-4)' }}>아래 결과에서 다른 컷을 클릭하면 변경돼요.</span>
+                    </div>
+                  </div>
+                )
+              }
+              return (
+                <div style={{ fontSize: 11, color: 'var(--warn)', lineHeight: 1.5 }}>
+                  ⚠️ 아직 소스 이미지를 선택하지 않았어요.<br/>
+                  <span style={{ color: 'var(--ink-3)' }}>아래 "최근 결과"에서 변환할 이미지를 클릭해주세요.</span>
+                </div>
+              )
+            })()}
+          </div>
+        )}
+
         {/* 액션 묶음 — 최적화 + 생성 */}
         <div className="flex flex-col" style={{ gap: 8, marginTop: 18 }}>
           <button
@@ -1900,7 +2008,7 @@ function GeneratePanel({
             }}
           >
             {generating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-            {generating ? '생성 중...' : `${type === 't2i' ? '이미지' : '영상'} 생성 — Que`}
+            {generating ? '큐 등록 중...' : `${type === 't2i' ? '이미지' : '영상'} 생성 — Que (동시 가능)`}
           </button>
         </div>
 
@@ -1915,10 +2023,13 @@ function GeneratePanel({
 
 // ─── Generate 탭 인라인 결과 strip — 반응형 + 호버 퀵액션 ──────
 function InlineResultStrip({
-  outputs, attempts, onSelect, onQuickDecide, onQuickRate,
+  outputs, attempts, selectedOutputId, isI2VMode,
+  onSelect, onQuickDecide, onQuickRate,
 }: {
   outputs: OutputItem[]
   attempts: AttemptMeta[]
+  selectedOutputId: string | null
+  isI2VMode: boolean
   onSelect: (id: string) => void
   onQuickDecide: (id: string, d: 'approved' | 'revise_requested' | 'removed') => Promise<void> | void
   onQuickRate: (id: string, score: number) => Promise<void> | void
@@ -1957,6 +2068,8 @@ function InlineResultStrip({
                 <InlineResultCard
                   key={r.id}
                   item={r}
+                  isI2VSource={isI2VMode && selectedOutputId === r.id}
+                  selectableAsSource={isI2VMode && r.type === 't2i' && !!r.url}
                   onSelect={() => onSelect(r.id)}
                   onQuickDecide={(d) => onQuickDecide(r.id, d)}
                   onQuickRate={(score) => onQuickRate(r.id, score)}
@@ -1971,30 +2084,38 @@ function InlineResultStrip({
 }
 
 function InlineResultCard({
-  item, onSelect, onQuickDecide, onQuickRate,
+  item, isI2VSource, selectableAsSource,
+  onSelect, onQuickDecide, onQuickRate,
 }: {
   item: OutputItem
+  isI2VSource: boolean
+  selectableAsSource: boolean
   onSelect: () => void
   onQuickDecide: (d: 'approved' | 'revise_requested' | 'removed') => Promise<void> | void
   onQuickRate: (score: number) => Promise<void> | void
 }) {
   const [hover, setHover] = useState(false)
   const isPlaceholder = !item.url
-  const decisionColor =
-    item.decision === 'approved' ? 'var(--ok)'
+  // 우선순위: I2V 소스 > 결정 색
+  const borderColor = isI2VSource
+    ? 'var(--accent)'
+    : item.decision === 'approved' ? 'var(--ok)'
     : item.decision === 'revise_requested' ? 'var(--accent)'
-    : 'transparent'
+    : 'var(--line)'
   return (
     <div
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      title={selectableAsSource ? (isI2VSource ? '✓ 영상 변환 소스로 선택됨 — 클릭으로 해제 / 다른 컷 선택' : '클릭해서 영상 변환 소스로 선택') : undefined}
       style={{
         position: 'relative',
         aspectRatio: '16/9',
         borderRadius: 'var(--r-md)', overflow: 'hidden',
         background: 'var(--bg-3)',
-        border: `2px solid ${decisionColor === 'transparent' ? 'var(--line)' : decisionColor}`,
+        border: `${isI2VSource ? '3px' : '2px'} solid ${borderColor}`,
+        boxShadow: isI2VSource ? '0 0 0 3px var(--accent-soft)' : 'none',
         cursor: isPlaceholder ? 'default' : 'pointer',
+        transition: 'box-shadow 0.15s, border-color 0.15s',
       }}
       onClick={() => { if (!isPlaceholder) onSelect() }}
     >
@@ -2016,6 +2137,23 @@ function InlineResultCard({
         </div>
       )}
 
+      {/* I2V 소스 배지 */}
+      {isI2VSource && (
+        <div style={{ position: 'absolute', top: 6, left: 6 }}>
+          <span
+            className="flex items-center"
+            style={{
+              padding: '2px 7px', borderRadius: 'var(--r-sm)',
+              fontSize: 10, fontWeight: 600, gap: 3,
+              background: 'var(--accent)', color: '#fff',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
+            }}
+          >
+            <Film size={9} />
+            I2V 소스
+          </span>
+        </div>
+      )}
       {/* 결정 pill */}
       {item.decision && (
         <div style={{ position: 'absolute', top: 6, right: 6 }}>
