@@ -6,13 +6,17 @@ import { createClient } from '@/lib/supabase/client'
 import { useParams } from 'next/navigation'
 import {
   Loader2, ChevronDown, ChevronRight,
-  FileText, Wand2, FolderOpen, Image, Video, Mic,
+  FileText, Wand2, FolderOpen, Image as ImageIcon, Video, Mic,
   CheckCircle2, Clock, XCircle, Layers, RefreshCw,
+  LayoutGrid, ArrowRight,
 } from 'lucide-react'
 import type { Scene } from '@/types'
+import Link from 'next/link'
 import Badge from '@/components/ui/Badge'
+import Pill from '@/components/ui/Pill'
 import SceneTreeView from '@/components/scene/SceneTreeView'
 import { cn } from '@/lib/utils'
+import { sortScenesByNumber } from '@/lib/sceneSort'
 
 // ── 타입 ─────────────────────────────────────────────────────────
 
@@ -287,7 +291,7 @@ function ScenePipelineContent({ scene }: { scene: SceneData }) {
           </div>
           {/* T2I */}
           <div className="p-3" style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)' }}>
-            <SectionHeader icon={Image} label="T2I" count={scene.t2iAttempts.length} color="var(--accent)" />
+            <SectionHeader icon={ImageIcon} label="T2I" count={scene.t2iAttempts.length} color="var(--accent)" />
             <ImageGrid attempts={scene.t2iAttempts} />
           </div>
           {/* I2V / T2V */}
@@ -340,7 +344,7 @@ function ScenePipelineContent({ scene }: { scene: SceneData }) {
           {/* T2I */}
           {scene.t2iAttempts.length > 0 && (
             <div>
-              <SectionHeader icon={Image} label="T2I 생성 이력" count={scene.t2iAttempts.length} color="var(--accent)" />
+              <SectionHeader icon={ImageIcon} label="T2I 생성 이력" count={scene.t2iAttempts.length} color="var(--accent)" />
               <div className="space-y-2">
                 {scene.t2iAttempts.map(attempt => (
                   <div key={attempt.id} className="p-3" style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)' }}>
@@ -428,6 +432,296 @@ function ScenePipelineContent({ scene }: { scene: SceneData }) {
   )
 }
 
+// ─── 노드 보드 — 씬별 단계 미니 카드 ────────────────────────────
+// 각 씬을 가로 카드로 펼치고, 그 안에 단계별 (대본 / 마스터 / T2I / I2V / 립싱크)
+// 작은 노드를 노출. 노드 클릭 시 해당 페이지로 이동.
+
+function NodeBoard({
+  scenes, projectId,
+}: { scenes: SceneData[]; projectId: string }) {
+  return (
+    <div className="flex flex-col" style={{ gap: 12 }}>
+      {scenes.map(scene => (
+        <SceneNodeRow key={scene.id} scene={scene} projectId={projectId} />
+      ))}
+    </div>
+  )
+}
+
+function SceneNodeRow({ scene, projectId }: { scene: SceneData; projectId: string }) {
+  const t2iDone = scene.t2iAttempts.filter(a => a.status === 'done').length
+  const t2iGen  = scene.t2iAttempts.filter(a => a.status === 'generating').length
+  const i2vDone = scene.i2vAttempts.filter(a => a.status === 'done').length
+  const i2vGen  = scene.i2vAttempts.filter(a => a.status === 'generating').length
+  const t2iApprovedThumb = (() => {
+    for (const a of scene.t2iAttempts) {
+      const ok = a.outputs.find(o => o.archived && o.url)
+      if (ok) return ok.url
+    }
+    for (const a of scene.t2iAttempts) {
+      const any = a.outputs.find(o => o.url)
+      if (any) return any.url
+    }
+    return null
+  })()
+  const i2vThumb = (() => {
+    for (const a of scene.i2vAttempts) {
+      const any = a.outputs.find(o => o.url)
+      if (any) return any.url
+    }
+    return null
+  })()
+  const lipsyncThumb = (() => {
+    for (const a of scene.lipsyncAttempts) {
+      const any = a.outputs.find(o => o.url)
+      if (any) return any.url
+    }
+    return null
+  })()
+
+  // 씬 status 결정
+  const sceneStatus: { label: string; variant: 'draft' | 'gen' | 'review' | 'approved' } =
+    i2vDone > 0 ? { label: '완료', variant: 'approved' }
+    : t2iDone > 0 ? { label: '검토', variant: 'review' }
+    : scene.master_prompt ? { label: '생산중', variant: 'gen' }
+    : { label: 'Draft', variant: 'draft' }
+
+  return (
+    <div
+      className="card"
+      style={{
+        padding: 0,
+        background: 'var(--bg-2)',
+        border: '1px solid var(--line)',
+      }}
+    >
+      {/* 씬 헤더 */}
+      <div
+        className="flex items-center"
+        style={{
+          padding: '12px 16px', borderBottom: '1px solid var(--line)',
+          gap: 10, background: 'var(--bg-1)',
+        }}
+      >
+        <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)' }}>
+          {scene.scene_number}
+        </span>
+        <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)', flex: 1 }} className="truncate">
+          {scene.title || '(제목 없음)'}
+        </span>
+        <Pill variant={sceneStatus.variant}>{sceneStatus.label}</Pill>
+        <Link
+          href={`/project/${projectId}/workspace?scene=${scene.id}`}
+          className="flex items-center gap-1"
+          style={{
+            fontSize: 11, fontWeight: 500,
+            padding: '4px 10px', borderRadius: 'var(--r-sm)',
+            color: 'var(--accent)',
+            background: 'var(--accent-soft)',
+            border: '1px solid var(--accent-line)',
+          }}
+        >
+          워크스페이스 <ArrowRight size={11} />
+        </Link>
+      </div>
+
+      {/* 노드 4개 — 가로 그리드 */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: 10,
+          padding: 12,
+        }}
+      >
+        {/* 1) 씬 본문 / 대본 */}
+        <Link
+          href={`/project/${projectId}/scene-editor`}
+          className="flex flex-col"
+          style={{
+            padding: 12, borderRadius: 'var(--r-md)',
+            background: 'var(--bg)', border: '1px solid var(--line)',
+            transition: 'border-color 0.12s, transform 0.12s',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--line)' }}
+        >
+          <div className="flex items-center" style={{ gap: 6, marginBottom: 6 }}>
+            <FileText size={11} style={{ color: 'var(--ink-3)' }} />
+            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-3)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              대본
+            </span>
+          </div>
+          <div
+            style={{
+              fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.4,
+              display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
+            {scene.content || <span style={{ color: 'var(--ink-4)' }}>비어있음</span>}
+          </div>
+        </Link>
+
+        {/* 2) 마스터 프롬프트 */}
+        <Link
+          href={`/project/${projectId}/workspace?scene=${scene.id}`}
+          className="flex flex-col"
+          style={{
+            padding: 12, borderRadius: 'var(--r-md)',
+            background: scene.master_prompt ? 'var(--accent-soft)' : 'var(--bg)',
+            border: `1px solid ${scene.master_prompt ? 'var(--accent-line)' : 'var(--line)'}`,
+            transition: 'transform 0.12s',
+          }}
+        >
+          <div className="flex items-center" style={{ gap: 6, marginBottom: 6 }}>
+            <Wand2 size={11} style={{ color: scene.master_prompt ? 'var(--accent)' : 'var(--ink-3)' }} />
+            <span style={{ fontSize: 10, fontWeight: 600, color: scene.master_prompt ? 'var(--accent)' : 'var(--ink-3)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              마스터 프롬프트
+            </span>
+            {scene.master_prompt && (
+              <span style={{ fontSize: 9, color: 'var(--accent-2)', marginLeft: 'auto' }}>v{scene.master_prompt.version}</span>
+            )}
+          </div>
+          <div
+            style={{
+              fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.4,
+              display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
+            {scene.master_prompt
+              ? scene.master_prompt.content
+              : <span style={{ color: 'var(--ink-4)' }}>아직 없어요. 클릭해서 만들기</span>}
+          </div>
+        </Link>
+
+        {/* 3) T2I */}
+        <Link
+          href={`/project/${projectId}/workspace?scene=${scene.id}`}
+          className="flex flex-col"
+          style={{
+            padding: 12, borderRadius: 'var(--r-md)',
+            background: 'var(--bg)', border: '1px solid var(--line)',
+            transition: 'border-color 0.12s',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--line)' }}
+        >
+          <div className="flex items-center" style={{ gap: 6, marginBottom: 6 }}>
+            <ImageIcon size={11} style={{ color: 'var(--accent)' }} />
+            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-3)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              T2I
+            </span>
+            <span style={{ fontSize: 9, color: 'var(--ink-4)', marginLeft: 'auto' }}>
+              완료 {t2iDone}{t2iGen > 0 ? ` · 생성중 ${t2iGen}` : ''}
+            </span>
+          </div>
+          {t2iApprovedThumb ? (
+            <div
+              style={{
+                aspectRatio: '16/9', borderRadius: 'var(--r-sm)', overflow: 'hidden',
+                background: 'var(--bg-3)',
+              }}
+            >
+              <img src={t2iApprovedThumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            </div>
+          ) : (
+            <div
+              style={{
+                aspectRatio: '16/9', borderRadius: 'var(--r-sm)',
+                background: 'var(--bg-3)', border: '1px dashed var(--line)',
+                display: 'grid', placeItems: 'center',
+                color: 'var(--ink-4)', fontSize: 10,
+              }}
+            >
+              {t2iGen > 0 ? <><Loader2 size={12} className="animate-spin" />&nbsp;생성중</> : '아직 없음'}
+            </div>
+          )}
+        </Link>
+
+        {/* 4) I2V */}
+        <Link
+          href={`/project/${projectId}/workspace?scene=${scene.id}`}
+          className="flex flex-col"
+          style={{
+            padding: 12, borderRadius: 'var(--r-md)',
+            background: 'var(--bg)', border: '1px solid var(--line)',
+            transition: 'border-color 0.12s',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--violet)' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--line)' }}
+        >
+          <div className="flex items-center" style={{ gap: 6, marginBottom: 6 }}>
+            <Video size={11} style={{ color: 'var(--violet)' }} />
+            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-3)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              I2V
+            </span>
+            <span style={{ fontSize: 9, color: 'var(--ink-4)', marginLeft: 'auto' }}>
+              완료 {i2vDone}{i2vGen > 0 ? ` · 생성중 ${i2vGen}` : ''}
+            </span>
+          </div>
+          {i2vThumb ? (
+            <div
+              style={{
+                aspectRatio: '16/9', borderRadius: 'var(--r-sm)', overflow: 'hidden',
+                background: 'var(--bg-3)',
+              }}
+            >
+              <video src={i2vThumb} muted preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            </div>
+          ) : (
+            <div
+              style={{
+                aspectRatio: '16/9', borderRadius: 'var(--r-sm)',
+                background: 'var(--bg-3)', border: '1px dashed var(--line)',
+                display: 'grid', placeItems: 'center',
+                color: 'var(--ink-4)', fontSize: 10,
+              }}
+            >
+              {i2vGen > 0 ? <><Loader2 size={12} className="animate-spin" />&nbsp;생성중</> : (t2iApprovedThumb ? '대기' : 'T2I 먼저')}
+            </div>
+          )}
+        </Link>
+
+        {/* 5) 립싱크 (있는 경우만 표시) */}
+        {(scene.lipsyncAttempts.length > 0 || lipsyncThumb) && (
+          <Link
+            href={`/project/${projectId}/lipsync`}
+            className="flex flex-col"
+            style={{
+              padding: 12, borderRadius: 'var(--r-md)',
+              background: 'var(--bg)', border: '1px solid var(--line)',
+              transition: 'border-color 0.12s',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--pink)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--line)' }}
+          >
+            <div className="flex items-center" style={{ gap: 6, marginBottom: 6 }}>
+              <Mic size={11} style={{ color: 'var(--pink)' }} />
+              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-3)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                립싱크
+              </span>
+              <span style={{ fontSize: 9, color: 'var(--ink-4)', marginLeft: 'auto' }}>
+                {scene.lipsyncAttempts.length}
+              </span>
+            </div>
+            {lipsyncThumb ? (
+              <div style={{ aspectRatio: '16/9', borderRadius: 'var(--r-sm)', overflow: 'hidden', background: 'var(--bg-3)' }}>
+                <video src={lipsyncThumb} muted preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              </div>
+            ) : (
+              <div style={{ aspectRatio: '16/9', borderRadius: 'var(--r-sm)', background: 'var(--bg-3)', display: 'grid', placeItems: 'center', color: 'var(--ink-4)', fontSize: 10 }}>
+                대기
+              </div>
+            )}
+          </Link>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────
 
 export default function TotalTreePage() {
@@ -436,6 +730,7 @@ export default function TotalTreePage() {
   const [loading, setLoading]     = useState(true)
   const [expandedScene, setExpandedScene] = useLocalState<string | null>(`expanded-totaltree-${projectId}`, null)
   const [completedScenes, setCompletedScenes] = useState<Set<string>>(new Set())
+  const [viewMode, setViewMode] = useLocalState<'nodes' | 'tree'>(`totaltree-view-${projectId}`, 'nodes')
   const supabase = createClient()
 
   useEffect(() => { fetchAll() }, [projectId])
@@ -483,7 +778,7 @@ export default function TotalTreePage() {
       }
     })
 
-    setScenes(composed)
+    setScenes(sortScenesByNumber(composed) as any)
     setLoading(false)
   }
 
@@ -523,28 +818,68 @@ export default function TotalTreePage() {
         <div>
           <h1 className="flex items-center gap-2" style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>
             <Layers size={16} style={{ color: 'var(--accent)' }} />
-            토탈트리
+            프로젝트 대시보드
           </h1>
           <p className="text-[13px] mt-1" style={{ color: 'var(--ink-3)' }}>
-            씬별 전체 제작 파이프라인 · {scenes.length}개 씬
+            씬별 단계 노드 · {scenes.length}개 씬
           </p>
         </div>
-        <button
-          onClick={fetchAll}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs hover-surface transition-all"
-          style={{ color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
-        >
-          <RefreshCw size={12} /> 새로고침
-        </button>
+        <div className="flex items-center" style={{ gap: 8 }}>
+          {/* 뷰 토글 — 노드 / 트리 */}
+          <div
+            className="flex items-center"
+            style={{
+              padding: 2, gap: 0,
+              border: '1px solid var(--line)', borderRadius: 'var(--r-md)',
+              background: 'var(--bg-2)',
+            }}
+          >
+            {([
+              { v: 'nodes' as const, icon: LayoutGrid, label: '노드' },
+              { v: 'tree' as const,  icon: ChevronDown, label: '트리' },
+            ]).map(t => {
+              const Icon = t.icon
+              const active = viewMode === t.v
+              return (
+                <button
+                  key={t.v}
+                  onClick={() => setViewMode(t.v)}
+                  className="flex items-center gap-1"
+                  style={{
+                    padding: '5px 10px',
+                    borderRadius: 'var(--r-sm)',
+                    fontSize: 12, fontWeight: 500,
+                    background: active ? 'var(--bg)' : 'transparent',
+                    color: active ? 'var(--accent)' : 'var(--ink-3)',
+                    boxShadow: active ? 'var(--shadow-sm)' : 'none',
+                  }}
+                >
+                  <Icon size={11} /> {t.label}
+                </button>
+              )
+            })}
+          </div>
+          <button
+            onClick={fetchAll}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs hover-surface transition-all"
+            style={{ color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
+          >
+            <RefreshCw size={12} /> 새로고침
+          </button>
+        </div>
       </div>
 
-      {/* 씬 트리 */}
+      {/* 본문 */}
       <div className="flex-1 overflow-auto p-6">
         {scenes.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <Layers size={28} className="mb-3" style={{ color: 'var(--text-muted)' }} />
             <p className="text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>씬이 없습니다</p>
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>씬 편집기에서 씬을 추가하세요</p>
+          </div>
+        ) : viewMode === 'nodes' ? (
+          <div className="max-w-7xl mx-auto">
+            <NodeBoard scenes={scenes} projectId={projectId} />
           </div>
         ) : (
           <div className="max-w-7xl mx-auto">
