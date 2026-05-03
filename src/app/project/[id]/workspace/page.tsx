@@ -9,8 +9,12 @@ import {
   ChevronLeft, Sparkles, Check, RotateCcw, Trash2, X,
   Image as ImageIcon, Film, MessageCircle, Send, Loader2, Plus,
 } from 'lucide-react'
-import type { Scene, SatisfactionScore } from '@/types'
+import type { Scene, SatisfactionScore, Asset } from '@/types'
 import Pill, { type PillVariant } from '@/components/ui/Pill'
+import CameraReferencePanel, { buildCameraPrompt } from '@/components/ui/CameraReferencePanel'
+import SceneReferencePicker, {
+  emptyRefSelection, allSelectedUrls, type RefSelection,
+} from '@/components/ui/SceneReferencePicker'
 
 interface PromptVersion {
   id: string
@@ -78,6 +82,21 @@ export default function WorkspacePage() {
   const [genEngine, setGenEngine] = useState<string>('nanobanana')
   const [genRatio, setGenRatio] = useState<string>('16:9')
   const [generating, setGenerating] = useState(false)
+  const [referenceAssets, setReferenceAssets] = useState<Asset[]>([])
+  const [genCamera, setGenCamera] = useState<{ angle?: string; shotSize?: string; lens?: string; lighting?: string }>({})
+  const [genRefSel, setGenRefSel] = useState<RefSelection>(emptyRefSelection())
+  const [genUseRootAssets, setGenUseRootAssets] = useState(true)
+
+  // 레퍼런스 자산 (오브제/캐릭터/공간 선택용)
+  useEffect(() => {
+    void (async () => {
+      const { data } = await supabase
+        .from('assets').select('*')
+        .eq('project_id', projectId).eq('type', 'reference')
+        .order('created_at', { ascending: false })
+      setReferenceAssets((data ?? []) as Asset[])
+    })()
+  }, [projectId, supabase])
 
   // 씬 목록 + 활성 씬 결정
   useEffect(() => {
@@ -459,23 +478,66 @@ export default function WorkspacePage() {
             ratio={genRatio}
             onRatioChange={setGenRatio}
             generating={generating}
+            referenceAssets={referenceAssets}
+            camera={genCamera}
+            onCameraSelect={(t, key, p) => setGenCamera(prev => ({ ...prev, [t]: key }))}
+            onCameraDeselect={(t) => setGenCamera(prev => { const n = { ...prev }; delete n[t]; return n })}
+            refSel={genRefSel}
+            onRefSelChange={setGenRefSel}
+            scene={active}
+            useRootAssets={genUseRootAssets}
+            onUseRootAssetsChange={setGenUseRootAssets}
             onGenerate={async () => {
+              const basePrompt = (genPromptDraft || currentPrompt?.content || currentMP?.content || '').trim()
+              if (!basePrompt) { alert('프롬프트를 입력하거나 마스터 프롬프트를 먼저 만들어주세요.'); return }
+
+              // 카메라 suffix 추가
+              const cameraStr = buildCameraPrompt(genCamera)
+              const fullPrompt = cameraStr ? `${basePrompt}\n\n${cameraStr}` : basePrompt
+
+              // 레퍼런스 URL 모음 (오브제 + 루트에셋)
+              const refUrls: string[] = allSelectedUrls(genRefSel, referenceAssets)
+              if (genUseRootAssets) {
+                const rootImgs = (active as any).selected_root_asset_image_ids ?? {}
+                for (const cat of ['character', 'space', 'object', 'misc']) {
+                  const ids: string[] = rootImgs[cat] ?? []
+                  for (const id of ids) {
+                    if (!refUrls.includes(id) && id.startsWith('http')) refUrls.push(id)
+                  }
+                }
+              }
+
               setGenerating(true)
+              setCenterTab('results')
+
+              // 옵티미스틱 placeholder
+              const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2,7)}`
+              const tempAttempt = `temp_a_${Date.now()}`
+              const placeholder: OutputItem = {
+                id: tempId, attempt_id: tempAttempt, url: null, archived: false,
+                satisfaction_score: null, feedback: '',
+                type: genType, engine: genEngine,
+                created_at: new Date().toISOString(),
+              }
+              setOutputs(prev => [...prev, placeholder])
+
               try {
-                const prompt = (genPromptDraft || currentPrompt?.content || currentMP?.content || '').trim()
-                if (!prompt) { alert('프롬프트를 입력하거나 마스터 프롬프트를 먼저 만들어주세요.'); return }
                 const { data: attempt, error } = await supabase
                   .from('prompt_attempts')
                   .insert({
                     scene_id: active.id, type: genType, engine: genEngine,
-                    prompt, status: 'generating', depth: 0,
+                    prompt: fullPrompt, status: 'generating', depth: 0,
                   })
                   .select().single()
-                if (error || !attempt) { alert('시도 생성 실패: ' + (error?.message ?? '')); return }
+                if (error || !attempt) {
+                  alert('시도 생성 실패: ' + (error?.message ?? ''))
+                  setOutputs(prev => prev.filter(o => o.id !== tempId))
+                  return
+                }
                 const url = genType === 't2i' ? '/api/t2i/generate' : '/api/i2v/generate'
                 const body = genType === 't2i'
-                  ? { attemptId: attempt.id, prompt, engine: genEngine, projectId, sceneId: active.id, aspectRatio: genRatio }
-                  : { attemptId: attempt.id, prompt, sourceImageUrl: focused?.url, projectId, sceneId: active.id, duration: 5, aspectRatio: genRatio }
+                  ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, projectId, sceneId: active.id, aspectRatio: genRatio, referenceImageUrls: refUrls.length > 0 ? refUrls : undefined }
+                  : { attemptId: attempt.id, prompt: fullPrompt, sourceImageUrl: focused?.url, projectId, sceneId: active.id, duration: 5, aspectRatio: genRatio }
                 const r = await fetch(url, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -485,11 +547,10 @@ export default function WorkspacePage() {
                   const j = await r.json().catch(() => ({}))
                   alert('생성 실패: ' + (j.error ?? r.statusText))
                   await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attempt.id)
+                  setOutputs(prev => prev.filter(o => o.id !== tempId))
                   return
                 }
-                // 결과 다시 로드
                 await loadSceneData(active.id)
-                setCenterTab('results')
               } finally {
                 setGenerating(false)
               }
@@ -697,7 +758,20 @@ function CandidateStrip({
               ? (r.type === 't2i'
                 ? <img src={r.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 : <video src={r.url} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />)
-              : <div style={{ width: '100%', height: '100%', background: 'var(--bg-3)' }} />}
+              : (
+                <div
+                  style={{
+                    width: '100%', height: '100%',
+                    background: 'var(--bg-3)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexDirection: 'column', gap: 4,
+                    animation: 'pulse-soft 1.6s ease-in-out infinite',
+                  }}
+                >
+                  <Loader2 size={16} className="animate-spin" style={{ color: 'var(--accent)' }} />
+                  <span style={{ fontSize: 9, color: 'var(--ink-4)' }}>큐 대기 중</span>
+                </div>
+              )}
             <div style={{ position: 'absolute', inset: 0, background: sel ? 'rgba(249,115,22,0.15)' : 'transparent' }} />
             {r.archived && (
               <div style={{ position: 'absolute', top: 4, right: 4 }}>
@@ -894,6 +968,8 @@ function GeneratePanel({
   engine, onEngineChange,
   ratio, onRatioChange,
   generating, onGenerate,
+  referenceAssets, camera, onCameraSelect, onCameraDeselect,
+  refSel, onRefSelChange, scene, useRootAssets, onUseRootAssetsChange,
 }: {
   sceneId: string
   projectId: string
@@ -908,6 +984,15 @@ function GeneratePanel({
   onRatioChange: (v: string) => void
   generating: boolean
   onGenerate: () => Promise<void> | void
+  referenceAssets: Asset[]
+  camera: { angle?: string; shotSize?: string; lens?: string; lighting?: string }
+  onCameraSelect: (type: 'angle' | 'shotSize' | 'lens' | 'lighting', key: string, prompt: string) => void
+  onCameraDeselect: (type: 'angle' | 'shotSize' | 'lens' | 'lighting') => void
+  refSel: RefSelection
+  onRefSelChange: (next: RefSelection) => void
+  scene: Scene
+  useRootAssets: boolean
+  onUseRootAssetsChange: (v: boolean) => void
 }) {
   const engineOptions = type === 't2i' ? T2I_ENGINES : I2V_ENGINES
 
@@ -1003,6 +1088,37 @@ function GeneratePanel({
           ))}
         </div>
 
+        {/* 샷 구도 */}
+        <div className="field-label">샷 구도 (앵글 / 샷사이즈 / 렌즈)</div>
+        <div style={{ marginBottom: 14 }}>
+          <CameraReferencePanel
+            selectedAngle={camera.angle}
+            selectedShotSize={camera.shotSize}
+            selectedLens={camera.lens}
+            selectedLighting={camera.lighting}
+            onSelect={onCameraSelect}
+            onDeselect={onCameraDeselect}
+          />
+        </div>
+
+        {/* 오브제 / 레퍼런스 자산 */}
+        <div className="field-label">레퍼런스 자산 (오브제 / 캐릭터 / 공간)</div>
+        <div style={{ marginBottom: 14 }}>
+          <SceneReferencePicker
+            referenceAssets={referenceAssets}
+            selection={refSel}
+            onChange={onRefSelChange}
+          />
+        </div>
+
+        {/* 루트 에셋 박스 */}
+        <div className="field-label">루트 에셋</div>
+        <RootAssetBox
+          scene={scene}
+          enabled={useRootAssets}
+          onToggle={onUseRootAssetsChange}
+        />
+
         <button
           onClick={() => onGenerate()}
           disabled={generating}
@@ -1015,10 +1131,11 @@ function GeneratePanel({
             border: '1px solid var(--accent)',
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             opacity: generating ? 0.6 : 1,
+            marginTop: 18,
           }}
         >
           {generating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-          {generating ? '생성 중...' : `${type === 't2i' ? '이미지' : '영상'} 생성`}
+          {generating ? '생성 중...' : `${type === 't2i' ? '이미지' : '영상'} 생성 — Que`}
         </button>
 
         <p style={{ marginTop: 10, fontSize: 11, color: 'var(--ink-4)', lineHeight: 1.5 }}>
@@ -1026,6 +1143,95 @@ function GeneratePanel({
           엔진/화면비 설정은 씬 설정에 저장되지 않고 이 시도에만 적용됩니다.
         </p>
       </div>
+    </div>
+  )
+}
+
+// ─── 루트 에셋 박스 (씬에 마킹된 인물/공간/오브제/기타 토글로 사용) ───
+function RootAssetBox({
+  scene, enabled, onToggle,
+}: { scene: Scene; enabled: boolean; onToggle: (v: boolean) => void }) {
+  const marks = (scene as any).root_asset_marks ?? {}
+  const images = (scene as any).selected_root_asset_image_ids ?? {}
+  const cats: { key: 'character' | 'space' | 'object' | 'misc'; label: string }[] = [
+    { key: 'character', label: '인물' },
+    { key: 'space',     label: '공간' },
+    { key: 'object',    label: '오브제' },
+    { key: 'misc',      label: '기타' },
+  ]
+  const hasContent = cats.some(c => (marks[c.key] && marks[c.key].trim()) || ((images[c.key] ?? []).length > 0))
+
+  return (
+    <div
+      style={{
+        marginBottom: 14,
+        padding: 12,
+        background: 'var(--bg-2)',
+        border: `1px solid ${enabled ? 'var(--accent-line)' : 'var(--line)'}`,
+        borderRadius: 'var(--r-md)',
+      }}
+    >
+      <label className="flex items-center gap-2" style={{ cursor: 'pointer', marginBottom: 10 }}>
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => onToggle(e.target.checked)}
+          style={{ accentColor: 'var(--accent)' }}
+        />
+        <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink)' }}>
+          이 씬의 루트 에셋 마킹을 생성에 적용
+        </span>
+      </label>
+
+      {hasContent ? (
+        <div className="flex flex-col" style={{ gap: 8 }}>
+          {cats.map(c => {
+            const text = marks[c.key]
+            const imgs: string[] = images[c.key] ?? []
+            if (!(text && text.trim()) && imgs.length === 0) return null
+            return (
+              <div key={c.key}>
+                <div className="flex items-center" style={{ gap: 6, marginBottom: 4 }}>
+                  <span
+                    style={{
+                      fontSize: 10, fontWeight: 600, padding: '1px 6px',
+                      borderRadius: 'var(--r-sm)',
+                      background: 'var(--bg-3)', color: 'var(--ink-3)',
+                    }}
+                  >
+                    {c.label}
+                  </span>
+                  {text && text.trim() && (
+                    <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>
+                      {text}
+                    </span>
+                  )}
+                </div>
+                {imgs.length > 0 && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(56px, 1fr))', gap: 4 }}>
+                    {imgs.slice(0, 8).map((url, i) => (
+                      <img
+                        key={i}
+                        src={url}
+                        alt=""
+                        style={{
+                          width: '100%', aspectRatio: '1', objectFit: 'cover',
+                          borderRadius: 'var(--r-sm)',
+                          opacity: enabled ? 1 : 0.4,
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <p style={{ fontSize: 11, color: 'var(--ink-4)' }}>
+          씬 경계 편집에서 인물/공간/오브제/기타를 마킹하면 여기에 표시되고 생성에 자동 첨부됩니다.
+        </p>
+      )}
     </div>
   )
 }
