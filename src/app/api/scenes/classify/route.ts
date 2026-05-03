@@ -136,7 +136,7 @@ emit_scenes 툴을 호출해서 결과를 반환하세요.`,
 }
 
 export async function POST(req: NextRequest) {
-  const { scriptId, projectId, content, manualScenes } = await req.json()
+  const { scriptId, projectId, content, manualScenes, sceneMarks } = await req.json() as { scriptId: string; projectId: string; content?: string; manualScenes?: string[]; sceneMarks?: { content: string; marks: Record<string, string> }[] }
   const admin = createAdminClient()
 
   let scenes: ClassifiedScene[] = []
@@ -211,6 +211,30 @@ emit_scenes 툴을 호출해서 결과를 반환하세요.`,
       { error: `삽입 실패: ${insErr.message}` },
       { status: 500 },
     )
+
+  // root_asset_marks 동기화 — sceneMarks의 content와 새 씬의 content를 startswith 매칭
+  if (sceneMarks && Array.isArray(sceneMarks) && sceneMarks.length > 0) {
+    const { data: createdScenes } = await admin
+      .from('scenes')
+      .select('id, content')
+      .eq('project_id', projectId)
+    for (const sm of sceneMarks) {
+      if (!sm.marks || Object.keys(sm.marks).length === 0) continue
+      const trimmedSrc = (sm.content ?? '').trim()
+      if (!trimmedSrc) continue
+      // 1) 정확 일치 우선, 없으면 prefix 매칭 (Claude가 약간 다듬은 content일 수 있음)
+      let match = (createdScenes ?? []).find(c => (c.content ?? '').trim() === trimmedSrc)
+      if (!match) {
+        const prefix = trimmedSrc.slice(0, 40)
+        match = (createdScenes ?? []).find(c => (c.content ?? '').trim().startsWith(prefix))
+      }
+      if (match) {
+        await admin.from('scenes')
+          .update({ root_asset_marks: sm.marks })
+          .eq('id', match.id)
+      }
+    }
+  }
 
   // 프로젝트 updated_at 갱신
   await admin

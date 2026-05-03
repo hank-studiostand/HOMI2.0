@@ -1061,8 +1061,117 @@ export default function WorkspacePage() {
                 </div>
               </div>
             ) : (
-              <div className="empty" style={{ marginBottom: 18 }}>
-                생성된 결과가 없어요. T2I 페이지에서 시도를 만들어주세요.
+              <div
+                style={{
+                  marginBottom: 18,
+                  padding: '28px 24px',
+                  borderRadius: 'var(--r-lg)',
+                  background: 'var(--bg-2)',
+                  border: '1px dashed var(--line-strong)',
+                }}
+              >
+                <div className="flex items-center" style={{ gap: 8, marginBottom: 8 }}>
+                  <Sparkles size={16} style={{ color: 'var(--accent)' }} />
+                  <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>
+                    이 씬에서 시작하기
+                  </h3>
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.55, marginBottom: 14 }}>
+                  아직 생성된 결과가 없어요. 아래 순서대로 진행해보세요.
+                </p>
+                <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <li className="flex items-start" style={{ gap: 10 }}>
+                    <span
+                      style={{
+                        width: 22, height: 22, borderRadius: '50%',
+                        background: (currentPrompt || currentMP) ? 'var(--ok)' : 'var(--accent)',
+                        color: '#fff', fontSize: 11, fontWeight: 700,
+                        display: 'grid', placeItems: 'center', flexShrink: 0,
+                      }}
+                    >
+                      {(currentPrompt || currentMP) ? <Check size={11} /> : '1'}
+                    </span>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink)', marginBottom: 2 }}>
+                        좌측 PROMPT에서 마스터 프롬프트 만들기
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>
+                        AI 자동 생성 또는 직접 작성 가능
+                      </div>
+                    </div>
+                  </li>
+                  <li className="flex items-start" style={{ gap: 10 }}>
+                    <span
+                      style={{
+                        width: 22, height: 22, borderRadius: '50%',
+                        background: 'var(--accent)',
+                        color: '#fff', fontSize: 11, fontWeight: 700,
+                        display: 'grid', placeItems: 'center', flexShrink: 0,
+                      }}
+                    >
+                      2
+                    </span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink)', marginBottom: 2 }}>
+                        상단 <strong>생성</strong> 탭에서 샷 구도 / 레퍼런스 선택
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>
+                        시네마틱 콤보 프리셋 + 루트 에셋 인라인 피커
+                      </div>
+                    </div>
+                  </li>
+                  <li className="flex items-start" style={{ gap: 10 }}>
+                    <span
+                      style={{
+                        width: 22, height: 22, borderRadius: '50%',
+                        background: 'var(--accent)',
+                        color: '#fff', fontSize: 11, fontWeight: 700,
+                        display: 'grid', placeItems: 'center', flexShrink: 0,
+                      }}
+                    >
+                      3
+                    </span>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink)', marginBottom: 2 }}>
+                        Que 누르고 결과 도착 후 OK / 수정요청 / 휴지통
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>
+                        T2I 4장이 동시 큐 → 호버 퀵 액션 (별점 / 결정)
+                      </div>
+                    </div>
+                  </li>
+                </ol>
+                <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => setCenterTab('generate')}
+                    className="flex items-center gap-1"
+                    style={{
+                      padding: '7px 14px', borderRadius: 'var(--r-md)',
+                      fontSize: 12, fontWeight: 500,
+                      background: 'var(--accent)', color: '#fff',
+                      border: '1px solid var(--accent)',
+                    }}
+                  >
+                    <Sparkles size={12} /> 생성 탭으로 이동
+                  </button>
+                  {!(currentPrompt || currentMP) && (
+                    <button
+                      onClick={() => generateMasterPromptAI()}
+                      disabled={mpAiBusy}
+                      className="flex items-center gap-1"
+                      style={{
+                        padding: '7px 14px', borderRadius: 'var(--r-md)',
+                        fontSize: 12, fontWeight: 500,
+                        background: 'var(--accent-soft)', color: 'var(--accent)',
+                        border: '1px solid var(--accent-line)',
+                        opacity: mpAiBusy ? 0.5 : 1,
+                      }}
+                    >
+                      {mpAiBusy ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                      AI 마스터 프롬프트 생성
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 

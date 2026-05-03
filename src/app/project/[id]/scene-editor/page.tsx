@@ -585,11 +585,15 @@ export default function SceneEditorPage() {
     setClassifying(true)
     setError(null)
     const manualScenes = scenes.map(s => s.content.trim()).filter(Boolean)
+    // 자동 추출된 root_asset_marks를 같이 전송 → classify가 새 씬에 동기화
+    const sceneMarks = scenes
+      .filter(sc => sc.rootAssetMarks && Object.values(sc.rootAssetMarks).some(v => v && v.trim()))
+      .map(sc => ({ content: sc.content.trim(), marks: sc.rootAssetMarks }))
     try {
       const res = await fetch('/api/scenes/classify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scriptId, projectId, manualScenes }),
+        body: JSON.stringify({ scriptId, projectId, manualScenes, sceneMarks }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
