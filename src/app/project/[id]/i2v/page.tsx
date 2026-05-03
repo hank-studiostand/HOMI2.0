@@ -13,6 +13,7 @@ import Badge from '@/components/ui/Badge'
 import Pill from '@/components/ui/Pill'
 import SatisfactionRating from '@/components/ui/SatisfactionRating'
 import SceneTreeView from '@/components/scene/SceneTreeView'
+import SceneBoardCard from '@/components/scene/SceneBoardCard'
 import CameraReferencePanel, { buildCameraPrompt } from '@/components/ui/CameraReferencePanel'
 import SceneReferencePicker, {
   emptyRefSelection, allSelectedUrls, RefSelection,
@@ -285,6 +286,7 @@ export default function I2VPage() {
   const [durations, setDurations]             = useState<Record<string, number>>({})
   const [aspectRatios, setAspectRatios]       = useState<Record<string, string>>({})
   const [expandedScene, setExpandedScene]     = useLocalState<string | null>(`expanded-i2v-${projectId}`, null)
+  const [viewMode, setViewMode] = useLocalState<'cards' | 'tree'>(`i2v-view:${projectId}`, 'cards')
   const [completedScenes, setCompletedScenes] = useState<Set<string>>(new Set())
   const [sceneCamera, setSceneCamera]         = useState<Record<string, {
     angle?: string; shotSize?: string; lens?: string; lighting?: string
@@ -842,16 +844,66 @@ export default function I2VPage() {
 
       {/* Body */}
       <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-4xl mx-auto">
-          <SceneTreeView
-            scenes={scenes}
-            completedScenes={completedScenes}
-            onToggleComplete={handleToggleComplete}
-            renderScene={renderSceneContent}
-            expandedSceneId={expandedScene}
-            onExpandScene={setExpandedScene}
-            storageKey={`i2v:${projectId}`}
-          />
+        <div className="max-w-7xl mx-auto">
+          {/* View 토글 */}
+          <div className="flex items-center" style={{ gap: 6, marginBottom: 14 }}>
+            <button
+              onClick={() => setViewMode('cards')}
+              style={{
+                padding: '5px 12px',
+                borderRadius: 'var(--r-md)',
+                fontSize: 11, fontWeight: 500,
+                background: viewMode === 'cards' ? 'var(--bg-3)' : 'transparent',
+                color: viewMode === 'cards' ? 'var(--ink)' : 'var(--ink-3)',
+              }}
+            >
+              카드
+            </button>
+            <button
+              onClick={() => setViewMode('tree')}
+              style={{
+                padding: '5px 12px',
+                borderRadius: 'var(--r-md)',
+                fontSize: 11, fontWeight: 500,
+                background: viewMode === 'tree' ? 'var(--bg-3)' : 'transparent',
+                color: viewMode === 'tree' ? 'var(--ink)' : 'var(--ink-3)',
+              }}
+            >
+              트리 (생성)
+            </button>
+            <div style={{ flex: 1 }} />
+            <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>
+              {viewMode === 'cards' ? '카드 클릭 → 워크스페이스에서 결과 검토/결정' : '인라인 생성 + 시도 트리'}
+            </span>
+          </div>
+
+          {viewMode === 'cards' ? (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                gap: 14,
+              }}
+            >
+              {scenes.map(scene => (
+                <SceneBoardCard
+                  key={scene.id}
+                  scene={scene}
+                  projectId={projectId}
+                />
+              ))}
+            </div>
+          ) : (
+            <SceneTreeView
+              scenes={scenes}
+              completedScenes={completedScenes}
+              onToggleComplete={handleToggleComplete}
+              renderScene={renderSceneContent}
+              expandedSceneId={expandedScene}
+              onExpandScene={setExpandedScene}
+              storageKey={`i2v:${projectId}`}
+            />
+          )}
         </div>
       </div>
     </div>
