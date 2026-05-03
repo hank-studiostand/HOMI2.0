@@ -41,6 +41,7 @@ interface OutputItem {
   type: 't2i' | 'i2v' | 'lipsync'
   engine: string
   created_at: string
+  decision: 'approved' | 'revise_requested' | 'removed' | null
 }
 
 interface AttemptMeta {
@@ -189,6 +190,17 @@ export default function WorkspacePage() {
       .eq('scene_id', sceneId)
       .order('created_at', { ascending: false })
 
+    // shot_decisions — output별 최신 결정
+    const { data: decRows } = await supabase
+      .from('shot_decisions')
+      .select('output_id, decision_type, created_at')
+      .eq('scene_id', sceneId)
+      .order('created_at', { ascending: false })
+    const latestDecision = new Map<string, 'approved' | 'revise_requested' | 'removed'>()
+    for (const d of (decRows ?? []) as any[]) {
+      if (!latestDecision.has(d.output_id)) latestDecision.set(d.output_id, d.decision_type)
+    }
+
     const flat: OutputItem[] = []
     const meta: AttemptMeta[] = []
     for (const a of (attemptsData ?? []) as any[]) {
@@ -207,6 +219,7 @@ export default function WorkspacePage() {
           type: a.type,
           engine: a.engine,
           created_at: o.created_at ?? a.created_at,
+          decision: latestDecision.get(o.id) ?? null,
         })
       }
     }
@@ -301,7 +314,16 @@ export default function WorkspacePage() {
 
   async function submitDecision(decision: 'approved' | 'revise_requested' | 'removed') {
     if (!decisionFor || !meId || !activeId) return
-    const { error } = await supabase
+
+    // 큐 placeholder는 결정 불가 (실제 output 저장된 뒤 다시 시도)
+    if (decisionFor.startsWith('temp_')) {
+      alert('아직 생성 중인 결과예요. 완성된 후 다시 시도해주세요.')
+      setDecisionFor(null); setDecisionIntent(null); setDecisionReasons([]); setDecisionNote('')
+      return
+    }
+
+    // 1) shot_decisions insert
+    const { error: decErr } = await supabase
       .from('shot_decisions')
       .insert({
         output_id: decisionFor,
@@ -311,13 +333,35 @@ export default function WorkspacePage() {
         comment: decisionNote,
         decided_by: meId,
       })
-    if (error) { alert('결정 저장 실패: ' + error.message); return }
-    // archived 필드도 같이 갱신
-    if (decision === 'approved') {
-      await supabase.from('attempt_outputs').update({ archived: true, satisfaction_score: 5 }).eq('id', decisionFor)
-    } else if (decision === 'removed') {
-      await supabase.from('attempt_outputs').update({ archived: false, satisfaction_score: 1 }).eq('id', decisionFor)
+    if (decErr) {
+      console.error('[submitDecision] shot_decisions insert error:', decErr)
+      alert(
+        '결정 저장 실패\n\n' +
+        '코드: ' + (decErr.code ?? '?') + '\n' +
+        '메시지: ' + (decErr.message ?? '?') + '\n' +
+        (decErr.hint ? '힌트: ' + decErr.hint + '\n' : '') +
+        (decErr.details ? '상세: ' + decErr.details : ''),
+      )
+      return
     }
+
+    // 2) attempt_outputs 동기화 (실패해도 결정 자체는 저장됨 — 경고만)
+    try {
+      if (decision === 'approved') {
+        const { error: upErr } = await supabase.from('attempt_outputs')
+          .update({ archived: true, satisfaction_score: 5 })
+          .eq('id', decisionFor)
+        if (upErr) console.warn('[submitDecision] attempt_outputs update warn:', upErr)
+      } else if (decision === 'removed') {
+        const { error: upErr } = await supabase.from('attempt_outputs')
+          .update({ archived: false, satisfaction_score: 1 })
+          .eq('id', decisionFor)
+        if (upErr) console.warn('[submitDecision] attempt_outputs update warn:', upErr)
+      }
+    } catch (e) {
+      console.warn('[submitDecision] attempt_outputs sync skipped:', e)
+    }
+
     setDecisionFor(null); setDecisionIntent(null); setDecisionReasons([]); setDecisionNote('')
     void loadSceneData(activeId)
   }
@@ -750,6 +794,9 @@ export default function WorkspacePage() {
             rootSel={genRootSel}
             onRootSelChange={setGenRootSel}
             sceneDefaultRootIds={(active as any).selected_root_asset_image_ids ?? {}}
+            recentOutputs={candidates}
+            recentAttempts={attempts}
+            onJumpToResults={() => setCenterTab('results')}
             onGenerate={async () => {
               const basePrompt = (genPromptDraft || currentPrompt?.content || currentMP?.content || '').trim()
               if (!basePrompt) { alert('프롬프트를 입력하거나 마스터 프롬프트를 먼저 만들어주세요.'); return }
@@ -791,7 +838,6 @@ export default function WorkspacePage() {
               }
 
               setGenerating(true)
-              setCenterTab('results')
 
               // 옵티미스틱 placeholder
               const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2,7)}`
@@ -801,6 +847,7 @@ export default function WorkspacePage() {
                 satisfaction_score: null, feedback: '',
                 type: genType, engine: genEngine,
                 created_at: new Date().toISOString(),
+                decision: null,
               }
               setOutputs(prev => [...prev, placeholder])
 
@@ -901,6 +948,10 @@ export default function WorkspacePage() {
                   <div className="flex items-center" style={{ gap: 8, marginBottom: 12 }}>
                     <Pill variant="gen">{focused.type.toUpperCase()}</Pill>
                     <span className="mono" style={{ fontSize: 11, color: 'var(--ink-3)' }}>{focused.engine}</span>
+                    <span style={{ flex: 1 }} />
+                    {focused.decision === 'approved' && <Pill variant="approved">승인됨</Pill>}
+                    {focused.decision === 'revise_requested' && <Pill variant="revise">수정요청</Pill>}
+                    {focused.decision === 'removed' && <Pill variant="removed">제거됨</Pill>}
                   </div>
                   <div className="field-label">결정</div>
                   <div className="flex flex-col" style={{ gap: 6, marginBottom: 12 }}>
@@ -1113,9 +1164,25 @@ function CandidateStrip({
                         </div>
                       )}
                     <div style={{ position: 'absolute', inset: 0, background: sel ? 'rgba(249,115,22,0.15)' : 'transparent' }} />
-                    {r.archived && (
+                    {/* removed 결과는 X 오버레이 */}
+                    {r.decision === 'removed' && (
+                      <div
+                        style={{
+                          position: 'absolute', inset: 0,
+                          background: 'rgba(0,0,0,0.55)',
+                          display: 'grid', placeItems: 'center',
+                        }}
+                      >
+                        <Trash2 size={20} style={{ color: '#fff' }} />
+                      </div>
+                    )}
+                    {/* 결정 pill (decision 우선, 폴백으로 archived) */}
+                    {(r.decision || r.archived) && (
                       <div style={{ position: 'absolute', top: 4, right: 4 }}>
-                        <Pill variant="approved">승인</Pill>
+                        {r.decision === 'approved' && <Pill variant="approved">승인</Pill>}
+                        {r.decision === 'revise_requested' && <Pill variant="revise">수정요청</Pill>}
+                        {r.decision === 'removed' && <Pill variant="removed">제거</Pill>}
+                        {!r.decision && r.archived && <Pill variant="approved">승인</Pill>}
                       </div>
                     )}
                   </button>
@@ -1141,9 +1208,21 @@ function CompareCell({
             ? <img src={item.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             : <video src={item.url} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />)
           : <div style={{ width: '100%', height: '100%' }} />}
+        {item.decision === 'removed' && (
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'grid', placeItems: 'center' }}>
+            <Trash2 size={22} style={{ color: '#fff' }} />
+          </div>
+        )}
         <div style={{ position: 'absolute', top: 6, left: 6 }}>
           <Pill variant="gen">{item.type.toUpperCase()}</Pill>
         </div>
+        {item.decision && (
+          <div style={{ position: 'absolute', top: 6, right: 6 }}>
+            {item.decision === 'approved' && <Pill variant="approved">승인</Pill>}
+            {item.decision === 'revise_requested' && <Pill variant="revise">수정요청</Pill>}
+            {item.decision === 'removed' && <Pill variant="removed">제거</Pill>}
+          </div>
+        )}
       </div>
       <div style={{ padding: 10, fontSize: 11 }}>
         <div className="flex items-center" style={{ marginBottom: 8 }}>
@@ -1381,6 +1460,7 @@ function GeneratePanel({
   referenceAssets, camera, onCameraSelect, onCameraDeselect,
   refSel, onRefSelChange, scene,
   rootAssets, rootSel, onRootSelChange, sceneDefaultRootIds,
+  recentOutputs, recentAttempts, onJumpToResults,
 }: {
   sceneId: string
   projectId: string
@@ -1406,6 +1486,9 @@ function GeneratePanel({
   rootSel: Record<'character' | 'space' | 'object' | 'misc', Set<string>>
   onRootSelChange: React.Dispatch<React.SetStateAction<Record<'character' | 'space' | 'object' | 'misc', Set<string>>>>
   sceneDefaultRootIds: Record<string, string[]>
+  recentOutputs: OutputItem[]
+  recentAttempts: AttemptMeta[]
+  onJumpToResults: () => void
 }) {
   const engineOptions = type === 't2i' ? T2I_ENGINES : I2V_ENGINES
 
@@ -1435,6 +1518,33 @@ function GeneratePanel({
         <p style={{ marginTop: 6, fontSize: 11, color: 'var(--ink-4)' }}>
           공란일 경우 현재 마스터 프롬프트가 자동 사용됩니다.
         </p>
+
+        {/* ── 인라인 결과 strip (Generate 탭에서도 결과 즉시 확인) ── */}
+        <div style={{ marginTop: 18 }}>
+          <div className="flex items-center" style={{ gap: 8, marginBottom: 8 }}>
+            <span className="field-label" style={{ margin: 0 }}>최근 결과</span>
+            <span style={{ flex: 1 }} />
+            {recentOutputs.length > 0 && (
+              <button
+                onClick={onJumpToResults}
+                style={{
+                  fontSize: 10, color: 'var(--accent)',
+                  padding: '3px 8px', borderRadius: 'var(--r-sm)',
+                  background: 'var(--accent-soft)', border: '1px solid var(--accent-line)',
+                }}
+              >
+                결과 탭에서 더 보기 →
+              </button>
+            )}
+          </div>
+          {recentOutputs.length === 0 ? (
+            <div className="empty" style={{ padding: 16, fontSize: 11 }}>
+              아직 결과가 없어요. 위에서 프롬프트를 다듬고 Que를 눌러보세요.
+            </div>
+          ) : (
+            <InlineResultStrip outputs={recentOutputs.slice(0, 8)} attempts={recentAttempts} />
+          )}
+        </div>
       </div>
 
       {/* 우측 — 옵션 + 생성 */}
@@ -1587,6 +1697,75 @@ function GeneratePanel({
           엔진/화면비 설정은 씬 설정에 저장되지 않고 이 시도에만 적용됩니다.
         </p>
       </div>
+    </div>
+  )
+}
+
+// ─── Generate 탭 인라인 결과 strip ────────────────────────────
+function InlineResultStrip({
+  outputs, attempts,
+}: { outputs: OutputItem[]; attempts: AttemptMeta[] }) {
+  // attempt별 그룹핑
+  const groups: { attemptId: string; items: OutputItem[] }[] = []
+  for (const it of outputs) {
+    const last = groups[groups.length - 1]
+    if (last && last.attemptId === it.attempt_id) last.items.push(it)
+    else groups.push({ attemptId: it.attempt_id, items: [it] })
+  }
+  return (
+    <div className="flex flex-col" style={{ gap: 10 }}>
+      {groups.map(g => {
+        const meta = attempts.find(a => a.id === g.attemptId)
+        const isTemp = g.attemptId.startsWith('temp_')
+        return (
+          <div key={g.attemptId}>
+            <div className="flex items-center" style={{ gap: 6, marginBottom: 4, fontSize: 10, color: 'var(--ink-4)' }}>
+              <span
+                style={{
+                  padding: '1px 6px', borderRadius: 'var(--r-sm)',
+                  background: isTemp ? 'var(--bg-3)' : 'var(--accent-soft)',
+                  color: isTemp ? 'var(--ink-3)' : 'var(--accent-2)',
+                  fontWeight: 600,
+                }}
+              >
+                {isTemp ? '생성 중' : (meta?.engine ?? '시도')}
+              </span>
+              <span>{g.items.length}장</span>
+              {isTemp && <Loader2 size={10} className="animate-spin" style={{ color: 'var(--accent)' }} />}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 4 }}>
+              {g.items.map(r => (
+                <div
+                  key={r.id}
+                  style={{
+                    aspectRatio: '16/9', borderRadius: 'var(--r-sm)', overflow: 'hidden',
+                    background: 'var(--bg-3)', border: '1px solid var(--line)',
+                    position: 'relative',
+                  }}
+                >
+                  {r.url ? (
+                    r.type === 't2i'
+                      ? <img src={r.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <video src={r.url} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <div
+                      style={{
+                        width: '100%', height: '100%',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        flexDirection: 'column', gap: 2,
+                        animation: 'pulse-soft 1.6s ease-in-out infinite',
+                      }}
+                    >
+                      <Loader2 size={12} className="animate-spin" style={{ color: 'var(--accent)' }} />
+                      <span style={{ fontSize: 8, color: 'var(--ink-4)' }}>큐 대기</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
