@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Download, Archive, Tag, Film, Image, Mic, FolderOpen } from 'lucide-react'
 import type { Asset } from '@/types'
 import SatisfactionRating from '@/components/ui/SatisfactionRating'
+import FileNameEditor from '@/components/ui/FileNameEditor'
 import Badge from '@/components/ui/Badge'
 import { cn } from '@/lib/utils'
 
@@ -26,13 +27,14 @@ interface AssetCardProps {
   onScore?: (id: string, score: number) => void
   onToggleArchive?: (id: string) => void
   onDownload?: (id: string) => void
+  onRename?: (id: string, newName: string) => Promise<void> | void
   selectable?: boolean
   selected?: boolean
   onSelect?: (id: string) => void
 }
 
 export default function AssetCard({
-  asset, onScore, onToggleArchive, onDownload,
+  asset, onScore, onToggleArchive, onDownload, onRename,
   selectable, selected, onSelect
 }: AssetCardProps) {
   const [showMeta, setShowMeta] = useState(false)
@@ -107,9 +109,13 @@ export default function AssetCard({
 
       {/* Info */}
       <div className="p-3 space-y-2">
-        <p className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-          {asset.name}
-        </p>
+        <div className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+          <FileNameEditor
+            value={asset.name}
+            onSave={async (newName) => { await onRename?.(asset.id, newName) }}
+            disabled={!onRename}
+          />
+        </div>
 
         <SatisfactionRating value={asset.satisfaction_score} size="sm"
           onChange={score => onScore?.(asset.id, score)} />

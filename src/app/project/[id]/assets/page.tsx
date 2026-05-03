@@ -8,6 +8,7 @@ import {
   MapPin, Package, Image as ImageIcon, Tag, Download,
   Archive, Trash2, X, Check, FolderOpen, MoreHorizontal, Clipboard,
 } from 'lucide-react'
+import FileNameEditor from '@/components/ui/FileNameEditor'
 import type { Asset } from '@/types'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
@@ -103,7 +104,7 @@ export function RefCategoryBadge({ category }: { category: RefCategory }) {
 // ─── AssetCard ────────────────────────────────────────────────────────────────
 
 function AssetCard({
-  asset, onScore, onToggleArchive, onDownload, onDelete,
+  asset, onScore, onToggleArchive, onDownload, onDelete, onRename,
   selectable, selected, onSelect,
 }: {
   asset: Asset
@@ -111,6 +112,7 @@ function AssetCard({
   onToggleArchive?: (id: string) => void
   onDownload?: (id: string) => void
   onDelete?: (id: string) => void
+  onRename?: (id: string, newName: string) => Promise<void> | void
   selectable?: boolean
   selected?: boolean
   onSelect?: (id: string) => void
@@ -197,9 +199,13 @@ function AssetCard({
 
       {/* Info */}
       <div className="p-3 space-y-2">
-        <p className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-          {asset.name}
-        </p>
+        <div className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+          <FileNameEditor
+            value={asset.name}
+            onSave={async (newName) => { await onRename?.(asset.id, newName) }}
+            disabled={!onRename}
+          />
+        </div>
         <SatisfactionRating
           value={asset.satisfaction_score}
           size="sm"
@@ -468,6 +474,12 @@ async function uploadFiles(files: FileList | File[], category: RefCategory) {
     setAssets(prev => prev.filter(a => a.id !== id))
   }
 
+  async function renameAsset(id: string, newName: string) {
+    const { error } = await supabase.from('assets').update({ name: newName }).eq('id', id)
+    if (error) throw new Error(error.message)
+    setAssets(prev => prev.map(a => a.id === id ? { ...a, name: newName } : a))
+  }
+
   function toggleSelect(id: string) {
     setSelected(prev => {
       const next = new Set(prev)
@@ -673,7 +685,7 @@ async function uploadFiles(files: FileList | File[], category: RefCategory) {
                       ) : (
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                           {toShow.map(asset => (
-                            <AssetCard
+                            <AssetCard onRename={renameAsset}
                               key={asset.id}
                               asset={asset}
                               onScore={scoreAsset}
@@ -699,7 +711,7 @@ async function uploadFiles(files: FileList | File[], category: RefCategory) {
                           </p>
                           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                             {uncatAssets.map(asset => (
-                              <AssetCard
+                              <AssetCard onRename={renameAsset}
                                 key={asset.id}
                                 asset={asset}
                                 onScore={scoreAsset}
@@ -724,7 +736,7 @@ async function uploadFiles(files: FileList | File[], category: RefCategory) {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                 {filtered.map(asset => (
-                  <AssetCard
+                  <AssetCard onRename={renameAsset}
                     key={asset.id}
                     asset={asset}
                     onScore={scoreAsset}

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useLocalState } from '@/hooks/useLocalState'
 import { createClient } from '@/lib/supabase/client'
+import { sortScenesByNumber } from '@/lib/sceneSort'
 import { useParams } from 'next/navigation'
 import {
   Loader2, ChevronRight, ChevronDown, Play, RefreshCw,
@@ -323,7 +324,7 @@ export default function I2VPage() {
   const fetchData = useCallback(async () => {
     const { data: scenesData } = await supabase
       .from('scenes').select('*').eq('project_id', projectId).order('order_index')
-    setScenes(scenesData ?? [])
+    setScenes(sortScenesByNumber(scenesData ?? []))
 
     const sceneIds = (scenesData ?? []).map((s: any) => s.id)
     if (sceneIds.length === 0) { setLoading(false); return }

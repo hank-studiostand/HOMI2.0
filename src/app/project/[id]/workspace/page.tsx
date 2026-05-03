@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { sortScenesByNumber } from '@/lib/sceneSort'
 import {
   ChevronLeft, Sparkles, Check, RotateCcw, Trash2, X,
   Image as ImageIcon, Film, MessageCircle, Send, Loader2, Plus,
@@ -70,6 +71,14 @@ export default function WorkspacePage() {
   const [decisionReasons, setDecisionReasons] = useState<string[]>([])
   const [decisionNote, setDecisionNote] = useState('')
 
+  // ── Generate 탭 상태 ──────────────────────────────
+  const [centerTab, setCenterTab] = useState<'results' | 'generate'>('results')
+  const [genPromptDraft, setGenPromptDraft] = useState('')
+  const [genType, setGenType] = useState<'t2i' | 'i2v'>('t2i')
+  const [genEngine, setGenEngine] = useState<string>('nanobanana')
+  const [genRatio, setGenRatio] = useState<string>('16:9')
+  const [generating, setGenerating] = useState(false)
+
   // 씬 목록 + 활성 씬 결정
   useEffect(() => {
     void (async () => {
@@ -81,7 +90,7 @@ export default function WorkspacePage() {
         .select('*')
         .eq('project_id', projectId)
         .order('order_index')
-      const list = (data ?? []) as Scene[]
+      const list = sortScenesByNumber((data ?? []) as Scene[])
       setScenes(list)
       const want = search.get('scene')
       if (want && list.find(s => s.id === want)) setActiveId(want)
@@ -385,29 +394,108 @@ export default function WorkspacePage() {
           }}
         >
           <div className="flex items-center gap-2" style={{ marginBottom: 10 }}>
-            <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Results</h3>
+            {/* Tab 토글 */}
+            <div className="flex items-center" style={{ gap: 4 }}>
+              <button
+                onClick={() => setCenterTab('results')}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: 'var(--r-md)',
+                  fontSize: 12, fontWeight: 600,
+                  background: centerTab === 'results' ? 'var(--bg-3)' : 'transparent',
+                  color: centerTab === 'results' ? 'var(--ink)' : 'var(--ink-3)',
+                }}
+              >
+                결과
+              </button>
+              <button
+                onClick={() => setCenterTab('generate')}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: 'var(--r-md)',
+                  fontSize: 12, fontWeight: 600,
+                  background: centerTab === 'generate' ? 'var(--bg-3)' : 'transparent',
+                  color: centerTab === 'generate' ? 'var(--ink)' : 'var(--ink-3)',
+                }}
+              >
+                <Sparkles size={11} style={{ display: 'inline', marginRight: 4 }} />
+                생성
+              </button>
+            </div>
             <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>
               · {candidates.length} candidates
             </span>
             <span style={{ flex: 1 }} />
-            <button
-              onClick={() => setCompareMode(v => !v)}
-              style={{
-                padding: '4px 10px',
-                borderRadius: 'var(--r-md)',
-                fontSize: 11, fontWeight: 500,
-                background: compareMode ? 'var(--accent)' : 'transparent',
-                color: compareMode ? '#fff' : 'var(--ink-2)',
-                border: '1px solid var(--line-strong)',
-              }}
-            >
-              Compare {compareMode && `(${selectedIds.length})`}
-            </button>
+            {centerTab === 'results' && (
+              <button
+                onClick={() => setCompareMode(v => !v)}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: 'var(--r-md)',
+                  fontSize: 11, fontWeight: 500,
+                  background: compareMode ? 'var(--accent)' : 'transparent',
+                  color: compareMode ? '#fff' : 'var(--ink-2)',
+                  border: '1px solid var(--line-strong)',
+                }}
+              >
+                Compare {compareMode && `(${selectedIds.length})`}
+              </button>
+            )}
           </div>
         </div>
 
         {/* 본문 */}
-        {compareMode ? (
+        {centerTab === 'generate' ? (
+          <GeneratePanel
+            sceneId={active.id}
+            projectId={projectId}
+            currentPrompt={(currentPrompt?.content ?? currentMP?.content ?? '')}
+            promptDraft={genPromptDraft}
+            onPromptChange={setGenPromptDraft}
+            type={genType}
+            onTypeChange={setGenType}
+            engine={genEngine}
+            onEngineChange={setGenEngine}
+            ratio={genRatio}
+            onRatioChange={setGenRatio}
+            generating={generating}
+            onGenerate={async () => {
+              setGenerating(true)
+              try {
+                const prompt = (genPromptDraft || currentPrompt?.content || currentMP?.content || '').trim()
+                if (!prompt) { alert('프롬프트를 입력하거나 마스터 프롬프트를 먼저 만들어주세요.'); return }
+                const { data: attempt, error } = await supabase
+                  .from('prompt_attempts')
+                  .insert({
+                    scene_id: active.id, type: genType, engine: genEngine,
+                    prompt, status: 'generating', depth: 0,
+                  })
+                  .select().single()
+                if (error || !attempt) { alert('시도 생성 실패: ' + (error?.message ?? '')); return }
+                const url = genType === 't2i' ? '/api/t2i/generate' : '/api/i2v/generate'
+                const body = genType === 't2i'
+                  ? { attemptId: attempt.id, prompt, engine: genEngine, projectId, sceneId: active.id, aspectRatio: genRatio }
+                  : { attemptId: attempt.id, prompt, sourceImageUrl: focused?.url, projectId, sceneId: active.id, duration: 5, aspectRatio: genRatio }
+                const r = await fetch(url, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(body),
+                })
+                if (!r.ok) {
+                  const j = await r.json().catch(() => ({}))
+                  alert('생성 실패: ' + (j.error ?? r.statusText))
+                  await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attempt.id)
+                  return
+                }
+                // 결과 다시 로드
+                await loadSceneData(active.id)
+                setCenterTab('results')
+              } finally {
+                setGenerating(false)
+              }
+            }}
+          />
+        ) : compareMode ? (
           <div style={{ padding: '18px 20px' }}>
             <div
               style={{
@@ -779,6 +867,164 @@ function DecisionModal({
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Generate 패널 — 프롬프트 + 엔진 + 화면비 + 생성 ─────────
+const T2I_ENGINES = [
+  { value: 'nanobanana',       label: '나노바나나' },
+  { value: 'gpt-image',        label: 'GPT Image' },
+  { value: 'midjourney',       label: 'Midjourney' },
+  { value: 'stable-diffusion', label: 'Stable Diffusion' },
+  { value: 'dalle',            label: 'DALL-E 3' },
+]
+const I2V_ENGINES = [
+  { value: 'kling',     label: 'Kling I2V' },
+  { value: 'kling3',    label: 'Kling 3.0' },
+  { value: 'seedance-2',label: 'Seedance 2.0 (스켈레톤)' },
+]
+const RATIOS = ['16:9', '9:16', '1:1', '4:3', '21:9']
+
+function GeneratePanel({
+  sceneId, projectId,
+  currentPrompt, promptDraft, onPromptChange,
+  type, onTypeChange,
+  engine, onEngineChange,
+  ratio, onRatioChange,
+  generating, onGenerate,
+}: {
+  sceneId: string
+  projectId: string
+  currentPrompt: string
+  promptDraft: string
+  onPromptChange: (v: string) => void
+  type: 't2i' | 'i2v'
+  onTypeChange: (v: 't2i' | 'i2v') => void
+  engine: string
+  onEngineChange: (v: string) => void
+  ratio: string
+  onRatioChange: (v: string) => void
+  generating: boolean
+  onGenerate: () => Promise<void> | void
+}) {
+  const engineOptions = type === 't2i' ? T2I_ENGINES : I2V_ENGINES
+
+  return (
+    <div style={{ padding: '18px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
+      {/* 좌측 — 프롬프트 */}
+      <div>
+        <div className="field-label">프롬프트</div>
+        <textarea
+          value={promptDraft || currentPrompt}
+          onChange={(e) => onPromptChange(e.target.value)}
+          placeholder="이미지/영상 생성에 쓸 프롬프트... (현재 마스터 프롬프트가 자동 로드됨)"
+          rows={10}
+          style={{
+            width: '100%',
+            background: 'var(--bg-2)',
+            border: '1px solid var(--line)',
+            borderRadius: 'var(--r-md)',
+            padding: 12,
+            fontSize: 13,
+            color: 'var(--ink)',
+            outline: 'none',
+            resize: 'vertical',
+            lineHeight: 1.6,
+          }}
+        />
+        <p style={{ marginTop: 6, fontSize: 11, color: 'var(--ink-4)' }}>
+          공란일 경우 현재 마스터 프롬프트가 자동 사용됩니다.
+        </p>
+      </div>
+
+      {/* 우측 — 옵션 + 생성 */}
+      <div>
+        <div className="field-label">유형</div>
+        <div className="flex" style={{ gap: 6, marginBottom: 14 }}>
+          {(['t2i', 'i2v'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => onTypeChange(t)}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                borderRadius: 'var(--r-md)',
+                fontSize: 12, fontWeight: 500,
+                background: type === t ? 'var(--accent-soft)' : 'var(--bg-2)',
+                color: type === t ? 'var(--accent)' : 'var(--ink-3)',
+                border: `1px solid ${type === t ? 'var(--accent-line)' : 'var(--line)'}`,
+              }}
+            >
+              {t === 't2i' ? 'T2I — 이미지' : 'I2V — 영상'}
+            </button>
+          ))}
+        </div>
+
+        <div className="field-label">엔진</div>
+        <div className="flex flex-wrap" style={{ gap: 6, marginBottom: 14 }}>
+          {engineOptions.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => onEngineChange(opt.value)}
+              style={{
+                padding: '6px 12px',
+                borderRadius: 'var(--r-md)',
+                fontSize: 11, fontWeight: 500,
+                background: engine === opt.value ? 'var(--accent-soft)' : 'var(--bg-3)',
+                color: engine === opt.value ? 'var(--accent)' : 'var(--ink-2)',
+                border: `1px solid ${engine === opt.value ? 'var(--accent-line)' : 'var(--line)'}`,
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="field-label">화면비</div>
+        <div className="flex" style={{ gap: 6, marginBottom: 18 }}>
+          {RATIOS.map(r => (
+            <button
+              key={r}
+              onClick={() => onRatioChange(r)}
+              style={{
+                padding: '6px 12px',
+                borderRadius: 'var(--r-md)',
+                fontSize: 11, fontWeight: 500,
+                background: ratio === r ? 'var(--accent-soft)' : 'var(--bg-3)',
+                color: ratio === r ? 'var(--accent)' : 'var(--ink-2)',
+                border: `1px solid ${ratio === r ? 'var(--accent-line)' : 'var(--line)'}`,
+                fontFamily: 'var(--font-mono)',
+              }}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
+
+        <button
+          onClick={() => onGenerate()}
+          disabled={generating}
+          style={{
+            width: '100%',
+            padding: '10px 14px',
+            borderRadius: 'var(--r-md)',
+            fontSize: 13, fontWeight: 600,
+            background: 'var(--accent)', color: '#fff',
+            border: '1px solid var(--accent)',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            opacity: generating ? 0.6 : 1,
+          }}
+        >
+          {generating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+          {generating ? '생성 중...' : `${type === 't2i' ? '이미지' : '영상'} 생성`}
+        </button>
+
+        <p style={{ marginTop: 10, fontSize: 11, color: 'var(--ink-4)', lineHeight: 1.5 }}>
+          생성 시작 후 결과 탭에서 진행 상태와 후보를 확인할 수 있어요.
+          엔진/화면비 설정은 씬 설정에 저장되지 않고 이 시도에만 적용됩니다.
+        </p>
       </div>
     </div>
   )

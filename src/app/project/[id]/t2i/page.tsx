@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useLocalState } from '@/hooks/useLocalState'
 import { createClient } from '@/lib/supabase/client'
+import { sortScenesByNumber } from '@/lib/sceneSort'
 import { useParams } from 'next/navigation'
 import {
   Loader2, ChevronRight, ChevronDown, Wand2,
@@ -391,7 +392,7 @@ export default function T2IPage() {
       .select('*, master_prompt:master_prompts(content, negative_prompt, version), settings:scene_settings(engine, aspect_ratio)')
       .eq('project_id', projectId)
       .order('order_index')
-    setScenes(scenesData ?? [])
+    setScenes(sortScenesByNumber(scenesData ?? []))
 
     // 편집 기본값 세팅 (이미 사용자가 편집 중이면 유지)
     setEditingPrompt(prev => {

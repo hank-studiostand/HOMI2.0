@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useLocalState } from '@/hooks/useLocalState'
 import { createClient } from '@/lib/supabase/client'
+import { sortScenesByNumber } from '@/lib/sceneSort'
 import { useParams } from 'next/navigation'
 import { Plus, Loader2, ChevronRight, ChevronDown, Wand2, X, Image as ImageIcon } from 'lucide-react'
 import SceneCard from '@/components/scene/SceneCard'
@@ -74,7 +75,7 @@ export default function ScenesPage() {
       .select('*, settings:scene_settings(*), master_prompt:master_prompts(content, negative_prompt, version)')
       .eq('project_id', projectId)
       .order('order_index')
-    setScenes(data ?? [])
+    setScenes(sortScenesByNumber(data ?? []))
     setLoading(false)
   }
 
