@@ -102,6 +102,10 @@ export default function WorkspacePage() {
     character: new Set(), space: new Set(), object: new Set(), misc: new Set(),
   })
 
+  // 프롬프트 편집 상태 — 씬 진입 시 마스터 prefill, 사용자 편집 후엔 그대로 유지
+  const [promptUserEdited, setPromptUserEdited] = useState(false)
+  const [optimizing, setOptimizing] = useState(false)
+
   // ── 마스터 프롬프트 인라인 편집/생성 ─────────────────
   const [mpEditing, setMpEditing] = useState(false)
   const [mpDraft, setMpDraft] = useState('')
@@ -254,6 +258,18 @@ export default function WorkspacePage() {
     })
   }, [activeId, scenes])
 
+  // 씬 변경 → 프롬프트 편집 플래그 리셋
+  useEffect(() => {
+    setPromptUserEdited(false)
+  }, [activeId])
+
+  // 마스터 프롬프트 / 버전 prefill (사용자가 아직 편집 안한 경우만)
+  useEffect(() => {
+    if (promptUserEdited) return
+    const fallback = (versions.find(v => v.is_current)?.content ?? versions[0]?.content ?? masterPrompts[0]?.content ?? '')
+    setGenPromptDraft(fallback)
+  }, [activeId, versions, masterPrompts, promptUserEdited])
+
   // Realtime 코멘트
   useEffect(() => {
     if (!activeId) return
@@ -278,10 +294,11 @@ export default function WorkspacePage() {
     attemptsByVersion.set(v.id, attempts.filter(a => a.prompt.startsWith(v.content)))
   }
 
-  // 후보 필터 (filterVersionId가 set이면 해당 버전 attempts의 outputs만)
+  // 후보 필터 — removed는 휴지통으로, 버전 필터는 그 위에
+  const visibleOutputs = outputs.filter(o => o.decision !== 'removed')
   const filteredCandidates = filterVersionId
-    ? outputs.filter(o => (attemptsByVersion.get(filterVersionId) ?? []).some(a => a.id === o.attempt_id))
-    : outputs
+    ? visibleOutputs.filter(o => (attemptsByVersion.get(filterVersionId) ?? []).some(a => a.id === o.attempt_id))
+    : visibleOutputs
 
   const candidates = filteredCandidates
   const focused = filteredCandidates.find(o => o.id === selectedIds[0]) || filteredCandidates[0] || null
@@ -775,7 +792,7 @@ export default function WorkspacePage() {
             projectId={projectId}
             currentPrompt={(currentPrompt?.content ?? currentMP?.content ?? '')}
             promptDraft={genPromptDraft}
-            onPromptChange={setGenPromptDraft}
+            onPromptChange={(v) => { setGenPromptDraft(v); setPromptUserEdited(true) }}
             type={genType}
             onTypeChange={setGenType}
             engine={genEngine}
@@ -797,6 +814,72 @@ export default function WorkspacePage() {
             recentOutputs={candidates}
             recentAttempts={attempts}
             onJumpToResults={() => setCenterTab('results')}
+            onSelectOutput={(id) => setSelectedIds([id])}
+            onQuickDecide={async (id, dec) => {
+              if (!meId || !activeId) return
+              if (id.startsWith('temp_')) return
+              const { error } = await supabase.from('shot_decisions').insert({
+                output_id: id, scene_id: activeId, decision_type: dec,
+                reason_tags: [], comment: '',
+                decided_by: meId,
+              })
+              if (error) { alert('저장 실패: ' + error.message); return }
+              if (dec === 'approved') {
+                await supabase.from('attempt_outputs').update({ archived: true, satisfaction_score: 5 }).eq('id', id)
+              }
+              await loadSceneData(activeId)
+            }}
+            onQuickRate={async (id, score) => {
+              if (id.startsWith('temp_')) return
+              const { error } = await supabase.from('attempt_outputs')
+                .update({ satisfaction_score: score })
+                .eq('id', id)
+              if (error) { alert('별점 저장 실패: ' + error.message); return }
+              if (activeId) await loadSceneData(activeId)
+            }}
+            optimizing={optimizing}
+            onOptimize={async () => {
+              if (!active) return
+              const draft = genPromptDraft.trim()
+              if (!draft) { alert('먼저 프롬프트를 입력하거나 마스터를 prefill 받아주세요.'); return }
+              setOptimizing(true)
+              try {
+                // 카메라 토큰
+                const camTokens: string[] = []
+                if (genCamera.angle)    camTokens.push(`angle:${genCamera.angle}`)
+                if (genCamera.shotSize) camTokens.push(`shot:${genCamera.shotSize}`)
+                if (genCamera.lens)     camTokens.push(`lens:${genCamera.lens}`)
+                if (genCamera.lighting) camTokens.push(`lighting:${genCamera.lighting}`)
+                // 레퍼런스 라벨 (카테고리만 — URL 노출은 LLM에 불필요)
+                const refLabels: string[] = []
+                for (const [k, v] of Object.entries(genRefSel)) {
+                  if ((v as Set<string>).size > 0) refLabels.push(`${k}: ${(v as Set<string>).size}장`)
+                }
+                for (const [k, v] of Object.entries(genRootSel)) {
+                  if ((v as Set<string>).size > 0) refLabels.push(`root-${k}: ${(v as Set<string>).size}장`)
+                }
+                const r = await fetch('/api/prompts/optimize', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    sceneId: active.id,
+                    draft,
+                    aspectRatio: genRatio,
+                    cameraTokens: camTokens,
+                    referenceLabels: refLabels,
+                    type: genType,
+                  }),
+                })
+                const j = await r.json()
+                if (!r.ok) { alert('최적화 실패: ' + (j.error ?? r.statusText)); return }
+                if (j.optimized) {
+                  setGenPromptDraft(j.optimized)
+                  setPromptUserEdited(true)
+                }
+              } finally {
+                setOptimizing(false)
+              }
+            }}
             onGenerate={async () => {
               const basePrompt = (genPromptDraft || currentPrompt?.content || currentMP?.content || '').trim()
               if (!basePrompt) { alert('프롬프트를 입력하거나 마스터 프롬프트를 먼저 만들어주세요.'); return }
@@ -839,17 +922,18 @@ export default function WorkspacePage() {
 
               setGenerating(true)
 
-              // 옵티미스틱 placeholder
-              const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2,7)}`
+              // 옵티미스틱 placeholder — T2I는 4장, I2V는 1장이 일반적
+              const placeholderCount = genType === 't2i' ? 4 : 1
               const tempAttempt = `temp_a_${Date.now()}`
-              const placeholder: OutputItem = {
-                id: tempId, attempt_id: tempAttempt, url: null, archived: false,
+              const placeholders: OutputItem[] = Array.from({ length: placeholderCount }, (_, i) => ({
+                id: `temp_${Date.now()}_${i}_${Math.random().toString(36).slice(2,7)}`,
+                attempt_id: tempAttempt, url: null, archived: false,
                 satisfaction_score: null, feedback: '',
                 type: genType, engine: genEngine,
                 created_at: new Date().toISOString(),
                 decision: null,
-              }
-              setOutputs(prev => [...prev, placeholder])
+              }))
+              setOutputs(prev => [...prev, ...placeholders])
 
               try {
                 const { data: attempt, error } = await supabase
@@ -861,7 +945,7 @@ export default function WorkspacePage() {
                   .select().single()
                 if (error || !attempt) {
                   alert('시도 생성 실패: ' + (error?.message ?? ''))
-                  setOutputs(prev => prev.filter(o => o.id !== tempId))
+                  setOutputs(prev => prev.filter(o => o.attempt_id !== tempAttempt))
                   return
                 }
                 const url = genType === 't2i' ? '/api/t2i/generate' : '/api/i2v/generate'
@@ -877,7 +961,7 @@ export default function WorkspacePage() {
                   const j = await r.json().catch(() => ({}))
                   alert('생성 실패: ' + (j.error ?? r.statusText))
                   await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attempt.id)
-                  setOutputs(prev => prev.filter(o => o.id !== tempId))
+                  setOutputs(prev => prev.filter(o => o.attempt_id !== tempAttempt))
                   return
                 }
                 await loadSceneData(active.id)
@@ -1164,24 +1248,10 @@ function CandidateStrip({
                         </div>
                       )}
                     <div style={{ position: 'absolute', inset: 0, background: sel ? 'rgba(249,115,22,0.15)' : 'transparent' }} />
-                    {/* removed 결과는 X 오버레이 */}
-                    {r.decision === 'removed' && (
-                      <div
-                        style={{
-                          position: 'absolute', inset: 0,
-                          background: 'rgba(0,0,0,0.55)',
-                          display: 'grid', placeItems: 'center',
-                        }}
-                      >
-                        <Trash2 size={20} style={{ color: '#fff' }} />
-                      </div>
-                    )}
-                    {/* 결정 pill (decision 우선, 폴백으로 archived) */}
                     {(r.decision || r.archived) && (
                       <div style={{ position: 'absolute', top: 4, right: 4 }}>
                         {r.decision === 'approved' && <Pill variant="approved">승인</Pill>}
                         {r.decision === 'revise_requested' && <Pill variant="revise">수정요청</Pill>}
-                        {r.decision === 'removed' && <Pill variant="removed">제거</Pill>}
                         {!r.decision && r.archived && <Pill variant="approved">승인</Pill>}
                       </div>
                     )}
@@ -1461,6 +1531,8 @@ function GeneratePanel({
   refSel, onRefSelChange, scene,
   rootAssets, rootSel, onRootSelChange, sceneDefaultRootIds,
   recentOutputs, recentAttempts, onJumpToResults,
+  onSelectOutput, onQuickDecide, onQuickRate,
+  optimizing, onOptimize,
 }: {
   sceneId: string
   projectId: string
@@ -1489,6 +1561,11 @@ function GeneratePanel({
   recentOutputs: OutputItem[]
   recentAttempts: AttemptMeta[]
   onJumpToResults: () => void
+  onSelectOutput: (id: string) => void
+  onQuickDecide: (id: string, decision: 'approved' | 'revise_requested' | 'removed') => Promise<void> | void
+  onQuickRate: (id: string, score: number) => Promise<void> | void
+  optimizing: boolean
+  onOptimize: () => Promise<void> | void
 }) {
   const engineOptions = type === 't2i' ? T2I_ENGINES : I2V_ENGINES
 
@@ -1498,9 +1575,9 @@ function GeneratePanel({
       <div>
         <div className="field-label">프롬프트</div>
         <textarea
-          value={promptDraft || currentPrompt}
+          value={promptDraft}
           onChange={(e) => onPromptChange(e.target.value)}
-          placeholder="이미지/영상 생성에 쓸 프롬프트... (현재 마스터 프롬프트가 자동 로드됨)"
+          placeholder="이미지/영상 생성에 쓸 프롬프트... (씬 진입 시 마스터가 자동 로드, 비우면 빈 상태 유지)"
           rows={10}
           style={{
             width: '100%',
@@ -1516,7 +1593,7 @@ function GeneratePanel({
           }}
         />
         <p style={{ marginTop: 6, fontSize: 11, color: 'var(--ink-4)' }}>
-          공란일 경우 현재 마스터 프롬프트가 자동 사용됩니다.
+          씬에 진입할 때 마스터 프롬프트가 자동 로드돼요. 비우면 비운 채로 유지됩니다.
         </p>
 
         {/* ── 인라인 결과 strip (Generate 탭에서도 결과 즉시 확인) ── */}
@@ -1542,7 +1619,13 @@ function GeneratePanel({
               아직 결과가 없어요. 위에서 프롬프트를 다듬고 Que를 눌러보세요.
             </div>
           ) : (
-            <InlineResultStrip outputs={recentOutputs.slice(0, 8)} attempts={recentAttempts} />
+            <InlineResultStrip
+              outputs={recentOutputs.slice(0, 8)}
+              attempts={recentAttempts}
+              onSelect={onSelectOutput}
+              onQuickDecide={onQuickDecide}
+              onQuickRate={onQuickRate}
+            />
           )}
         </div>
       </div>
@@ -1673,24 +1756,44 @@ function GeneratePanel({
           projectId={projectId}
         />
 
-        <button
-          onClick={() => onGenerate()}
-          disabled={generating}
-          style={{
-            width: '100%',
-            padding: '10px 14px',
-            borderRadius: 'var(--r-md)',
-            fontSize: 13, fontWeight: 600,
-            background: 'var(--accent)', color: '#fff',
-            border: '1px solid var(--accent)',
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            opacity: generating ? 0.6 : 1,
-            marginTop: 18,
-          }}
-        >
-          {generating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-          {generating ? '생성 중...' : `${type === 't2i' ? '이미지' : '영상'} 생성 — Que`}
-        </button>
+        {/* 액션 묶음 — 최적화 + 생성 */}
+        <div className="flex flex-col" style={{ gap: 8, marginTop: 18 }}>
+          <button
+            onClick={() => onOptimize()}
+            disabled={optimizing || !promptDraft.trim()}
+            className="flex items-center justify-center gap-2"
+            style={{
+              width: '100%',
+              padding: '8px 12px',
+              borderRadius: 'var(--r-md)',
+              fontSize: 12, fontWeight: 500,
+              background: 'var(--accent-soft)', color: 'var(--accent)',
+              border: '1px solid var(--accent-line)',
+              opacity: (optimizing || !promptDraft.trim()) ? 0.5 : 1,
+            }}
+            title="현재 프롬프트 + 화면비 + 구도 + 레퍼런스를 합쳐 AI가 다듬어줍니다"
+          >
+            {optimizing ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+            {optimizing ? '최적화 중...' : '프롬프트 최적화 (옵션 통합)'}
+          </button>
+          <button
+            onClick={() => onGenerate()}
+            disabled={generating}
+            className="flex items-center justify-center gap-2"
+            style={{
+              width: '100%',
+              padding: '10px 14px',
+              borderRadius: 'var(--r-md)',
+              fontSize: 13, fontWeight: 600,
+              background: 'var(--accent)', color: '#fff',
+              border: '1px solid var(--accent)',
+              opacity: generating ? 0.6 : 1,
+            }}
+          >
+            {generating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+            {generating ? '생성 중...' : `${type === 't2i' ? '이미지' : '영상'} 생성 — Que`}
+          </button>
+        </div>
 
         <p style={{ marginTop: 10, fontSize: 11, color: 'var(--ink-4)', lineHeight: 1.5 }}>
           생성 시작 후 결과 탭에서 진행 상태와 후보를 확인할 수 있어요.
@@ -1701,10 +1804,16 @@ function GeneratePanel({
   )
 }
 
-// ─── Generate 탭 인라인 결과 strip ────────────────────────────
+// ─── Generate 탭 인라인 결과 strip — 반응형 + 호버 퀵액션 ──────
 function InlineResultStrip({
-  outputs, attempts,
-}: { outputs: OutputItem[]; attempts: AttemptMeta[] }) {
+  outputs, attempts, onSelect, onQuickDecide, onQuickRate,
+}: {
+  outputs: OutputItem[]
+  attempts: AttemptMeta[]
+  onSelect: (id: string) => void
+  onQuickDecide: (id: string, d: 'approved' | 'revise_requested' | 'removed') => Promise<void> | void
+  onQuickRate: (id: string, score: number) => Promise<void> | void
+}) {
   // attempt별 그룹핑
   const groups: { attemptId: string; items: OutputItem[] }[] = []
   for (const it of outputs) {
@@ -1713,59 +1822,184 @@ function InlineResultStrip({
     else groups.push({ attemptId: it.attempt_id, items: [it] })
   }
   return (
-    <div className="flex flex-col" style={{ gap: 10 }}>
+    <div className="flex flex-col" style={{ gap: 14 }}>
       {groups.map(g => {
         const meta = attempts.find(a => a.id === g.attemptId)
         const isTemp = g.attemptId.startsWith('temp_')
         return (
           <div key={g.attemptId}>
-            <div className="flex items-center" style={{ gap: 6, marginBottom: 4, fontSize: 10, color: 'var(--ink-4)' }}>
+            <div className="flex items-center" style={{ gap: 6, marginBottom: 6, fontSize: 11, color: 'var(--ink-3)' }}>
               <span
                 style={{
-                  padding: '1px 6px', borderRadius: 'var(--r-sm)',
+                  padding: '2px 8px', borderRadius: 'var(--r-sm)',
                   background: isTemp ? 'var(--bg-3)' : 'var(--accent-soft)',
                   color: isTemp ? 'var(--ink-3)' : 'var(--accent-2)',
                   fontWeight: 600,
+                  fontSize: 10,
                 }}
               >
                 {isTemp ? '생성 중' : (meta?.engine ?? '시도')}
               </span>
-              <span>{g.items.length}장</span>
-              {isTemp && <Loader2 size={10} className="animate-spin" style={{ color: 'var(--accent)' }} />}
+              <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>{g.items.length}장</span>
+              {isTemp && <Loader2 size={11} className="animate-spin" style={{ color: 'var(--accent)' }} />}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 4 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
               {g.items.map(r => (
-                <div
+                <InlineResultCard
                   key={r.id}
-                  style={{
-                    aspectRatio: '16/9', borderRadius: 'var(--r-sm)', overflow: 'hidden',
-                    background: 'var(--bg-3)', border: '1px solid var(--line)',
-                    position: 'relative',
-                  }}
-                >
-                  {r.url ? (
-                    r.type === 't2i'
-                      ? <img src={r.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      : <video src={r.url} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <div
-                      style={{
-                        width: '100%', height: '100%',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        flexDirection: 'column', gap: 2,
-                        animation: 'pulse-soft 1.6s ease-in-out infinite',
-                      }}
-                    >
-                      <Loader2 size={12} className="animate-spin" style={{ color: 'var(--accent)' }} />
-                      <span style={{ fontSize: 8, color: 'var(--ink-4)' }}>큐 대기</span>
-                    </div>
-                  )}
-                </div>
+                  item={r}
+                  onSelect={() => onSelect(r.id)}
+                  onQuickDecide={(d) => onQuickDecide(r.id, d)}
+                  onQuickRate={(score) => onQuickRate(r.id, score)}
+                />
               ))}
             </div>
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function InlineResultCard({
+  item, onSelect, onQuickDecide, onQuickRate,
+}: {
+  item: OutputItem
+  onSelect: () => void
+  onQuickDecide: (d: 'approved' | 'revise_requested' | 'removed') => Promise<void> | void
+  onQuickRate: (score: number) => Promise<void> | void
+}) {
+  const [hover, setHover] = useState(false)
+  const isPlaceholder = !item.url
+  const decisionColor =
+    item.decision === 'approved' ? 'var(--ok)'
+    : item.decision === 'revise_requested' ? 'var(--accent)'
+    : 'transparent'
+  return (
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        position: 'relative',
+        aspectRatio: '16/9',
+        borderRadius: 'var(--r-md)', overflow: 'hidden',
+        background: 'var(--bg-3)',
+        border: `2px solid ${decisionColor === 'transparent' ? 'var(--line)' : decisionColor}`,
+        cursor: isPlaceholder ? 'default' : 'pointer',
+      }}
+      onClick={() => { if (!isPlaceholder) onSelect() }}
+    >
+      {item.url ? (
+        item.type === 't2i'
+          ? <img src={item.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          : <video src={item.url} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      ) : (
+        <div
+          style={{
+            width: '100%', height: '100%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexDirection: 'column', gap: 6,
+            animation: 'pulse-soft 1.6s ease-in-out infinite',
+          }}
+        >
+          <Loader2 size={18} className="animate-spin" style={{ color: 'var(--accent)' }} />
+          <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>큐 대기 중</span>
+        </div>
+      )}
+
+      {/* 결정 pill */}
+      {item.decision && (
+        <div style={{ position: 'absolute', top: 6, right: 6 }}>
+          {item.decision === 'approved' && <Pill variant="approved">승인</Pill>}
+          {item.decision === 'revise_requested' && <Pill variant="revise">수정요청</Pill>}
+        </div>
+      )}
+
+      {/* 별점 (이미 매겨진 경우) */}
+      {!isPlaceholder && item.satisfaction_score && !hover && (
+        <div
+          style={{
+            position: 'absolute', bottom: 6, left: 6,
+            padding: '2px 7px', borderRadius: 999,
+            background: 'rgba(0,0,0,0.55)', color: '#fff',
+            fontSize: 10, fontWeight: 600,
+            display: 'inline-flex', alignItems: 'center', gap: 3,
+          }}
+        >
+          ★ {item.satisfaction_score}
+        </div>
+      )}
+
+      {/* 호버 시 퀵 액션 오버레이 */}
+      {!isPlaceholder && hover && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'absolute', inset: 0,
+            background: 'linear-gradient(180deg, rgba(0,0,0,0.05) 30%, rgba(0,0,0,0.65) 100%)',
+            display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+            padding: 8, gap: 6,
+          }}
+        >
+          {/* 별점 */}
+          <div className="flex items-center justify-center" style={{ gap: 2 }}>
+            {[1, 2, 3, 4, 5].map(n => (
+              <button
+                key={n}
+                onClick={(e) => { e.stopPropagation(); void onQuickRate(n) }}
+                title={`별점 ${n}`}
+                style={{
+                  padding: 2, fontSize: 14,
+                  color: (item.satisfaction_score ?? 0) >= n ? 'var(--accent)' : 'rgba(255,255,255,0.6)',
+                  background: 'transparent', border: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                ★
+              </button>
+            ))}
+          </div>
+          {/* OK / Revise / Remove */}
+          <div className="flex items-center" style={{ gap: 4 }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); void onQuickDecide('approved') }}
+              title="OK 컷 — 승인"
+              style={{
+                flex: 1, padding: '5px 0',
+                borderRadius: 'var(--r-sm)', fontSize: 11, fontWeight: 600,
+                background: 'var(--ok)', color: '#fff',
+                border: '1px solid var(--ok)',
+              }}
+            >
+              OK
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); void onQuickDecide('revise_requested') }}
+              title="수정 요청"
+              style={{
+                padding: '5px 8px',
+                borderRadius: 'var(--r-sm)', fontSize: 11,
+                background: 'var(--accent-soft)', color: 'var(--accent-2)',
+                border: '1px solid var(--accent-line)',
+              }}
+            >
+              <RotateCcw size={11} />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); void onQuickDecide('removed') }}
+              title="휴지통으로"
+              style={{
+                padding: '5px 8px',
+                borderRadius: 'var(--r-sm)', fontSize: 11,
+                background: 'var(--danger-soft)', color: 'var(--danger)',
+                border: '1px solid var(--danger-soft)',
+              }}
+            >
+              <Trash2 size={11} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

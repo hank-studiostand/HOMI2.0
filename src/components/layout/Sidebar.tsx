@@ -8,8 +8,7 @@ import {
   FileText, Layers, Image as ImageIcon, Video, Mic, Archive,
   FolderOpen, ChevronLeft, Settings, LogOut, Scissors,
   Clapperboard, Package,
-  Home, Frame, CheckCircle2, GitBranch, Sun, Moon,
-} from 'lucide-react'
+  Home, Frame, CheckCircle2, GitBranch, Sun, Moon, Trash2 } from 'lucide-react'
 
 type IconCmp = React.ComponentType<{ size?: number | string; className?: string; style?: React.CSSProperties }>
 
@@ -67,6 +66,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'DELIVERY',
     items: [
       { href: 'archive', label: '아카이브 / Export', icon: Archive },
+      { href: 'trash',   label: '휴지통',            icon: Trash2 },
     ],
   },
 ]

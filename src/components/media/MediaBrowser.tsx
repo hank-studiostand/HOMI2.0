@@ -113,8 +113,12 @@ export default function MediaBrowser({ type }: Props) {
           })
         }
       }
-      // 시간 desc
-      all.sort((a, b) => b.created_at.localeCompare(a.created_at))
+      // 씬 번호 desc (자연 정렬, 같은 씬 내에서는 시간 desc)
+      all.sort((a, b) => {
+        const c = compareSceneNumbers(b.scene_number, a.scene_number)
+        if (c !== 0) return c
+        return b.created_at.localeCompare(a.created_at)
+      })
       setItems(all)
       setLoading(false)
     })()

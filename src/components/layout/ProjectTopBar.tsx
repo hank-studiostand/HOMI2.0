@@ -21,7 +21,7 @@ interface PresenceMember {
 
 const PAGE_LABELS: Record<string, string> = {
   totaltree: '대시보드', script: '대본', 'scene-editor': '씬 경계',
-  scenes: '씬 분류', assets: '에셋', t2i: '이미지 라이브러리', i2v: '영상 라이브러리',
+  scenes: '씬 분류', assets: '에셋', t2i: '이미지 라이브러리', i2v: '영상 라이브러리', trash: '휴지통',
   lipsync: '립싱크', archive: '아카이브', t2v: 'T2V', settings: '설정',
   workspace: 'Workspace', review: 'Review', version: 'Version',
 }
