@@ -1,188 +1,455 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import {
+  GitBranch, Image as ImageIcon, Video, Loader2, Film,
+  ChevronRight, CheckCircle2, RotateCcw, Trash2,
+} from 'lucide-react'
+import { sortScenesByNumber } from '@/lib/sceneSort'
 import Pill from '@/components/ui/Pill'
-import { GitBranch, Image as ImageIcon, Video, Mic, Wand2 } from 'lucide-react'
 
-// Version & Provenance — 프로젝트 내 모든 attempt를 시간순으로 보여주는 타임라인 스텁.
-// 각 이벤트: 씬 + 타입 + 엔진 + 상태 + 생성 시각.
-
-interface TimelineEvent {
-  id: string
-  scene_id: string
-  scene_number: string
-  scene_title: string
-  type: 't2i' | 'i2v' | 'lipsync'
-  engine: string
-  status: string
-  created_at: string
+interface SceneRow { id: string; scene_number: string; title: string }
+interface VersionRow { id: string; version_label: string; content: string; is_current: boolean; created_at: string }
+interface OutputBit { id: string; url: string | null; archived: boolean; satisfaction_score: number | null; decision: 'approved' | 'revise_requested' | 'removed' | null }
+interface AttemptRow {
+  id: string; scene_id: string; type: 't2i' | 'i2v' | 'lipsync'; engine: string;
+  prompt: string; status: string; created_at: string;
+  outputs: OutputBit[]; versionId: string | null;
 }
 
-const TYPE_META: Record<string, { icon: any; color: string; label: string }> = {
-  t2i:     { icon: ImageIcon, color: 'var(--accent)', label: 'T2I' },
-  i2v:     { icon: Video,     color: 'var(--violet)', label: 'I2V' },
-  lipsync: { icon: Mic,       color: 'var(--pink)',   label: 'Lipsync' },
-}
-
-function statusVariant(status: string) {
-  if (status === 'done') return 'approved' as const
-  if (status === 'generating') return 'gen' as const
-  if (status === 'failed') return 'danger' as const
-  return 'draft' as const
-}
-
-function formatRel(iso: string): string {
-  const d = new Date(iso)
-  const now = Date.now()
-  const diff = (now - d.getTime()) / 1000
-  if (diff < 60) return `방금 전`
-  if (diff < 3600) return `${Math.floor(diff/60)}분 전`
-  if (diff < 86400) return `${Math.floor(diff/3600)}시간 전`
-  if (diff < 86400 * 7) return `${Math.floor(diff/86400)}일 전`
-  return `${d.getMonth()+1}/${d.getDate()}`
-}
+const LANE_COLORS = ['var(--accent)', 'var(--violet)', 'var(--info)', 'var(--pink)', 'var(--ok)', 'var(--warn)']
+const LANE_WIDTH = 280
+const LANE_GAP = 32
+const HEADER_HEIGHT = 64
+const ATTEMPT_HEIGHT = 220
+const ATTEMPT_GAP = 14
+const TOP_PAD = 14
 
 export default function VersionPage() {
   const { id: projectId } = useParams<{ id: string }>()
   const router = useRouter()
   const supabase = createClient()
-  const [events, setEvents] = useState<TimelineEvent[]>([])
+
+  const [scenes, setScenes] = useState<SceneRow[]>([])
+  const [activeSceneId, setActiveSceneId] = useState<string | null>(null)
+  const [versions, setVersions] = useState<VersionRow[]>([])
+  const [attempts, setAttempts] = useState<AttemptRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingScene, setLoadingScene] = useState(false)
 
   useEffect(() => {
     void (async () => {
-      const { data: scenes } = await supabase
-        .from('scenes').select('id, scene_number, title').eq('project_id', projectId)
-      const sceneById = new Map((scenes ?? []).map(s => [s.id, s]))
-      const sceneIds = (scenes ?? []).map(s => s.id)
-      if (sceneIds.length === 0) { setEvents([]); setLoading(false); return }
-
-      const { data: attempts } = await supabase
-        .from('prompt_attempts')
-        .select('id, scene_id, type, engine, status, created_at')
-        .in('scene_id', sceneIds)
-        .order('created_at', { ascending: false })
-
-      const out: TimelineEvent[] = []
-      for (const a of (attempts ?? [])) {
-        const sc = sceneById.get((a as any).scene_id)
-        if (!sc) continue
-        out.push({
-          id: (a as any).id,
-          scene_id: (a as any).scene_id,
-          scene_number: (sc as any).scene_number,
-          scene_title: (sc as any).title,
-          type: (a as any).type,
-          engine: (a as any).engine,
-          status: (a as any).status,
-          created_at: (a as any).created_at,
-        })
-      }
-      setEvents(out)
+      const { data } = await supabase.from('scenes').select('id, scene_number, title').eq('project_id', projectId)
+      const list = sortScenesByNumber((data ?? []) as any) as SceneRow[]
+      setScenes(list)
+      if (list.length > 0) setActiveSceneId(list[0].id)
       setLoading(false)
     })()
   }, [projectId, supabase])
 
-  // 씬별로 그룹핑
-  const bySceneId = events.reduce<Record<string, TimelineEvent[]>>((acc, e) => {
-    if (!acc[e.scene_id]) acc[e.scene_id] = []
-    acc[e.scene_id].push(e)
-    return acc
-  }, {})
+  useEffect(() => {
+    if (!activeSceneId) return
+    setLoadingScene(true)
+    void (async () => {
+      const [{ data: pv }, { data: atts }, { data: decRows }] = await Promise.all([
+        supabase.from('prompt_versions').select('id, version_label, content, is_current, created_at').eq('scene_id', activeSceneId).order('created_at', { ascending: true }),
+        supabase.from('prompt_attempts').select('id, scene_id, type, engine, prompt, status, created_at, outputs:attempt_outputs(id, url, archived, satisfaction_score, asset:assets(url))').eq('scene_id', activeSceneId).order('created_at', { ascending: true }),
+        supabase.from('shot_decisions').select('output_id, decision_type, created_at').eq('scene_id', activeSceneId).order('created_at', { ascending: false }),
+      ])
+      const versionsList = (pv ?? []) as VersionRow[]
+      setVersions(versionsList)
+      const decisionByOutput = new Map<string, 'approved' | 'revise_requested' | 'removed'>()
+      for (const d of (decRows ?? []) as any[]) {
+        if (!decisionByOutput.has(d.output_id)) decisionByOutput.set(d.output_id, d.decision_type)
+      }
+      const attemptsList: AttemptRow[] = (atts ?? []).map((a: any) => {
+        let matched: VersionRow | null = null
+        for (const v of versionsList) {
+          if ((a.prompt ?? '').startsWith(v.content)) { matched = v; break }
+        }
+        return {
+          id: a.id, scene_id: a.scene_id, type: a.type, engine: a.engine,
+          prompt: a.prompt ?? '', status: a.status, created_at: a.created_at,
+          versionId: matched?.id ?? null,
+          outputs: ((a.outputs ?? []) as any[]).map(o => ({
+            id: o.id, url: o.url ?? o.asset?.url ?? null,
+            archived: o.archived ?? false, satisfaction_score: o.satisfaction_score ?? null,
+            decision: decisionByOutput.get(o.id) ?? null,
+          })),
+        }
+      })
+      setAttempts(attemptsList)
+      setLoadingScene(false)
+    })()
+  }, [activeSceneId, supabase])
+
+  const layout = useMemo(() => {
+    if (versions.length === 0 && attempts.length === 0) return null
+    const versionLane = new Map<string, number>()
+    versions.forEach((v, i) => versionLane.set(v.id, i))
+    const lanes: { id: string | null; label: string; color: string }[] = versions.map((v, i) => ({
+      id: v.id, label: v.version_label, color: LANE_COLORS[i] ?? LANE_COLORS[LANE_COLORS.length - 1],
+    }))
+    const hasOrphans = attempts.some(a => !a.versionId)
+    if (hasOrphans || lanes.length === 0) {
+      lanes.push({ id: null, label: '기타', color: 'var(--ink-3)' })
+    }
+    const attemptsByLane: Record<number, AttemptRow[]> = {}
+    for (const att of attempts) {
+      const lane = att.versionId ? (versionLane.get(att.versionId) ?? lanes.length - 1) : lanes.length - 1
+      if (!attemptsByLane[lane]) attemptsByLane[lane] = []
+      attemptsByLane[lane].push(att)
+    }
+    const positions: Record<string, { x: number; y: number; lane: number }> = {}
+    for (const [laneStr, list] of Object.entries(attemptsByLane)) {
+      const lane = Number(laneStr)
+      list.forEach((att, slot) => {
+        positions[att.id] = {
+          x: lane * (LANE_WIDTH + LANE_GAP),
+          y: HEADER_HEIGHT + TOP_PAD + slot * (ATTEMPT_HEIGHT + ATTEMPT_GAP),
+          lane,
+        }
+      })
+    }
+    const totalWidth = Math.max(LANE_WIDTH, lanes.length * LANE_WIDTH + (lanes.length - 1) * LANE_GAP)
+    const maxSlot = Math.max(0, ...Object.values(attemptsByLane).map(l => l.length))
+    const totalHeight = HEADER_HEIGHT + TOP_PAD + maxSlot * (ATTEMPT_HEIGHT + ATTEMPT_GAP) + 40
+
+    type Edge = { from: { x: number; y: number }; to: { x: number; y: number }; color: string }
+    const edges: Edge[] = []
+    versions.forEach((v, idx) => {
+      if (idx === 0) return
+      const earlier = attempts.filter(a => a.versionId !== v.id && a.created_at < v.created_at)
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))[0]
+      if (!earlier) return
+      const fromPos = positions[earlier.id]
+      const firstAttempt = attemptsByLane[idx]?.[0]
+      const targetX = idx * (LANE_WIDTH + LANE_GAP) + LANE_WIDTH / 2
+      const targetY = firstAttempt ? positions[firstAttempt.id].y : HEADER_HEIGHT + TOP_PAD
+      if (!fromPos) return
+      edges.push({
+        from: { x: fromPos.x + LANE_WIDTH / 2, y: fromPos.y + ATTEMPT_HEIGHT },
+        to:   { x: targetX, y: targetY },
+        color: lanes[idx].color,
+      })
+    })
+    return { lanes, attemptsByLane, positions, totalWidth, totalHeight, edges }
+  }, [versions, attempts])
+
+  const activeScene = scenes.find(s => s.id === activeSceneId) ?? null
 
   return (
-    <div className="h-full flex flex-col">
-      <div
-        className="flex items-end justify-between gap-6"
-        style={{
-          padding: '20px 28px 16px',
-          borderBottom: '1px solid var(--line)',
-          background: 'var(--bg)',
-        }}
-      >
-        <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>
-            Version &amp; Provenance
-          </h1>
-          <p style={{ marginTop: 4, fontSize: 13, color: 'var(--ink-3)' }}>
-            모든 생성 시도의 타임라인. 어떤 프롬프트로 어떤 엔진을 썼는지 추적합니다.
+    <div className="h-full grid" style={{ gridTemplateColumns: '240px 1fr', overflow: 'hidden' }}>
+      <aside style={{ borderRight: '1px solid var(--line)', overflow: 'auto', background: 'var(--bg-1)' }}>
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, background: 'var(--bg-1)', zIndex: 1 }}>
+          <div className="flex items-center" style={{ gap: 8, marginBottom: 4 }}>
+            <GitBranch size={14} style={{ color: 'var(--accent)' }} />
+            <h1 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>Provenance</h1>
+          </div>
+          <p style={{ fontSize: 11, color: 'var(--ink-4)', lineHeight: 1.45 }}>
+            씬을 선택해 프롬프트 버전 → 시도 → 결과 계보를 봅니다.
           </p>
         </div>
-      </div>
-
-      <div className="flex-1 overflow-auto" style={{ padding: '20px 28px' }}>
-        {loading && <div className="empty">불러오는 중...</div>}
-        {!loading && events.length === 0 && <div className="empty">아직 생성 이력이 없어요.</div>}
-
-        <div className="flex flex-col" style={{ gap: 16 }}>
-          {Object.entries(bySceneId).map(([sceneId, list]) => {
-            const head = list[0]
-            return (
-              <div key={sceneId} className="card">
+        {loading ? (
+          <div style={{ padding: 16 }}><Loader2 size={14} className="animate-spin" /></div>
+        ) : scenes.length === 0 ? (
+          <div className="empty" style={{ padding: 16, fontSize: 12 }}>씬 없음</div>
+        ) : (
+          <div className="flex flex-col" style={{ padding: 8, gap: 2 }}>
+            {scenes.map(s => {
+              const active = s.id === activeSceneId
+              return (
                 <button
-                  onClick={() => router.push(`/project/${projectId}/workspace?scene=${sceneId}`)}
+                  key={s.id}
+                  onClick={() => setActiveSceneId(s.id)}
                   className="flex items-center gap-2 w-full text-left"
-                  style={{ padding: '12px 14px', borderBottom: '1px solid var(--line)', background: 'var(--bg-1)', transition: 'background 0.12s' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-2)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'var(--bg-1)')}
-                  title="이 씬 워크스페이스 열기"
+                  style={{
+                    padding: '7px 10px', borderRadius: 'var(--r-sm)',
+                    background: active ? 'var(--bg-3)' : 'transparent',
+                    color: active ? 'var(--ink)' : 'var(--ink-3)',
+                    fontSize: 12,
+                  }}
+                  onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--bg-2)' }}
+                  onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                 >
-                  <GitBranch size={14} style={{ color: 'var(--accent)' }} />
-                  <span className="mono" style={{ color: 'var(--accent)' }}>{head.scene_number}</span>
-                  <span style={{ fontSize: 13, fontWeight: 500 }}>{head.scene_title}</span>
-                  <span className="ml-auto muted" style={{ fontSize: 11 }}>{list.length}건</span>
+                  <span className="mono" style={{ minWidth: 36, color: 'var(--accent)', fontWeight: 600 }}>
+                    {s.scene_number}
+                  </span>
+                  <span className="truncate flex-1">{s.title || '(제목 없음)'}</span>
                 </button>
-                <div style={{ padding: '8px 14px' }}>
-                  {list.map(e => {
-                    const meta = TYPE_META[e.type]
-                    const Icon = meta?.icon ?? Wand2
-                    return (
-                      <button
-                        key={e.id}
-                        onClick={() => router.push(`/project/${projectId}/workspace?scene=${e.scene_id}`)}
-                        className="flex items-center gap-3 w-full text-left"
-                        style={{
-                          padding: '8px 6px',
-                          borderBottom: '1px dashed var(--line)',
-                          fontSize: 13,
-                          background: 'transparent',
-                          borderRadius: 'var(--r-sm)',
-                          transition: 'background 0.12s',
-                        }}
-                        onMouseEnter={ev => (ev.currentTarget.style.background = 'var(--bg-2)')}
-                        onMouseLeave={ev => (ev.currentTarget.style.background = 'transparent')}
-                        title="이 씬 워크스페이스 열기"
-                      >
-                        <div
-                          style={{
-                            width: 26, height: 26, borderRadius: '50%',
-                            display: 'grid', placeItems: 'center',
-                            background: 'var(--bg-3)',
-                            color: meta?.color ?? 'var(--ink-3)',
-                            flexShrink: 0,
-                          }}
-                        >
-                          <Icon size={13} />
-                        </div>
-                        <span style={{ fontWeight: 500 }}>{meta?.label ?? e.type}</span>
-                        <span className="muted">·</span>
-                        <span className="mono" style={{ color: 'var(--ink-3)' }}>{e.engine}</span>
-                        <Pill variant={statusVariant(e.status)} showDot>
-                          {e.status}
-                        </Pill>
-                        <div className="flex-1" />
-                        <span className="muted" style={{ fontSize: 12 }}>{formatRel(e.created_at)}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
+        )}
+      </aside>
+
+      <main style={{ overflow: 'auto', background: 'var(--bg)' }}>
+        <div className="flex items-end justify-between" style={{ padding: '16px 24px 12px', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, zIndex: 5, background: 'var(--bg)' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, letterSpacing: '-0.01em', color: 'var(--ink)' }}>
+              {activeScene
+                ? <>씬 <span className="mono" style={{ color: 'var(--accent)' }}>{activeScene.scene_number}</span> {activeScene.title}</>
+                : '씬을 선택하세요'}
+            </h2>
+            {activeScene && (
+              <p style={{ marginTop: 4, fontSize: 12, color: 'var(--ink-3)' }}>
+                {versions.length}개 버전 · {attempts.length}개 시도 · {attempts.reduce((n, a) => n + a.outputs.length, 0)}개 결과물
+              </p>
+            )}
+          </div>
+          {activeScene && (
+            <button
+              onClick={() => router.push(`/project/${projectId}/workspace?scene=${activeScene.id}`)}
+              className="flex items-center gap-1"
+              style={{
+                padding: '5px 12px', borderRadius: 'var(--r-sm)',
+                fontSize: 12, fontWeight: 500,
+                background: 'var(--accent-soft)', color: 'var(--accent)',
+                border: '1px solid var(--accent-line)',
+              }}
+            >
+              워크스페이스에서 작업 <ChevronRight size={11} />
+            </button>
+          )}
         </div>
-      </div>
+
+        <div style={{ padding: 24, position: 'relative' }}>
+          {loadingScene ? (
+            <div className="empty" style={{ padding: 64, textAlign: 'center' }}>
+              <Loader2 size={20} className="animate-spin" style={{ color: 'var(--accent)' }} />
+            </div>
+          ) : !layout ? (
+            <div className="empty" style={{ padding: 64, textAlign: 'center' }}>
+              <GitBranch size={28} style={{ color: 'var(--ink-4)' }} />
+              <p style={{ marginTop: 8, fontSize: 13, color: 'var(--ink-3)' }}>
+                아직 프롬프트 버전이나 시도가 없어요
+              </p>
+              <p style={{ marginTop: 4, fontSize: 11, color: 'var(--ink-4)' }}>
+                워크스페이스에서 마스터 프롬프트를 만들고 생성을 시작하면 여기에 계보가 그려져요.
+              </p>
+            </div>
+          ) : (
+            <div style={{ position: 'relative', width: layout.totalWidth, minHeight: layout.totalHeight }}>
+              <svg
+                width={layout.totalWidth}
+                height={layout.totalHeight}
+                style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}
+              >
+                {layout.edges.map((e, i) => {
+                  const dx = e.to.x - e.from.x
+                  const dy = e.to.y - e.from.y
+                  const c1x = e.from.x + dx * 0.1
+                  const c1y = e.from.y + Math.max(40, dy * 0.4)
+                  const c2x = e.to.x - dx * 0.1
+                  const c2y = e.to.y - Math.max(40, dy * 0.4)
+                  return (
+                    <g key={i}>
+                      <path
+                        d={`M ${e.from.x} ${e.from.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${e.to.x} ${e.to.y}`}
+                        stroke={e.color} strokeWidth={2.5} fill="none"
+                        opacity={0.55} strokeDasharray="6 4"
+                      />
+                      <circle cx={e.to.x} cy={e.to.y} r={4} fill={e.color} opacity={0.8} />
+                    </g>
+                  )
+                })}
+              </svg>
+
+              {layout.lanes.map((lane, i) => {
+                const x = i * (LANE_WIDTH + LANE_GAP)
+                const v = versions.find(vv => vv.id === lane.id)
+                return (
+                  <div
+                    key={`lane-${i}`}
+                    style={{
+                      position: 'absolute', left: x, top: 0,
+                      width: LANE_WIDTH, height: HEADER_HEIGHT,
+                      padding: '8px 12px',
+                      background: 'var(--bg-2)',
+                      border: `2px solid ${lane.color}`,
+                      borderRadius: 'var(--r-md)',
+                      display: 'flex', flexDirection: 'column', justifyContent: 'center',
+                    }}
+                  >
+                    <div className="flex items-center" style={{ gap: 6, marginBottom: 2 }}>
+                      <span
+                        className="mono"
+                        style={{
+                          padding: '1px 8px', borderRadius: 'var(--r-sm)',
+                          background: lane.color, color: '#fff',
+                          fontSize: 11, fontWeight: 700,
+                        }}
+                      >
+                        {lane.label}
+                      </span>
+                      {v?.is_current && <Pill variant="ready">current</Pill>}
+                      <span style={{ flex: 1 }} />
+                      {v && (
+                        <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>
+                          {new Date(v.created_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
+                        </span>
+                      )}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.35,
+                        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {v ? v.content : '버전과 매칭되지 않은 시도들'}
+                    </div>
+                  </div>
+                )
+              })}
+
+              {Object.entries(layout.attemptsByLane).map(([_laneStr, list]) =>
+                list.map(att => {
+                  const pos = layout.positions[att.id]
+                  if (!pos) return null
+                  const lane = layout.lanes[pos.lane]
+                  return (
+                    <AttemptCard
+                      key={att.id}
+                      att={att}
+                      x={pos.x}
+                      y={pos.y}
+                      laneColor={lane.color}
+                      onOpen={() => activeSceneId && router.push(`/project/${projectId}/workspace?scene=${activeSceneId}`)}
+                    />
+                  )
+                }),
+              )}
+            </div>
+          )}
+        </div>
+      </main>
     </div>
+  )
+}
+
+function AttemptCard({
+  att, x, y, laneColor, onOpen,
+}: {
+  att: AttemptRow
+  x: number; y: number
+  laneColor: string
+  onOpen: () => void
+}) {
+  const dt = new Date(att.created_at).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  const TypeIcon = att.type === 't2i' ? ImageIcon : att.type === 'i2v' ? Video : Film
+  const statusVariant: 'approved' | 'gen' | 'danger' | 'draft' =
+    att.status === 'done' || att.status === 'completed' ? 'approved'
+    : att.status === 'generating' ? 'gen'
+    : att.status === 'failed' ? 'danger'
+    : 'draft'
+  const statusLabel =
+    att.status === 'done' || att.status === 'completed' ? '완료'
+    : att.status === 'generating' ? '생성중'
+    : att.status === 'failed' ? '실패'
+    : att.status
+
+  return (
+    <button
+      onClick={onOpen}
+      style={{
+        position: 'absolute', left: x, top: y,
+        width: LANE_WIDTH, height: ATTEMPT_HEIGHT,
+        padding: 10,
+        background: 'var(--bg-2)',
+        border: '1px solid var(--line)',
+        borderLeft: `3px solid ${laneColor}`,
+        borderRadius: 'var(--r-md)',
+        textAlign: 'left',
+        transition: 'border-color 0.12s, transform 0.12s',
+        cursor: 'pointer',
+      }}
+      onMouseEnter={e => {
+        const el = e.currentTarget as HTMLElement
+        el.style.borderColor = laneColor
+        el.style.transform = 'translateY(-1px)'
+      }}
+      onMouseLeave={e => {
+        const el = e.currentTarget as HTMLElement
+        el.style.borderColor = 'var(--line)'
+        el.style.transform = 'translateY(0)'
+      }}
+    >
+      <div className="flex items-center" style={{ gap: 6, marginBottom: 6 }}>
+        <TypeIcon size={11} style={{ color: laneColor }} />
+        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink)', textTransform: 'uppercase' }}>
+          {att.type}
+        </span>
+        <span className="mono" style={{ fontSize: 10, color: 'var(--ink-3)' }}>{att.engine}</span>
+        <span style={{ flex: 1 }} />
+        <Pill variant={statusVariant} showDot>{statusLabel}</Pill>
+      </div>
+
+      <div style={{ fontSize: 10, color: 'var(--ink-4)', marginBottom: 6 }}>{dt}</div>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: att.outputs.length <= 2 ? `repeat(${Math.max(1, att.outputs.length)}, 1fr)` : 'repeat(2, 1fr)',
+          gap: 4,
+          minHeight: 80,
+        }}
+      >
+        {att.outputs.length === 0 ? (
+          <div
+            style={{
+              gridColumn: '1 / -1', minHeight: 80,
+              borderRadius: 'var(--r-sm)',
+              background: 'var(--bg-3)', border: '1px dashed var(--line)',
+              display: 'grid', placeItems: 'center',
+              fontSize: 10, color: 'var(--ink-4)',
+            }}
+          >
+            {att.status === 'generating'
+              ? <span className="flex items-center" style={{ gap: 4 }}><Loader2 size={11} className="animate-spin" /> 큐</span>
+              : '결과 없음'}
+          </div>
+        ) : att.outputs.slice(0, 4).map(o => {
+          const decBorder =
+            o.decision === 'approved' ? 'var(--ok)'
+            : o.decision === 'revise_requested' ? 'var(--accent)'
+            : o.decision === 'removed' ? 'var(--danger)'
+            : null
+          return (
+            <div
+              key={o.id}
+              style={{
+                aspectRatio: '16/9',
+                borderRadius: 'var(--r-sm)',
+                overflow: 'hidden',
+                background: 'var(--bg-3)',
+                border: `2px solid ${decBorder ?? 'var(--line)'}`,
+                position: 'relative',
+                opacity: o.decision === 'removed' ? 0.5 : 1,
+              }}
+            >
+              {o.url ? (
+                att.type === 't2i'
+                  ? <img src={o.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <video src={o.url} muted preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center' }}>
+                  <Loader2 size={11} className="animate-spin" style={{ color: 'var(--accent)' }} />
+                </div>
+              )}
+              {o.decision && (
+                <div style={{ position: 'absolute', top: 2, right: 2 }}>
+                  {o.decision === 'approved'         && <CheckCircle2 size={11} style={{ color: '#fff', filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.6))' }} />}
+                  {o.decision === 'revise_requested' && <RotateCcw    size={11} style={{ color: '#fff', filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.6))' }} />}
+                  {o.decision === 'removed'          && <Trash2       size={11} style={{ color: '#fff', filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.6))' }} />}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </button>
   )
 }
