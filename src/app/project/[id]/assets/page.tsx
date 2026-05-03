@@ -12,6 +12,7 @@ import FileNameEditor from '@/components/ui/FileNameEditor'
 import type { Asset } from '@/types'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
+import { toast } from '@/components/ui/Toast'
 import SatisfactionRating from '@/components/ui/SatisfactionRating'
 
 // ─── 카테고리 정의 ────────────────────────────────────────────────────────────
@@ -104,7 +105,7 @@ export function RefCategoryBadge({ category }: { category: RefCategory }) {
 // ─── AssetCard ────────────────────────────────────────────────────────────────
 
 function AssetCard({
-  asset, onScore, onToggleArchive, onDownload, onDelete, onRename,
+  asset, onScore, onToggleArchive, onDownload, onDelete, onRename, onPromote,
   selectable, selected, onSelect,
 }: {
   asset: Asset
@@ -113,10 +114,12 @@ function AssetCard({
   onDownload?: (id: string) => void
   onDelete?: (id: string) => void
   onRename?: (id: string, newName: string) => Promise<void> | void
+  onPromote?: (asset: Asset, category: 'character' | 'space' | 'object' | 'misc') => Promise<void> | void
   selectable?: boolean
   selected?: boolean
   onSelect?: (id: string) => void
 }) {
+  const [promoteOpen, setPromoteOpen] = useState(false)
   const category = getAssetCategory(asset)
   const catMeta  = getCategoryMeta(category)
 
@@ -167,6 +170,63 @@ function AssetCard({
               className="p-2 rounded-lg bg-red-500/20 hover:bg-red-500/35 transition-all">
               <Trash2 size={14} />
             </button>
+          )}
+          {onPromote && (
+            <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+              <button
+                onClick={() => setPromoteOpen(v => !v)}
+                title="루트 에셋으로 보내기"
+                className="p-2 rounded-lg bg-white/15 hover:bg-white/25 text-white transition-all"
+              >
+                <Package size={14} />
+              </button>
+              {promoteOpen && (
+                <div
+                  onClick={e => e.stopPropagation()}
+                  style={{
+                    position: 'absolute', top: '100%', right: 0, marginTop: 6,
+                    background: 'var(--bg-2)',
+                    border: '1px solid var(--line)',
+                    borderRadius: 'var(--r-md)',
+                    boxShadow: 'var(--shadow-lg)',
+                    padding: 6,
+                    minWidth: 130,
+                    zIndex: 20,
+                  }}
+                >
+                  <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-4)', padding: '4px 8px', textTransform: 'uppercase' }}>
+                    카테고리 선택
+                  </div>
+                  {[
+                    { k: 'character' as const, label: '캐릭터' },
+                    { k: 'space'     as const, label: '공간'   },
+                    { k: 'object'    as const, label: '오브제' },
+                    { k: 'misc'      as const, label: '기타'   },
+                  ].map(c => (
+                    <button
+                      key={c.k}
+                      onClick={async () => {
+                        setPromoteOpen(false)
+                        await onPromote(asset, c.k)
+                      }}
+                      className="flex items-center w-full text-left"
+                      style={{
+                        padding: '6px 10px',
+                        fontSize: 12,
+                        color: 'var(--ink-2)',
+                        borderRadius: 'var(--r-sm)',
+                        gap: 6,
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-3)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <Package size={11} style={{ color: 'var(--accent)' }} />
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -474,6 +534,29 @@ async function uploadFiles(files: FileList | File[], category: RefCategory) {
     setAssets(prev => prev.filter(a => a.id !== id))
   }
 
+  async function promoteToRoot(
+    asset: Asset,
+    category: 'character' | 'space' | 'object' | 'misc',
+  ) {
+    try {
+      const { error } = await supabase.from('root_asset_seeds').insert({
+        project_id: projectId,
+        category,
+        name: asset.name || '새 루트 에셋',
+        description: '',
+        reference_image_urls: [asset.url],
+      })
+      if (error) {
+        toast.error('루트 에셋 추가 실패', error.message)
+        return
+      }
+      const catLabel = ({ character: '캐릭터', space: '공간', object: '오브제', misc: '기타' } as const)[category]
+      toast.success('루트 에셋으로 추가됨', `${asset.name} → ${catLabel}`)
+    } catch (e: any) {
+      toast.error('루트 에셋 추가 실패', e?.message ?? String(e))
+    }
+  }
+
   async function renameAsset(id: string, newName: string) {
     const { error } = await supabase.from('assets').update({ name: newName }).eq('id', id)
     if (error) throw new Error(error.message)
@@ -685,7 +768,7 @@ async function uploadFiles(files: FileList | File[], category: RefCategory) {
                       ) : (
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                           {toShow.map(asset => (
-                            <AssetCard onRename={renameAsset}
+                            <AssetCard onRename={renameAsset} onPromote={promoteToRoot}
                               key={asset.id}
                               asset={asset}
                               onScore={scoreAsset}
@@ -711,7 +794,7 @@ async function uploadFiles(files: FileList | File[], category: RefCategory) {
                           </p>
                           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                             {uncatAssets.map(asset => (
-                              <AssetCard onRename={renameAsset}
+                              <AssetCard onRename={renameAsset} onPromote={promoteToRoot}
                                 key={asset.id}
                                 asset={asset}
                                 onScore={scoreAsset}
@@ -736,7 +819,7 @@ async function uploadFiles(files: FileList | File[], category: RefCategory) {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                 {filtered.map(asset => (
-                  <AssetCard onRename={renameAsset}
+                  <AssetCard onRename={renameAsset} onPromote={promoteToRoot}
                     key={asset.id}
                     asset={asset}
                     onScore={scoreAsset}
