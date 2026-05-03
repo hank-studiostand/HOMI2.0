@@ -227,15 +227,15 @@ export default function ProjectTopBar({ projectId, projectName }: ProjectTopBarP
               fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 13,
             }}
           >
-            R
+            H
           </div>
           <span
             style={{
-              fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 20,
+              fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 22,
               letterSpacing: '-0.02em', color: 'var(--ink)',
             }}
           >
-            Reel
+            HOMI
           </span>
         </Link>
 

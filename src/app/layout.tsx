@@ -5,8 +5,8 @@ import { GenerationToastProvider } from "@/components/ui/GenerationToast";
 import { ToastProvider } from "@/components/ui/Toast";
 
 export const metadata: Metadata = {
-  title: "AI 영상 협업툴",
-  description: "멀티유저 AI 영상 제작 워크플로우 플랫폼",
+  title: "HOMI",
+  description: "HOMI — AI 영상 제작 협업 플랫폼",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

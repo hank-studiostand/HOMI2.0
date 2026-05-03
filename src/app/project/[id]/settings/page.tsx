@@ -97,7 +97,7 @@ export default function SettingsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text: ':white_check_mark: *AI 영상 협업툴 — 테스트 알림*\nSlack 연동이 정상적으로 설정되었습니다!',
+          text: ':white_check_mark: *HOMI — 테스트 알림*\nSlack 연동이 정상적으로 설정되었습니다!',
         }),
       })
       setSlackTestResult('ok')

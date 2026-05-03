@@ -48,7 +48,7 @@ export default function AuthPage() {
             <Film size={28} className="text-white" />
           </div>
           <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
-            AI 영상 협업툴
+            HOMI
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             팀과 함께 AI 영상을 제작하세요
