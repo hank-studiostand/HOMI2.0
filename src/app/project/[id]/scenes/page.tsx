@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useParams } from 'next/navigation'
 import { Plus, Loader2, ChevronRight, ChevronDown, Wand2, X, Image as ImageIcon } from 'lucide-react'
 import SceneCard from '@/components/scene/SceneCard'
+import SceneBoardCard from '@/components/scene/SceneBoardCard'
 import SceneSettings from '@/components/scene/SceneSettings'
 import SceneTreeView from '@/components/scene/SceneTreeView'
 import type { Scene, SceneSettings as SceneSettingsType, RootAssetSeed, Asset } from '@/types'
@@ -554,16 +555,27 @@ export default function ScenesPage() {
             </p>
           </div>
         ) : (
-          <div className="max-w-4xl mx-auto">
-            <SceneTreeView
-              scenes={scenes}
-              completedScenes={completedScenes}
-              onToggleComplete={handleToggleComplete}
-              renderScene={renderSceneContent}
-              expandedSceneId={expandedScene}
-              onExpandScene={setExpandedScene}
-              storageKey={`scenes:${projectId}`}
-            />
+          <div className="max-w-7xl mx-auto">
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                gap: 14,
+              }}
+            >
+              {scenes.map(scene => (
+                <SceneBoardCard
+                  key={scene.id}
+                  scene={scene}
+                  projectId={projectId}
+                  onUpdate={(id, updates) => {
+                    setScenes(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s))
+                  }}
+                  onGeneratePrompt={(id) => generateMasterPrompt(id)}
+                  isGenerating={generatingId === scene.id}
+                />
+              ))}
+            </div>
           </div>
         )}
       </div>
