@@ -113,9 +113,9 @@ export default function MediaBrowser({ type }: Props) {
           })
         }
       }
-      // 씬 번호 desc (자연 정렬, 같은 씬 내에서는 시간 desc)
+      // 씬 번호 asc (1-1 → 22-1-1 자연 정렬), 같은 씬 내에서는 시간 desc (최신 먼저)
       all.sort((a, b) => {
-        const c = compareSceneNumbers(b.scene_number, a.scene_number)
+        const c = compareSceneNumbers(a.scene_number, b.scene_number)
         if (c !== 0) return c
         return b.created_at.localeCompare(a.created_at)
       })
@@ -163,8 +163,8 @@ export default function MediaBrowser({ type }: Props) {
   const Icon = type === 't2i' ? ImageIcon : Film
   const title = type === 't2i' ? '이미지 라이브러리' : '영상 라이브러리'
   const subtitle = type === 't2i'
-    ? '프로젝트에서 생성된 모든 이미지를 시간순으로 둘러보세요.'
-    : '프로젝트에서 생성된 모든 영상을 시간순으로 둘러보세요.'
+    ? '프로젝트에서 생성된 모든 이미지를 씬 순서대로 둘러보세요.'
+    : '프로젝트에서 생성된 모든 영상을 씬 순서대로 둘러보세요.'
 
   return (
     <div className="h-full flex flex-col">
