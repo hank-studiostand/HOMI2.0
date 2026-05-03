@@ -276,3 +276,26 @@ input, textarea, select { font-family: inherit; }
   transition-timing-function: ease;
 }
 svg, img, video { transition: none !important; }
+
+/* ── 워크스페이스 3패널 반응형 ─────────────────────────── */
+.workspace-grid { grid-template-columns: 320px 1fr 340px; }
+@media (max-width: 1280px) {
+  .workspace-grid { grid-template-columns: 280px 1fr 300px; }
+}
+@media (max-width: 1024px) {
+  .workspace-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+    overflow: auto !important;
+  }
+  .workspace-grid > aside, .workspace-grid > main {
+    border-right: none !important;
+    border-left: none !important;
+    border-bottom: 1px solid var(--line);
+  }
+}
+
+/* 씬 분류 카드 그리드 — 모바일 1열 */
+@media (max-width: 640px) {
+  .max-w-7xl { padding-left: 12px; padding-right: 12px; }
+}

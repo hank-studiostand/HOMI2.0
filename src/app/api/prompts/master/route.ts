@@ -5,8 +5,35 @@ import { createAdminClient } from '@/lib/supabase/admin'
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 export async function POST(req: NextRequest) {
-  const { sceneId } = await req.json()
+  const body = await req.json()
+  const { sceneId, content: manualContent, negativePrompt: manualNeg } = body as {
+    sceneId: string
+    content?: string
+    negativePrompt?: string
+  }
   const admin = createAdminClient()
+
+  // 수동 입력 모드 — AI 호출 건너뛰고 바로 저장
+  if (manualContent && manualContent.trim()) {
+    const { data: existing } = await admin
+      .from('master_prompts')
+      .select('version')
+      .eq('scene_id', sceneId)
+      .order('version', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const { error: insErr } = await admin.from('master_prompts').insert({
+      scene_id: sceneId,
+      content: manualContent.trim(),
+      negative_prompt: manualNeg ?? 'blurry, low quality, distorted, ugly, bad anatomy, watermark, text, logo',
+      version: (existing?.version ?? 0) + 1,
+    })
+    if (insErr) {
+      return NextResponse.json({ error: `저장 실패: ${insErr.message}` }, { status: 500 })
+    }
+    return NextResponse.json({ success: true, prompt: manualContent.trim() })
+  }
 
   const { data: scene, error: sceneErr } = await admin
     .from('scenes')

@@ -43,6 +43,14 @@ interface OutputItem {
   created_at: string
 }
 
+interface AttemptMeta {
+  id: string
+  type: 't2i' | 'i2v' | 'lipsync'
+  engine: string
+  prompt: string
+  created_at: string
+}
+
 interface CommentRow {
   id: string
   user_id: string
@@ -66,12 +74,14 @@ export default function WorkspacePage() {
   const [versions, setVersions] = useState<PromptVersion[]>([])
   const [masterPrompts, setMasterPrompts] = useState<MasterPrompt[]>([])
   const [outputs, setOutputs] = useState<OutputItem[]>([])
+  const [attempts, setAttempts] = useState<AttemptMeta[]>([])
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [compareMode, setCompareMode] = useState(false)
   const [comments, setComments] = useState<CommentRow[]>([])
   const [draft, setDraft] = useState('')
   const [meId, setMeId] = useState<string | null>(null)
   const [decisionFor, setDecisionFor] = useState<string | null>(null)
+  const [decisionIntent, setDecisionIntent] = useState<'approved' | 'revise_requested' | 'removed' | null>(null)
   const [decisionReasons, setDecisionReasons] = useState<string[]>([])
   const [decisionNote, setDecisionNote] = useState('')
 
@@ -86,6 +96,29 @@ export default function WorkspacePage() {
   const [genCamera, setGenCamera] = useState<{ angle?: string; shotSize?: string; lens?: string; lighting?: string }>({})
   const [genRefSel, setGenRefSel] = useState<RefSelection>(emptyRefSelection())
   const [genUseRootAssets, setGenUseRootAssets] = useState(true)
+
+  // ── 마스터 프롬프트 인라인 편집/생성 ─────────────────
+  const [mpEditing, setMpEditing] = useState(false)
+  const [mpDraft, setMpDraft] = useState('')
+  const [mpSaving, setMpSaving] = useState(false)
+  const [mpAiBusy, setMpAiBusy] = useState(false)
+
+  // ── Provenance / rollback ────────────────────────────
+  const [filterVersionId, setFilterVersionId] = useState<string | null>(null)
+  async function rollbackToVersion(pvId: string) {
+    if (!activeId) return
+    try {
+      await supabase.from('prompt_versions').update({ is_current: false }).eq('scene_id', activeId).eq('is_current', true)
+      await supabase.from('prompt_versions').update({ is_current: true }).eq('id', pvId)
+      await loadSceneData(activeId)
+    } catch (e: any) {
+      alert('롤백 실패: ' + (e?.message ?? String(e)))
+    }
+  }
+  async function forkVersion(pv: PromptVersion) {
+    setMpDraft(pv.content)
+    setMpEditing(true)
+  }
 
   // 레퍼런스 자산 (오브제/캐릭터/공간 선택용)
   useEffect(() => {
@@ -136,14 +169,19 @@ export default function WorkspacePage() {
     setVersions((pv ?? []) as PromptVersion[])
 
     // attempts + outputs
-    const { data: attempts } = await supabase
+    const { data: attemptsData } = await supabase
       .from('prompt_attempts')
-      .select('id, type, engine, status, created_at, outputs:attempt_outputs(*, asset:assets(url))')
+      .select('id, type, engine, prompt, status, created_at, outputs:attempt_outputs(*, asset:assets(url))')
       .eq('scene_id', sceneId)
       .order('created_at', { ascending: false })
 
     const flat: OutputItem[] = []
-    for (const a of (attempts ?? []) as any[]) {
+    const meta: AttemptMeta[] = []
+    for (const a of (attemptsData ?? []) as any[]) {
+      meta.push({
+        id: a.id, type: a.type, engine: a.engine,
+        prompt: a.prompt ?? '', created_at: a.created_at,
+      })
       for (const o of (a.outputs ?? [])) {
         flat.push({
           id: o.id,
@@ -159,6 +197,7 @@ export default function WorkspacePage() {
       }
     }
     setOutputs(flat)
+    setAttempts(meta)
     setSelectedIds(flat.length > 0 ? [flat[0].id] : [])
 
     // shot_comments (새 스키마)
@@ -193,8 +232,19 @@ export default function WorkspacePage() {
   }, [activeId, supabase])
 
   const active = scenes.find(s => s.id === activeId) || null
-  const candidates = outputs
-  const focused = outputs.find(o => o.id === selectedIds[0]) || candidates[0] || null
+  // 버전별 attempts 매칭 (attempt.prompt가 version.content로 시작하면 그 버전의 시도)
+  const attemptsByVersion = new Map<string, AttemptMeta[]>()
+  for (const v of versions) {
+    attemptsByVersion.set(v.id, attempts.filter(a => a.prompt.startsWith(v.content)))
+  }
+
+  // 후보 필터 (filterVersionId가 set이면 해당 버전 attempts의 outputs만)
+  const filteredCandidates = filterVersionId
+    ? outputs.filter(o => (attemptsByVersion.get(filterVersionId) ?? []).some(a => a.id === o.attempt_id))
+    : outputs
+
+  const candidates = filteredCandidates
+  const focused = filteredCandidates.find(o => o.id === selectedIds[0]) || filteredCandidates[0] || null
   const currentPrompt = versions.find(v => v.is_current) ?? versions[0] ?? null
   const currentMP = masterPrompts[0] ?? null
 
@@ -241,8 +291,56 @@ export default function WorkspacePage() {
     } else if (decision === 'removed') {
       await supabase.from('attempt_outputs').update({ archived: false, satisfaction_score: 1 }).eq('id', decisionFor)
     }
-    setDecisionFor(null); setDecisionReasons([]); setDecisionNote('')
+    setDecisionFor(null); setDecisionIntent(null); setDecisionReasons([]); setDecisionNote('')
     void loadSceneData(activeId)
+  }
+
+  // ── 마스터 프롬프트 액션 ────────────────────────────
+  async function saveMasterPromptManual() {
+    if (!activeId || !mpDraft.trim()) return
+    setMpSaving(true)
+    try {
+      const r = await fetch('/api/prompts/master', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sceneId: activeId, content: mpDraft.trim() }),
+      })
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}))
+        alert('저장 실패: ' + (j.error ?? r.statusText))
+        return
+      }
+      setMpEditing(false)
+      setMpDraft('')
+      await loadSceneData(activeId)
+    } finally {
+      setMpSaving(false)
+    }
+  }
+
+  async function generateMasterPromptAI() {
+    if (!activeId) return
+    setMpAiBusy(true)
+    try {
+      const r = await fetch('/api/prompts/master', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sceneId: activeId }),
+      })
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}))
+        alert('AI 생성 실패: ' + (j.error ?? r.statusText))
+        return
+      }
+      await loadSceneData(activeId)
+    } finally {
+      setMpAiBusy(false)
+    }
+  }
+
+  function startEditMaster() {
+    setMpDraft(currentPrompt?.content ?? currentMP?.content ?? '')
+    setMpEditing(true)
   }
 
   if (!active) {
@@ -254,7 +352,7 @@ export default function WorkspacePage() {
   }
 
   return (
-    <div className="h-full grid overflow-hidden" style={{ gridTemplateColumns: '320px 1fr 340px' }}>
+    <div className="workspace-grid h-full grid overflow-hidden">
       {/* LEFT — Shot Brief */}
       <aside style={{ borderRight: '1px solid var(--line)', overflow: 'auto', background: 'var(--bg-1)' }}>
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
@@ -302,41 +400,144 @@ export default function WorkspacePage() {
 
         {/* Prompt versions */}
         <div style={{ padding: '14px 16px' }}>
-          <div className="flex items-center" style={{ marginBottom: 8 }}>
+          <div className="flex items-center" style={{ marginBottom: 8, gap: 6 }}>
             <span className="field-label" style={{ margin: 0 }}>PROMPT</span>
             <span style={{ flex: 1 }} />
-            <Link
-              href={`/project/${projectId}/scenes`}
-              style={{
-                padding: '4px 8px',
-                fontSize: 11,
-                color: 'var(--ink-3)',
-                borderRadius: 'var(--r-sm)',
-                border: '1px solid var(--line)',
-              }}
-            >
-              <Sparkles size={11} style={{ display: 'inline', marginRight: 4 }} />
-              씬 분류로
-            </Link>
+            {!mpEditing && (
+              <>
+                <button
+                  onClick={generateMasterPromptAI}
+                  disabled={mpAiBusy}
+                  title="씬 정보로 AI가 마스터 프롬프트 자동 생성"
+                  style={{
+                    padding: '4px 8px',
+                    fontSize: 11,
+                    color: mpAiBusy ? 'var(--ink-4)' : 'var(--accent)',
+                    borderRadius: 'var(--r-sm)',
+                    border: '1px solid var(--accent-line)',
+                    background: 'var(--accent-soft)',
+                    display: 'inline-flex', alignItems: 'center', gap: 3,
+                  }}
+                >
+                  {mpAiBusy
+                    ? <Loader2 size={11} className="animate-spin" />
+                    : <Sparkles size={11} />}
+                  AI
+                </button>
+                <button
+                  onClick={startEditMaster}
+                  title={(currentPrompt || currentMP) ? '직접 수정 (새 버전 저장)' : '직접 작성'}
+                  style={{
+                    padding: '4px 8px',
+                    fontSize: 11,
+                    color: 'var(--ink-2)',
+                    borderRadius: 'var(--r-sm)',
+                    border: '1px solid var(--line)',
+                    background: 'transparent',
+                  }}
+                >
+                  {(currentPrompt || currentMP) ? '수정' : '직접 작성'}
+                </button>
+              </>
+            )}
           </div>
+
+          {/* 인라인 에디터 */}
+          {mpEditing && (
+            <div style={{ marginBottom: 12 }}>
+              <textarea
+                value={mpDraft}
+                onChange={(e) => setMpDraft(e.target.value)}
+                rows={6}
+                placeholder="이 씬의 마스터 프롬프트... (영문 권장, 카메라/구도/분위기 포함)"
+                autoFocus
+                style={{
+                  width: '100%',
+                  background: 'var(--bg-2)',
+                  border: '1px solid var(--accent-line)',
+                  borderRadius: 'var(--r-md)',
+                  padding: 10,
+                  fontSize: 12,
+                  color: 'var(--ink)',
+                  outline: 'none',
+                  resize: 'vertical',
+                  lineHeight: 1.5,
+                  marginBottom: 6,
+                }}
+              />
+              <div className="flex items-center" style={{ gap: 6 }}>
+                <button
+                  onClick={() => void saveMasterPromptManual()}
+                  disabled={mpSaving || !mpDraft.trim()}
+                  style={{
+                    padding: '5px 10px',
+                    fontSize: 11, fontWeight: 500,
+                    background: 'var(--accent)', color: '#fff',
+                    border: '1px solid var(--accent)',
+                    borderRadius: 'var(--r-sm)',
+                    opacity: (mpSaving || !mpDraft.trim()) ? 0.5 : 1,
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                  }}
+                >
+                  {mpSaving ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
+                  저장 (새 버전)
+                </button>
+                <button
+                  onClick={() => { setMpEditing(false); setMpDraft('') }}
+                  disabled={mpSaving}
+                  style={{
+                    padding: '5px 10px',
+                    fontSize: 11,
+                    color: 'var(--ink-3)',
+                    border: '1px solid var(--line)',
+                    borderRadius: 'var(--r-sm)',
+                    background: 'transparent',
+                  }}
+                >
+                  <X size={11} style={{ display: 'inline', marginRight: 3 }} />
+                  취소
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col" style={{ gap: 6, marginBottom: 12 }}>
-            {versions.length > 0 ? versions.map(pv => (
+            {versions.length > 0 ? versions.map(pv => {
+              const versionAttempts = attemptsByVersion.get(pv.id) ?? []
+              const isFiltered = filterVersionId === pv.id
+              return (
               <div
                 key={pv.id}
                 style={{
                   textAlign: 'left',
                   padding: '8px 10px',
                   borderRadius: 'var(--r-sm)',
-                  border: `1px solid ${pv.is_current ? 'var(--accent-line)' : 'var(--line)'}`,
+                  border: `1px solid ${pv.is_current ? 'var(--accent-line)' : isFiltered ? 'var(--accent)' : 'var(--line)'}`,
                   background: pv.is_current ? 'var(--accent-soft)' : 'var(--bg-2)',
+                  cursor: 'pointer',
                 }}
+                onClick={() => setFilterVersionId(isFiltered ? null : pv.id)}
+                title={isFiltered ? '필터 해제' : '이 버전의 결과만 보기'}
               >
                 <div className="flex items-center" style={{ marginBottom: 3, gap: 6 }}>
                   <span className="mono" style={{ fontSize: 11, color: pv.is_current ? 'var(--accent-2)' : 'var(--ink-3)', fontWeight: 600 }}>
                     {pv.version_label}
                   </span>
                   {pv.is_current && <Pill variant="ready">current</Pill>}
+                  {isFiltered && !pv.is_current && <Pill variant="gen">filter</Pill>}
                   <span style={{ flex: 1 }} />
+                  {versionAttempts.length > 0 && (
+                    <span
+                      className="mono"
+                      style={{
+                        fontSize: 10, padding: '1px 6px', borderRadius: 'var(--r-sm)',
+                        background: 'var(--bg-3)', color: 'var(--ink-3)',
+                      }}
+                      title={`${versionAttempts.length}개 시도`}
+                    >
+                      {versionAttempts.length} att
+                    </span>
+                  )}
                   <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>
                     {new Date(pv.created_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
                   </span>
@@ -348,12 +549,45 @@ export default function WorkspacePage() {
                     WebkitLineClamp: 2,
                     WebkitBoxOrient: 'vertical',
                     overflow: 'hidden',
+                    marginBottom: 4,
                   }}
                 >
                   {pv.content}
                 </div>
+                {/* Branch / Rollback */}
+                <div className="flex items-center" style={{ gap: 4 }}>
+                  {!pv.is_current && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); void rollbackToVersion(pv.id) }}
+                      style={{
+                        padding: '2px 7px', fontSize: 10,
+                        background: 'var(--bg-3)', color: 'var(--ink-2)',
+                        border: '1px solid var(--line)',
+                        borderRadius: 'var(--r-sm)',
+                        display: 'inline-flex', alignItems: 'center', gap: 3,
+                      }}
+                      title="이 버전을 current로 (rollback)"
+                    >
+                      <RotateCcw size={9} /> 현재로
+                    </button>
+                  )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); forkVersion(pv) }}
+                    style={{
+                      padding: '2px 7px', fontSize: 10,
+                      background: 'var(--bg-3)', color: 'var(--ink-2)',
+                      border: '1px solid var(--line)',
+                      borderRadius: 'var(--r-sm)',
+                      display: 'inline-flex', alignItems: 'center', gap: 3,
+                    }}
+                    title="이 버전을 기반으로 분기"
+                  >
+                    <Plus size={9} /> 분기
+                  </button>
+                </div>
               </div>
-            )) : currentMP ? (
+              )
+            }) : currentMP ? (
               <div
                 style={{
                   padding: '8px 10px',
@@ -495,6 +729,30 @@ export default function WorkspacePage() {
               const cameraStr = buildCameraPrompt(genCamera)
               const fullPrompt = cameraStr ? `${basePrompt}\n\n${cameraStr}` : basePrompt
 
+              // ── prompt_versions 자동 저장 ──────────────────
+              const draftTrim = genPromptDraft.trim()
+              const currentContentForCompare = (currentPrompt?.content ?? currentMP?.content ?? '').trim()
+              if (draftTrim && draftTrim !== currentContentForCompare) {
+                try {
+                  const nextLabel = `V${versions.length + 1}`
+                  if (versions.some(v => v.is_current)) {
+                    await supabase.from('prompt_versions')
+                      .update({ is_current: false })
+                      .eq('scene_id', active.id)
+                      .eq('is_current', true)
+                  }
+                  await supabase.from('prompt_versions').insert({
+                    scene_id: active.id,
+                    version_label: nextLabel,
+                    content: draftTrim,
+                    is_current: true,
+                    created_by: meId,
+                  })
+                } catch (e) {
+                  console.warn('[prompt_versions auto-save]', e)
+                }
+              }
+
               // 레퍼런스 URL 모음 (오브제 + 루트에셋)
               const refUrls: string[] = allSelectedUrls(genRefSel, referenceAssets)
               if (genUseRootAssets) {
@@ -577,7 +835,7 @@ export default function WorkspacePage() {
               {selectedIds.map(rid => {
                 const r = candidates.find(x => x.id === rid)
                 if (!r) return null
-                return <CompareCell key={rid} item={r} onRemove={() => toggleSelect(rid)} onDecide={(d) => setDecisionFor(rid)} />
+                return <CompareCell key={rid} item={r} onRemove={() => toggleSelect(rid)} onDecide={(d) => { setDecisionFor(rid); setDecisionIntent(d) }} />
               })}
               {selectedIds.length < 4 && (
                 <div
@@ -598,7 +856,7 @@ export default function WorkspacePage() {
 
             <div className="divider" />
             <div className="field-label">선택 가능한 후보</div>
-            <CandidateStrip items={candidates} selected={selectedIds} onToggle={toggleSelect} />
+            <CandidateStrip items={candidates} attempts={attempts} selected={selectedIds} onToggle={toggleSelect} />
           </div>
         ) : (
           /* Single hero + strip */
@@ -623,15 +881,15 @@ export default function WorkspacePage() {
                   <div className="flex flex-col" style={{ gap: 6, marginBottom: 12 }}>
                     <DecisionButton
                       type="approved" label="승인 — Approved"
-                      onClick={() => setDecisionFor(focused.id)}
+                      onClick={() => { setDecisionFor(focused.id); setDecisionIntent('approved') }}
                     />
                     <DecisionButton
                       type="revise_requested" label="수정 요청 — Revise"
-                      onClick={() => setDecisionFor(focused.id)}
+                      onClick={() => { setDecisionFor(focused.id); setDecisionIntent('revise_requested') }}
                     />
                     <DecisionButton
                       type="removed" label="제거 — Remove"
-                      onClick={() => setDecisionFor(focused.id)}
+                      onClick={() => { setDecisionFor(focused.id); setDecisionIntent('removed') }}
                     />
                   </div>
                   {focused.feedback && (
@@ -649,7 +907,7 @@ export default function WorkspacePage() {
             )}
 
             <div className="field-label">후보 ({candidates.length})</div>
-            <CandidateStrip items={candidates} selected={selectedIds} onToggle={toggleSelect} />
+            <CandidateStrip items={candidates} attempts={attempts} selected={selectedIds} onToggle={toggleSelect} />
           </div>
         )}
       </main>
@@ -723,7 +981,8 @@ export default function WorkspacePage() {
       {/* Decision modal */}
       {decisionFor && (
         <DecisionModal
-          onClose={() => { setDecisionFor(null); setDecisionReasons([]); setDecisionNote('') }}
+          intent={decisionIntent}
+          onClose={() => { setDecisionFor(null); setDecisionIntent(null); setDecisionReasons([]); setDecisionNote('') }}
           reasons={decisionReasons}
           note={decisionNote}
           onReasonsChange={setDecisionReasons}
@@ -737,48 +996,108 @@ export default function WorkspacePage() {
 
 // ─── 후보 strip ─────────────────────────────────────────────────
 function CandidateStrip({
-  items, selected, onToggle,
-}: { items: OutputItem[]; selected: string[]; onToggle: (id: string) => void }) {
+  items, attempts, selected, onToggle,
+}: {
+  items: OutputItem[]
+  attempts: AttemptMeta[]
+  selected: string[]
+  onToggle: (id: string) => void
+}) {
   if (items.length === 0) return <div className="empty" style={{ padding: 16, fontSize: 12 }}>후보 없음</div>
+
+  // attempt_id 별 그룹핑 — items는 이미 attempt 시간 desc 순서로 들어옴
+  const groups: { attemptId: string; items: OutputItem[] }[] = []
+  for (const it of items) {
+    const last = groups[groups.length - 1]
+    if (last && last.attemptId === it.attempt_id) {
+      last.items.push(it)
+    } else {
+      groups.push({ attemptId: it.attempt_id, items: [it] })
+    }
+  }
+
+  // attempt 인덱스 (오래된 게 #1, 최신이 #N)
+  const attemptOrder = new Map<string, number>()
+  const totalAttempts = attempts.length
+  attempts.forEach((a, i) => {
+    attemptOrder.set(a.id, totalAttempts - i)
+  })
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 8 }}>
-      {items.map(r => {
-        const sel = selected.includes(r.id)
+    <div className="flex flex-col" style={{ gap: 14 }}>
+      {groups.map(g => {
+        const meta = attempts.find(a => a.id === g.attemptId)
+        const idx = attemptOrder.get(g.attemptId) ?? null
+        const isTemp = g.attemptId.startsWith('temp_')
+        const dateStr = meta
+          ? new Date(meta.created_at).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+          : isTemp ? '방금' : ''
         return (
-          <button
-            key={r.id}
-            onClick={() => onToggle(r.id)}
-            style={{
-              aspectRatio: '16/9', borderRadius: 'var(--r-sm)', overflow: 'hidden',
-              border: `2px solid ${sel ? 'var(--accent)' : 'var(--line)'}`,
-              background: 'var(--bg-3)', cursor: 'pointer', position: 'relative', padding: 0,
-            }}
-          >
-            {r.url
-              ? (r.type === 't2i'
-                ? <img src={r.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                : <video src={r.url} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />)
-              : (
-                <div
-                  style={{
-                    width: '100%', height: '100%',
-                    background: 'var(--bg-3)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    flexDirection: 'column', gap: 4,
-                    animation: 'pulse-soft 1.6s ease-in-out infinite',
-                  }}
-                >
-                  <Loader2 size={16} className="animate-spin" style={{ color: 'var(--accent)' }} />
-                  <span style={{ fontSize: 9, color: 'var(--ink-4)' }}>큐 대기 중</span>
-                </div>
+          <div key={g.attemptId}>
+            <div className="flex items-center" style={{ gap: 6, marginBottom: 6, fontSize: 11, color: 'var(--ink-3)' }}>
+              <span
+                className="mono"
+                style={{
+                  padding: '1px 7px', borderRadius: 'var(--r-sm)',
+                  background: isTemp ? 'var(--bg-3)' : 'var(--accent-soft)',
+                  color: isTemp ? 'var(--ink-4)' : 'var(--accent-2)',
+                  fontWeight: 600,
+                }}
+              >
+                {isTemp ? '큐' : (idx ? `#${idx}` : '시도')}
+              </span>
+              {meta && (
+                <span className="mono" style={{ color: 'var(--ink-4)' }}>
+                  {meta.engine}
+                </span>
               )}
-            <div style={{ position: 'absolute', inset: 0, background: sel ? 'rgba(249,115,22,0.15)' : 'transparent' }} />
-            {r.archived && (
-              <div style={{ position: 'absolute', top: 4, right: 4 }}>
-                <Pill variant="approved">승인</Pill>
-              </div>
-            )}
-          </button>
+              <span style={{ flex: 1 }} />
+              <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>
+                {g.items.length}장 · {dateStr}
+              </span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 8 }}>
+              {g.items.map(r => {
+                const sel = selected.includes(r.id)
+                return (
+                  <button
+                    key={r.id}
+                    onClick={() => onToggle(r.id)}
+                    style={{
+                      aspectRatio: '16/9', borderRadius: 'var(--r-sm)', overflow: 'hidden',
+                      border: `2px solid ${sel ? 'var(--accent)' : 'var(--line)'}`,
+                      background: 'var(--bg-3)', cursor: 'pointer', position: 'relative', padding: 0,
+                    }}
+                  >
+                    {r.url
+                      ? (r.type === 't2i'
+                        ? <img src={r.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <video src={r.url} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />)
+                      : (
+                        <div
+                          style={{
+                            width: '100%', height: '100%',
+                            background: 'var(--bg-3)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            flexDirection: 'column', gap: 4,
+                            animation: 'pulse-soft 1.6s ease-in-out infinite',
+                          }}
+                        >
+                          <Loader2 size={16} className="animate-spin" style={{ color: 'var(--accent)' }} />
+                          <span style={{ fontSize: 9, color: 'var(--ink-4)' }}>큐 대기 중</span>
+                        </div>
+                      )}
+                    <div style={{ position: 'absolute', inset: 0, background: sel ? 'rgba(249,115,22,0.15)' : 'transparent' }} />
+                    {r.archived && (
+                      <div style={{ position: 'absolute', top: 4, right: 4 }}>
+                        <Pill variant="approved">승인</Pill>
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
         )
       })}
     </div>
@@ -856,8 +1175,9 @@ function DecisionButton({
 
 // ─── 결정 모달 ──────────────────────────────────────────────────
 function DecisionModal({
-  onClose, reasons, note, onReasonsChange, onNoteChange, onSubmit,
+  intent, onClose, reasons, note, onReasonsChange, onNoteChange, onSubmit,
 }: {
+  intent: 'approved' | 'revise_requested' | 'removed' | null
   onClose: () => void
   reasons: string[]
   note: string
@@ -867,6 +1187,11 @@ function DecisionModal({
 }) {
   function toggle(tag: string) {
     onReasonsChange(reasons.includes(tag) ? reasons.filter(r => r !== tag) : [...reasons, tag])
+  }
+  const intentMeta: Record<'approved' | 'revise_requested' | 'removed', { label: string; bg: string; color: string }> = {
+    approved:         { label: '승인 — Approved',     bg: 'var(--ok-soft)',     color: 'var(--ok)' },
+    revise_requested: { label: '수정 요청 — Revise',   bg: 'var(--accent-soft)', color: 'var(--accent-2)' },
+    removed:          { label: '제거 — Remove',        bg: 'var(--danger-soft)', color: 'var(--danger)' },
   }
   return (
     <div
@@ -883,8 +1208,22 @@ function DecisionModal({
         onClick={e => e.stopPropagation()}
       >
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-1)' }}>
-          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>이 결과 결정</h2>
-          <p style={{ marginTop: 2, fontSize: 11, color: 'var(--ink-3)' }}>이유 태그와 짧은 코멘트를 남겨주세요.</p>
+          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>
+            이 결과 결정 {intent && (
+              <span
+                style={{
+                  marginLeft: 8, padding: '2px 8px', borderRadius: 999,
+                  fontSize: 11, fontWeight: 500,
+                  background: intentMeta[intent].bg, color: intentMeta[intent].color,
+                }}
+              >
+                {intentMeta[intent].label.replace(/.* — /, '')}
+              </span>
+            )}
+          </h2>
+          <p style={{ marginTop: 2, fontSize: 11, color: 'var(--ink-3)' }}>
+            {intent ? '이유 태그와 짧은 코멘트를 남기고 확인을 누르세요.' : '이유 태그와 짧은 코멘트를 남겨주세요.'}
+          </p>
         </div>
         <div style={{ padding: 16 }}>
           <div className="field-label">이유 태그 (선택)</div>
@@ -925,21 +1264,67 @@ function DecisionModal({
             }}
           />
 
-          <div className="flex flex-col" style={{ gap: 6 }}>
-            <DecisionButton type="approved" label="승인 — Approved" onClick={() => onSubmit('approved')} />
-            <DecisionButton type="revise_requested" label="수정 요청 — Revise" onClick={() => onSubmit('revise_requested')} />
-            <DecisionButton type="removed" label="제거 — Remove" onClick={() => onSubmit('removed')} />
-            <button
-              onClick={onClose}
-              style={{
-                marginTop: 4, padding: '8px 12px', borderRadius: 'var(--r-md)',
-                fontSize: 12, color: 'var(--ink-4)', background: 'transparent',
-                border: '1px solid transparent',
-              }}
-            >
-              취소
-            </button>
-          </div>
+          {intent ? (
+            <div className="flex flex-col" style={{ gap: 6 }}>
+              <button
+                onClick={() => onSubmit(intent)}
+                className="flex items-center justify-center gap-2"
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 'var(--r-md)',
+                  fontSize: 13, fontWeight: 600,
+                  background: intentMeta[intent].color, color: '#fff',
+                  border: `1px solid ${intentMeta[intent].color}`,
+                }}
+              >
+                <Check size={13} /> {intentMeta[intent].label} 확정
+              </button>
+              <div className="flex" style={{ gap: 6 }}>
+                {(['approved', 'revise_requested', 'removed'] as const)
+                  .filter(t => t !== intent)
+                  .map(t => (
+                    <button
+                      key={t}
+                      onClick={() => onSubmit(t)}
+                      style={{
+                        flex: 1, padding: '6px 10px', borderRadius: 'var(--r-sm)',
+                        fontSize: 11,
+                        background: intentMeta[t].bg, color: intentMeta[t].color,
+                        border: `1px solid ${intentMeta[t].bg}`,
+                      }}
+                    >
+                      {intentMeta[t].label.replace(/.* — /, '')}로 변경
+                    </button>
+                  ))}
+              </div>
+              <button
+                onClick={onClose}
+                style={{
+                  marginTop: 4, padding: '8px 12px', borderRadius: 'var(--r-md)',
+                  fontSize: 12, color: 'var(--ink-4)', background: 'transparent',
+                  border: '1px solid transparent',
+                }}
+              >
+                취소
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col" style={{ gap: 6 }}>
+              <DecisionButton type="approved" label="승인 — Approved" onClick={() => onSubmit('approved')} />
+              <DecisionButton type="revise_requested" label="수정 요청 — Revise" onClick={() => onSubmit('revise_requested')} />
+              <DecisionButton type="removed" label="제거 — Remove" onClick={() => onSubmit('removed')} />
+              <button
+                onClick={onClose}
+                style={{
+                  marginTop: 4, padding: '8px 12px', borderRadius: 'var(--r-md)',
+                  fontSize: 12, color: 'var(--ink-4)', background: 'transparent',
+                  border: '1px solid transparent',
+                }}
+              >
+                취소
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1104,11 +1489,40 @@ function GeneratePanel({
         {/* 오브제 / 레퍼런스 자산 */}
         <div className="field-label">레퍼런스 자산 (오브제 / 캐릭터 / 공간)</div>
         <div style={{ marginBottom: 14 }}>
-          <SceneReferencePicker
-            referenceAssets={referenceAssets}
-            selection={refSel}
-            onChange={onRefSelChange}
-          />
+          {referenceAssets.length === 0 ? (
+            <div
+              style={{
+                padding: 14,
+                background: 'var(--bg-2)',
+                border: '1px dashed var(--line-strong)',
+                borderRadius: 'var(--r-md)',
+                textAlign: 'center',
+              }}
+            >
+              <p style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 8 }}>
+                아직 레퍼런스 자산이 없어요
+              </p>
+              <Link
+                href={`/project/${projectId}/assets`}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  padding: '5px 12px', borderRadius: 'var(--r-sm)',
+                  fontSize: 11, fontWeight: 500,
+                  background: 'var(--accent-soft)', color: 'var(--accent)',
+                  border: '1px solid var(--accent-line)',
+                }}
+              >
+                <Plus size={11} />
+                레퍼런스 라이브러리에서 추가
+              </Link>
+            </div>
+          ) : (
+            <SceneReferencePicker
+              referenceAssets={referenceAssets}
+              selection={refSel}
+              onChange={onRefSelChange}
+            />
+          )}
         </div>
 
         {/* 루트 에셋 박스 */}

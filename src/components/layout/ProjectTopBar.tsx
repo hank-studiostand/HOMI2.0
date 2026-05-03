@@ -5,8 +5,9 @@ import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import {
-  RefreshCw, Users, UserPlus, Bell, Settings, Search, ChevronDown, Folder,
+  RefreshCw, Users, UserPlus, Bell, Settings, Search, ChevronDown, Folder, Sun, Moon, X, Loader2,
 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import ProjectMembersModal from './ProjectMembersModal'
 
 interface PresenceMember {
@@ -49,11 +50,79 @@ interface ProjectTopBarProps {
 
 export default function ProjectTopBar({ projectId, projectName }: ProjectTopBarProps) {
   const pathname = usePathname()
+  const router = useRouter()
   const supabase = createClient()
   const [members, setMembers] = useState<PresenceMember[]>([])
   const [totalPct, setTotalPct] = useState(0)
   const [counts, setCounts] = useState({ review: 0, revise: 0, generating: 0 })
   const [membersModalOpen, setMembersModalOpen] = useState(false)
+  // 다크모드
+  const [theme, setTheme] = useState<'light' | 'dark'>('light')
+  // ⌘K
+  const [searchOpen, setSearchOpen] = useState(false)
+  // 알림
+  const [notifOpen, setNotifOpen] = useState(false)
+  const [notifs, setNotifs] = useState<{ id: string; title: string; subtitle: string; created_at: string; scene_id: string }[]>([])
+
+  // theme 초기화 + persist
+  useEffect(() => {
+    const saved = (typeof window !== 'undefined' && localStorage.getItem('theme')) as 'light' | 'dark' | null
+    const initial = saved ?? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    setTheme(initial)
+    document.documentElement.dataset.theme = initial
+  }, [])
+  function toggleTheme() {
+    const next = theme === 'light' ? 'dark' : 'light'
+    setTheme(next)
+    document.documentElement.dataset.theme = next
+    try { localStorage.setItem('theme', next) } catch {}
+  }
+
+  // ⌘K 단축키
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setSearchOpen(v => !v)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // 최근 알림 조회 + Realtime
+  useEffect(() => {
+    let active = true
+    void (async () => {
+      const { data: scenes } = await supabase
+        .from('scenes').select('id, scene_number, title').eq('project_id', projectId)
+      if (!active || !scenes) return
+      const sceneById = new Map(scenes.map((s: any) => [s.id, s]))
+      const ids = scenes.map((s: any) => s.id)
+      if (ids.length === 0) return
+      const { data: atts } = await supabase
+        .from('prompt_attempts')
+        .select('id, scene_id, type, status, created_at')
+        .in('scene_id', ids)
+        .in('status', ['done', 'completed', 'failed'])
+        .order('created_at', { ascending: false })
+        .limit(15)
+      if (!active) return
+      setNotifs((atts ?? []).map((a: any) => {
+        const sc = sceneById.get(a.scene_id) as any
+        return {
+          id: a.id,
+          title: a.status === 'failed'
+            ? `${a.type === 't2i' ? '이미지' : '영상'} 생성 실패`
+            : `${a.type === 't2i' ? '이미지' : '영상'} 생성 완료`,
+          subtitle: sc ? `${sc.scene_number} ${sc.title || ''}`.trim() : '',
+          created_at: a.created_at,
+          scene_id: a.scene_id,
+        }
+      }))
+    })()
+    return () => { active = false }
+  }, [projectId, supabase])
 
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const userInfoRef = useRef<{ name: string; avatar: string | null } | null>(null)
@@ -239,6 +308,7 @@ export default function ProjectTopBar({ projectId, projectName }: ProjectTopBarP
 
         {/* 검색 (placeholder UI) */}
         <button
+          onClick={() => setSearchOpen(true)}
           className="flex items-center gap-2"
           style={{
             width: 280, padding: '6px 10px',
@@ -304,8 +374,10 @@ export default function ProjectTopBar({ projectId, projectName }: ProjectTopBarP
           <UserPlus size={16} />
         </button>
 
+        {/* 다크모드 토글 */}
         <button
-          title="알림 (준비 중)"
+          onClick={toggleTheme}
+          title={theme === 'light' ? '다크모드로' : '라이트모드로'}
           style={{
             width: 30, height: 30, borderRadius: 'var(--r-md)',
             display: 'grid', placeItems: 'center',
@@ -314,9 +386,85 @@ export default function ProjectTopBar({ projectId, projectName }: ProjectTopBarP
           onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-3)')}
           onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
         >
-          <Bell size={16} />
+          {theme === 'light' ? <Moon size={15} /> : <Sun size={15} />}
         </button>
+
+        {/* 알림 종 */}
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => setNotifOpen(v => !v)}
+            title="알림"
+            style={{
+              width: 30, height: 30, borderRadius: 'var(--r-md)',
+              display: 'grid', placeItems: 'center',
+              color: 'var(--ink-3)',
+              position: 'relative',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-3)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >
+            <Bell size={16} />
+            {notifs.length > 0 && (
+              <span
+                style={{
+                  position: 'absolute', top: 4, right: 4,
+                  width: 6, height: 6, borderRadius: '50%',
+                  background: 'var(--accent)',
+                }}
+              />
+            )}
+          </button>
+          {notifOpen && (
+            <>
+              <div onClick={() => setNotifOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+              <div
+                style={{
+                  position: 'absolute', right: 0, top: 36, zIndex: 41,
+                  width: 320, maxHeight: 420, overflowY: 'auto',
+                  background: 'var(--bg-2)', border: '1px solid var(--line)',
+                  borderRadius: 'var(--r-md)', boxShadow: 'var(--shadow-lg)',
+                }}
+              >
+                <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)', fontSize: 12, fontWeight: 600 }}>
+                  최근 알림 ({notifs.length})
+                </div>
+                {notifs.length === 0 ? (
+                  <div className="empty" style={{ padding: 16, fontSize: 12 }}>아직 없어요</div>
+                ) : notifs.map(n => (
+                  <button
+                    key={n.id}
+                    onClick={() => {
+                      setNotifOpen(false)
+                      router.push(`/project/${projectId}/workspace?scene=${n.scene_id}`)
+                    }}
+                    className="flex flex-col"
+                    style={{
+                      width: '100%', padding: '8px 12px',
+                      gap: 2, textAlign: 'left',
+                      borderBottom: '1px solid var(--line)',
+                      transition: 'background 0.1s',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-3)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink)' }}>{n.title}</span>
+                    {n.subtitle && (
+                      <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>{n.subtitle}</span>
+                    )}
+                    <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>
+                      {new Date(n.created_at).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
+
+      {searchOpen && (
+        <SearchModal projectId={projectId} onClose={() => setSearchOpen(false)} />
+      )}
 
       <ProjectMembersModal
         projectId={projectId}
@@ -324,6 +472,95 @@ export default function ProjectTopBar({ projectId, projectName }: ProjectTopBarP
         onClose={() => setMembersModalOpen(false)}
       />
     </>
+  )
+}
+
+// ─── ⌘K 검색 모달 ──────────────────────────────────────────
+function SearchModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+  const router = useRouter()
+  const supabase = createClient()
+  const [q, setQ] = useState('')
+  const [scenes, setScenes] = useState<{ id: string; scene_number: string; title: string }[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    setLoading(true)
+    void (async () => {
+      const { data } = await supabase
+        .from('scenes')
+        .select('id, scene_number, title')
+        .eq('project_id', projectId)
+        .order('order_index')
+      setScenes(data ?? [])
+      setLoading(false)
+    })()
+  }, [projectId, supabase])
+
+  const filtered = q.trim()
+    ? scenes.filter(s =>
+        s.scene_number?.includes(q) ||
+        (s.title ?? '').toLowerCase().includes(q.toLowerCase()),
+      )
+    : scenes.slice(0, 20)
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center pt-24 px-4"
+      style={{ background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg shadow-lg"
+        style={{
+          background: 'var(--bg-2)', border: '1px solid var(--line)',
+          borderRadius: 'var(--r-xl)', overflow: 'hidden',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2" style={{ padding: '12px 14px', borderBottom: '1px solid var(--line)' }}>
+          <Search size={14} style={{ color: 'var(--ink-3)' }} />
+          <input
+            autoFocus
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            placeholder="씬 번호 또는 제목으로 검색..."
+            style={{
+              flex: 1, background: 'transparent', border: 'none',
+              fontSize: 14, color: 'var(--ink)', outline: 'none',
+            }}
+          />
+          <span className="kbd" style={{ fontSize: 10, padding: '1px 6px', background: 'var(--bg-3)', borderRadius: 4, color: 'var(--ink-4)' }}>ESC</span>
+        </div>
+        <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+          {loading && <div className="empty" style={{ padding: 20, fontSize: 12 }}><Loader2 size={14} className="animate-spin" /></div>}
+          {!loading && filtered.length === 0 && <div className="empty" style={{ padding: 20, fontSize: 12 }}>일치하는 씬이 없어요</div>}
+          {filtered.map(s => (
+            <button
+              key={s.id}
+              onClick={() => {
+                router.push(`/project/${projectId}/workspace?scene=${s.id}`)
+                onClose()
+              }}
+              className="flex items-center gap-3 w-full text-left"
+              style={{
+                padding: '10px 14px',
+                borderBottom: '1px solid var(--line)',
+                transition: 'background 0.1s',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-3)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
+              <span className="mono" style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', minWidth: 50 }}>
+                {s.scene_number}
+              </span>
+              <span style={{ fontSize: 13, color: 'var(--ink)', flex: 1 }} className="truncate">
+                {s.title || '(제목 없음)'}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
   )
 }
 

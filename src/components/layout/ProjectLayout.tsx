@@ -6,6 +6,7 @@ import ProjectTopBar from './ProjectTopBar'
 import LiveCursors from './LiveCursors'
 import ChatSidebar from './ChatSidebar'
 import ResizeHandle from './ResizeHandle'
+import GlobalAttemptListener from './GlobalAttemptListener'
 import { MessageSquare } from 'lucide-react'
 
 interface ProjectLayoutProps {
@@ -121,6 +122,7 @@ export default function ProjectLayout({ children, projectId, projectName }: Proj
       )}
 
       <LiveCursors projectId={projectId} />
+      <GlobalAttemptListener projectId={projectId} />
     </div>
   )
 }

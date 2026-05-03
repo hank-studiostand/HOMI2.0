@@ -51,6 +51,31 @@ const LIGHTING = [
   { key: 'candlelight',label: '촛불',   prompt: 'candlelight, warm intimate lighting' },
 ]
 
+// ── 추천 콤보 프리셋 (한 클릭으로 4개 동시 설정) ─────────────
+type ComboPreset = {
+  key: string
+  label: string
+  desc: string
+  angle: string
+  shotSize: string
+  lens: string
+  lighting: string
+}
+const COMBO_PRESETS: ComboPreset[] = [
+  { key: 'cinematic_wide',  label: '시네마틱 와이드',   desc: '광활한 풍경 / 오프닝',
+    angle: 'eye_level', shotSize: 'wide',         lens: '24mm', lighting: 'golden' },
+  { key: 'emotion_closeup', label: '감정 클로즈업',     desc: '인물 디테일 / 표정',
+    angle: 'eye_level', shotSize: 'close_up',     lens: '85mm', lighting: 'natural' },
+  { key: 'dynamic_action',  label: '다이내믹 액션',     desc: '동작 / 박력',
+    angle: 'low',        shotSize: 'medium_wide',  lens: '35mm', lighting: 'dramatic' },
+  { key: 'intimate_pov',    label: '친밀한 POV',        desc: '주관적 시선',
+    angle: 'pov',        shotSize: 'medium_close', lens: '35mm', lighting: 'candlelight' },
+  { key: 'iconic_estab',    label: '확립샷 아이코닉',    desc: '오프닝 / 장소',
+    angle: 'low',        shotSize: 'extreme_wide', lens: '14mm', lighting: 'golden' },
+  { key: 'product_macro',   label: '제품 마크로',        desc: '오브제 디테일',
+    angle: 'eye_level', shotSize: 'extreme_close',lens: 'macro',lighting: 'studio' },
+]
+
 interface CameraReferencePanelProps {
   selectedAngle?: string
   selectedShotSize?: string
@@ -108,6 +133,44 @@ export default function CameraReferencePanel({
 
       {open && (
         <div className="p-3 space-y-4 border-t" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+
+          {/* 추천 콤보 — 한 번에 4개 설정 */}
+          <Section label="추천 콤보">
+            <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+              {COMBO_PRESETS.map(c => {
+                const active = (
+                  selectedAngle === c.angle &&
+                  selectedShotSize === c.shotSize &&
+                  selectedLens === c.lens &&
+                  selectedLighting === c.lighting
+                )
+                return (
+                  <button
+                    key={c.key}
+                    onClick={() => {
+                      const a = ANGLES.find(x => x.key === c.angle)
+                      const s = SHOT_SIZES.find(x => x.key === c.shotSize)
+                      const l = LENSES.find(x => x.key === c.lens)
+                      const li = LIGHTING.find(x => x.key === c.lighting)
+                      if (a) onSelect('angle', c.angle, a.prompt)
+                      if (s) onSelect('shotSize', c.shotSize, s.prompt)
+                      if (l) onSelect('lens', c.lens, l.prompt)
+                      if (li) onSelect('lighting', c.lighting, li.prompt)
+                    }}
+                    className="px-2 py-1.5 rounded text-left transition-all hover-surface"
+                    style={{
+                      background: active ? 'var(--accent-subtle)' : 'var(--surface-2)',
+                      border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+                      color: active ? 'var(--accent)' : 'var(--text-secondary)',
+                    }}
+                  >
+                    <div className="text-[11px] font-semibold">{c.label}</div>
+                    <div className="text-[9px] opacity-60 truncate">{c.desc}</div>
+                  </button>
+                )
+              })}
+            </div>
+          </Section>
 
           {/* 앵글 */}
           <Section label="앵글" icon={Eye}>

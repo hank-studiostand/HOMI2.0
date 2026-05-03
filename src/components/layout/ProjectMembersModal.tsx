@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { X, Search, UserPlus, Trash2, Crown, Loader2 } from 'lucide-react'
+import { X, Search, UserPlus, Trash2, Crown, Loader2, Mail, Send, Clock } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 interface MemberRow {
@@ -18,6 +18,13 @@ interface SearchHit {
   email: string
   display_name: string
   avatar_url: string
+}
+
+interface PendingInvitation {
+  id: string
+  email: string
+  role: string
+  created_at: string
 }
 
 interface Props {
@@ -37,6 +44,10 @@ export default function ProjectMembersModal({ projectId, open, onClose }: Props)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviting, setInviting] = useState(false)
+  const [inviteOk, setInviteOk] = useState<string | null>(null)
+  const [pending, setPending] = useState<PendingInvitation[]>([])
 
   const fetchMembers = useCallback(async () => {
     setLoading(true)
@@ -52,6 +63,59 @@ export default function ProjectMembersModal({ projectId, open, onClose }: Props)
     }
   }, [projectId])
 
+  const fetchPending = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/projects/${projectId}/invite`)
+      const j = await r.json()
+      if (r.ok) setPending(j.invitations ?? [])
+    } catch {}
+  }, [projectId])
+
+  async function inviteByEmail() {
+    if (!inviteEmail.trim() || !inviteEmail.includes('@')) {
+      setErr('올바른 이메일을 입력하세요')
+      return
+    }
+    setErr(null); setInviteOk(null); setInviting(true)
+    try {
+      const r = await fetch(`/api/projects/${projectId}/invite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inviteEmail.trim(), role: 'editor' }),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error ?? '초대 실패')
+      if (j.kind === 'added') {
+        setInviteOk(`${inviteEmail} — 가입자라 바로 멤버로 추가했어요`)
+        fetchMembers()
+      } else {
+        setInviteOk(j.emailSent
+          ? `${inviteEmail} 으로 초대 메일을 보냈어요`
+          : `${inviteEmail} — 초대 등록 (메일 발송은 SMTP 설정 필요)`)
+        fetchPending()
+      }
+      setInviteEmail('')
+    } catch (e: any) {
+      setErr(e.message)
+    } finally {
+      setInviting(false)
+    }
+  }
+
+  async function cancelInvitation(id: string) {
+    if (!confirm('이 초대를 취소할까요?')) return
+    try {
+      const r = await fetch(`/api/projects/${projectId}/invite?id=${id}`, { method: 'DELETE' })
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}))
+        throw new Error(j.error ?? '취소 실패')
+      }
+      fetchPending()
+    } catch (e: any) {
+      setErr(e.message)
+    }
+  }
+
   // 본인 + owner id 조회
   useEffect(() => {
     if (!open) return
@@ -62,8 +126,9 @@ export default function ProjectMembersModal({ projectId, open, onClose }: Props)
       const { data: p } = await supabase.from('projects').select('owner_id').eq('id', projectId).maybeSingle()
       setOwnerId(p?.owner_id ?? null)
       fetchMembers()
+      fetchPending()
     })()
-  }, [open, projectId, fetchMembers, supabase])
+  }, [open, projectId, fetchMembers, fetchPending, supabase])
 
   // 검색 디바운스
   useEffect(() => {
@@ -225,6 +290,79 @@ export default function ProjectMembersModal({ projectId, open, onClose }: Props)
                       </div>
                       <UserPlus size={14} style={{ color: 'var(--accent)' }} />
                     </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 이메일로 초대 (미가입자도 OK) */}
+          {isOwner && (
+            <div>
+              <p className="text-xs uppercase tracking-wide mb-2" style={{ color: 'var(--text-muted)' }}>
+                이메일로 초대
+              </p>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Mail size={13} className="absolute left-3 top-1/2 -translate-y-1/2"
+                    style={{ color: 'var(--text-muted)' }} />
+                  <input
+                    type="email"
+                    value={inviteEmail}
+                    onChange={e => setInviteEmail(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') void inviteByEmail() }}
+                    placeholder="newmember@example.com"
+                    disabled={inviting}
+                    className="w-full pl-8 pr-3 py-2 rounded-lg text-sm"
+                    style={{
+                      background: 'var(--surface-3)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text-primary)',
+                    }}
+                  />
+                </div>
+                <button
+                  onClick={() => void inviteByEmail()}
+                  disabled={inviting || !inviteEmail.trim()}
+                  className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-semibold disabled:opacity-50"
+                  style={{ background: 'var(--accent)', color: '#fff' }}
+                >
+                  {inviting ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                  초대
+                </button>
+              </div>
+              {inviteOk && (
+                <p className="text-[11px] mt-2" style={{ color: 'var(--ok)' }}>
+                  {inviteOk}
+                </p>
+              )}
+
+              {pending.length > 0 && (
+                <div className="mt-3 space-y-1">
+                  {pending.map(p => (
+                    <div
+                      key={p.id}
+                      className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg"
+                      style={{ background: 'var(--surface-2)', border: '1px dashed var(--border)' }}
+                    >
+                      <Clock size={11} style={{ color: 'var(--text-muted)' }} />
+                      <span className="text-[12px] flex-1 min-w-0 truncate" style={{ color: 'var(--text-secondary)' }}>
+                        {p.email}
+                      </span>
+                      <span
+                        className="text-[10px] px-1.5 py-0.5 rounded-full"
+                        style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }}
+                      >
+                        대기중
+                      </span>
+                      <button
+                        onClick={() => void cancelInvitation(p.id)}
+                        className="p-1 rounded hover-surface"
+                        title="취소"
+                      >
+                        <X size={11} style={{ color: 'var(--danger)' }} />
+                      </button>
+                    </div>
                   ))}
                 </div>
               )}

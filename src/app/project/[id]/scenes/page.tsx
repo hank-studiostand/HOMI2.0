@@ -5,7 +5,8 @@ import { useLocalState } from '@/hooks/useLocalState'
 import { createClient } from '@/lib/supabase/client'
 import { sortScenesByNumber } from '@/lib/sceneSort'
 import { useParams } from 'next/navigation'
-import { Plus, Loader2, ChevronRight, ChevronDown, Wand2, X, Image as ImageIcon } from 'lucide-react'
+import { Plus, Loader2, ChevronRight, ChevronDown, Wand2, X, Image as ImageIcon, LayoutGrid, Columns3, Timer } from 'lucide-react'
+import Pill from '@/components/ui/Pill'
 import SceneCard from '@/components/scene/SceneCard'
 import SceneBoardCard from '@/components/scene/SceneBoardCard'
 import SceneSettings from '@/components/scene/SceneSettings'
@@ -41,6 +42,8 @@ export default function ScenesPage() {
   const [rootAssets, setRootAssets] = useState<RootAssetSeed[]>([])
   const [libraryAssets, setLibraryAssets] = useState<Asset[]>([])
   const [pickerOpen, setPickerOpen] = useState<{ sceneId: string; category: string } | null>(null)
+  const [viewMode, setViewMode] = useState<'cards' | 'kanban' | 'timeline'>('cards')
+  const [sceneStats, setSceneStats] = useState<Map<string, { hasMP: boolean; t2iDone: number; i2vDone: number }>>(new Map())
 
   const supabase = createClient()
 
@@ -94,6 +97,40 @@ export default function ScenesPage() {
       .eq('project_id', projectId)
       .eq('type', 'reference')
     setLibraryAssets(data ?? [])
+  }
+
+  // 씬 stats — kanban / timeline 상태 분류용 (한 번의 쿼리로 batch)
+  useEffect(() => {
+    if (scenes.length === 0) return
+    const ids = scenes.map(s => s.id)
+    void (async () => {
+      const [{ data: mps }, { data: atts }] = await Promise.all([
+        supabase.from('master_prompts').select('scene_id').in('scene_id', ids),
+        supabase.from('prompt_attempts').select('scene_id, type, status').in('scene_id', ids),
+      ])
+      const map = new Map<string, { hasMP: boolean; t2iDone: number; i2vDone: number }>()
+      for (const id of ids) map.set(id, { hasMP: false, t2iDone: 0, i2vDone: 0 })
+      for (const m of (mps ?? []) as any[]) {
+        const e = map.get(m.scene_id); if (e) e.hasMP = true
+      }
+      for (const a of (atts ?? []) as any[]) {
+        const e = map.get(a.scene_id); if (!e) continue
+        if (a.status === 'done') {
+          if (a.type === 't2i') e.t2iDone++
+          else if (a.type === 'i2v') e.i2vDone++
+        }
+      }
+      setSceneStats(map)
+    })()
+  }, [scenes, supabase])
+
+  const sceneStatusOf = (sceneId: string): { key: 'draft' | 'gen' | 'review' | 'approved'; label: string } => {
+    const s = sceneStats.get(sceneId)
+    if (!s) return { key: 'draft', label: 'Draft' }
+    if (s.i2vDone > 0) return { key: 'approved', label: '완료' }
+    if (s.t2iDone > 0) return { key: 'review', label: '검토' }
+    if (s.hasMP) return { key: 'gen', label: '생산중' }
+    return { key: 'draft', label: 'Draft' }
   }
 
   async function updateScene(id: string, updates: Partial<Scene>) {
@@ -493,6 +530,41 @@ export default function ScenesPage() {
           <p className="text-[13px] mt-1" style={{ color: 'var(--ink-3)' }}>{scenes.length}개 씬</p>
         </div>
         <div className="flex items-center gap-2">
+          {/* 뷰 토글 */}
+          <div
+            className="flex items-center"
+            style={{
+              padding: 2, gap: 0,
+              border: '1px solid var(--line)', borderRadius: 'var(--r-md)',
+              background: 'var(--bg-2)',
+            }}
+          >
+            {([
+              { v: 'cards' as const,    icon: LayoutGrid, label: '카드' },
+              { v: 'kanban' as const,   icon: Columns3,   label: '칸반' },
+              { v: 'timeline' as const, icon: Timer,      label: '타임라인' },
+            ]).map(t => {
+              const Icon = t.icon
+              const active = viewMode === t.v
+              return (
+                <button
+                  key={t.v}
+                  onClick={() => setViewMode(t.v)}
+                  className="flex items-center gap-1"
+                  style={{
+                    padding: '5px 10px',
+                    borderRadius: 'var(--r-sm)',
+                    fontSize: 12, fontWeight: 500,
+                    background: active ? 'var(--bg)' : 'transparent',
+                    color: active ? 'var(--accent)' : 'var(--ink-3)',
+                    boxShadow: active ? 'var(--shadow-sm)' : 'none',
+                  }}
+                >
+                  <Icon size={11} /> {t.label}
+                </button>
+              )
+            })}
+          </div>
           <button
             onClick={generateBulkMasterPrompts}
             disabled={bulkGenerating || scenes.length === 0}
@@ -555,7 +627,7 @@ export default function ScenesPage() {
               대본 페이지에서 AI 자동 분류를 실행하거나 직접 추가하세요
             </p>
           </div>
-        ) : (
+        ) : viewMode === 'cards' ? (
           <div className="max-w-7xl mx-auto">
             <div
               style={{
@@ -576,6 +648,143 @@ export default function ScenesPage() {
                   isGenerating={generatingId === scene.id}
                 />
               ))}
+            </div>
+          </div>
+        ) : viewMode === 'kanban' ? (
+          <div className="max-w-7xl mx-auto" style={{ paddingBottom: 24 }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+                gap: 12,
+                minWidth: 1100,
+              }}
+            >
+              {([
+                { key: 'draft' as const,    label: 'Draft',  variant: 'draft' as const },
+                { key: 'gen' as const,      label: '생산중', variant: 'gen' as const },
+                { key: 'review' as const,   label: '검토',   variant: 'review' as const },
+                { key: 'approved' as const, label: '완료',   variant: 'approved' as const },
+              ]).map(col => {
+                const list = scenes.filter(s => sceneStatusOf(s.id).key === col.key)
+                return (
+                  <div
+                    key={col.key}
+                    style={{
+                      background: 'var(--bg-1)',
+                      border: '1px solid var(--line)',
+                      borderRadius: 'var(--r-md)',
+                      display: 'flex', flexDirection: 'column',
+                      minHeight: 200,
+                    }}
+                  >
+                    <div
+                      className="flex items-center"
+                      style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)', gap: 8 }}
+                    >
+                      <Pill variant={col.variant}>{col.label}</Pill>
+                      <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>{list.length}</span>
+                    </div>
+                    <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {list.length === 0 && (
+                        <div className="empty" style={{ fontSize: 11, padding: 16 }}>없음</div>
+                      )}
+                      {list.map(scene => (
+                        <Link
+                          key={scene.id}
+                          href={`/project/${projectId}/workspace?scene=${scene.id}`}
+                          style={{
+                            padding: 10,
+                            background: 'var(--bg-2)',
+                            border: '1px solid var(--line)',
+                            borderRadius: 'var(--r-sm)',
+                            display: 'block',
+                            transition: 'border-color 0.15s ease',
+                          }}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = 'var(--line)'}
+                        >
+                          <div className="flex items-center" style={{ gap: 6, marginBottom: 4 }}>
+                            <span className="mono" style={{ fontSize: 10, fontWeight: 600, color: 'var(--accent)' }}>
+                              {scene.scene_number}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink)', lineHeight: 1.35 }} className="truncate">
+                            {scene.title || '(제목 없음)'}
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ) : (
+          /* timeline */
+          <div className="max-w-7xl mx-auto" style={{ paddingBottom: 24 }}>
+            <div
+              style={{
+                position: 'relative',
+                padding: '32px 12px 12px',
+                overflowX: 'auto',
+              }}
+            >
+              <div
+                style={{
+                  position: 'absolute', top: 56, left: 24, right: 24,
+                  height: 2, background: 'var(--line-strong)', zIndex: 0,
+                }}
+              />
+              <div className="flex items-stretch" style={{ gap: 12, position: 'relative', zIndex: 1 }}>
+                {scenes.map(scene => {
+                  const st = sceneStatusOf(scene.id)
+                  const dotColor =
+                    st.key === 'approved' ? 'var(--ok)'
+                    : st.key === 'review' ? 'var(--info)'
+                    : st.key === 'gen' ? 'var(--accent)'
+                    : 'var(--ink-4)'
+                  return (
+                    <Link
+                      key={scene.id}
+                      href={`/project/${projectId}/workspace?scene=${scene.id}`}
+                      style={{
+                        flex: '0 0 200px',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                        textDecoration: 'none',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 14, height: 14, borderRadius: '50%',
+                          background: dotColor,
+                          border: '3px solid var(--bg)',
+                          boxShadow: `0 0 0 1px ${dotColor}`,
+                        }}
+                      />
+                      <div
+                        style={{
+                          padding: 10, marginTop: 6,
+                          background: 'var(--bg-2)',
+                          border: '1px solid var(--line)',
+                          borderRadius: 'var(--r-md)',
+                          width: '100%',
+                        }}
+                      >
+                        <div className="flex items-center" style={{ gap: 6, marginBottom: 4 }}>
+                          <span className="mono" style={{ fontSize: 10, fontWeight: 600, color: 'var(--accent)' }}>
+                            {scene.scene_number}
+                          </span>
+                          <Pill variant={st.key === 'approved' ? 'approved' : st.key === 'review' ? 'review' : st.key === 'gen' ? 'gen' : 'draft'}>{st.label}</Pill>
+                        </div>
+                        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink)', lineHeight: 1.35 }} className="truncate">
+                          {scene.title || '(제목 없음)'}
+                        </div>
+                      </div>
+                    </Link>
+                  )
+                })}
+              </div>
             </div>
           </div>
         )}
