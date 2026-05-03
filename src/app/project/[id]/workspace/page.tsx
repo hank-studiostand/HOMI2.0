@@ -9,7 +9,7 @@ import {
   ChevronLeft, Sparkles, Check, RotateCcw, Trash2, X,
   Image as ImageIcon, Film, MessageCircle, Send, Loader2, Plus,
 } from 'lucide-react'
-import type { Scene, SatisfactionScore, Asset } from '@/types'
+import type { Scene, SatisfactionScore, Asset, RootAssetSeed } from '@/types'
 import Pill, { type PillVariant } from '@/components/ui/Pill'
 import CameraReferencePanel, { buildCameraPrompt } from '@/components/ui/CameraReferencePanel'
 import SceneReferencePicker, {
@@ -95,7 +95,11 @@ export default function WorkspacePage() {
   const [referenceAssets, setReferenceAssets] = useState<Asset[]>([])
   const [genCamera, setGenCamera] = useState<{ angle?: string; shotSize?: string; lens?: string; lighting?: string }>({})
   const [genRefSel, setGenRefSel] = useState<RefSelection>(emptyRefSelection())
-  const [genUseRootAssets, setGenUseRootAssets] = useState(true)
+  // 루트 에셋 — 프로젝트 전체 seeds + 이번 attempt에 선택된 이미지 URL set per-카테고리
+  const [rootAssets, setRootAssets] = useState<RootAssetSeed[]>([])
+  const [genRootSel, setGenRootSel] = useState<Record<'character' | 'space' | 'object' | 'misc', Set<string>>>({
+    character: new Set(), space: new Set(), object: new Set(), misc: new Set(),
+  })
 
   // ── 마스터 프롬프트 인라인 편집/생성 ─────────────────
   const [mpEditing, setMpEditing] = useState(false)
@@ -128,6 +132,16 @@ export default function WorkspacePage() {
         .eq('project_id', projectId).eq('type', 'reference')
         .order('created_at', { ascending: false })
       setReferenceAssets((data ?? []) as Asset[])
+    })()
+  }, [projectId, supabase])
+
+  // 프로젝트 전체 루트 에셋 시드 (Generate 탭 RootAssetBox용)
+  useEffect(() => {
+    void (async () => {
+      const { data } = await supabase
+        .from('root_asset_seeds').select('*')
+        .eq('project_id', projectId)
+      setRootAssets((data ?? []) as RootAssetSeed[])
     })()
   }, [projectId, supabase])
 
@@ -213,6 +227,19 @@ export default function WorkspacePage() {
     if (!activeId) return
     void loadSceneData(activeId)
   }, [activeId, loadSceneData])
+
+  // 씬 변경 시 — 그 씬의 default 루트 이미지 선택을 prefill (per-attempt 편집 가능)
+  useEffect(() => {
+    const sc = scenes.find(s => s.id === activeId)
+    if (!sc) return
+    const def = (sc as any).selected_root_asset_image_ids ?? {}
+    setGenRootSel({
+      character: new Set<string>(def.character ?? []),
+      space:     new Set<string>(def.space ?? []),
+      object:    new Set<string>(def.object ?? []),
+      misc:      new Set<string>(def.misc ?? []),
+    })
+  }, [activeId, scenes])
 
   // Realtime 코멘트
   useEffect(() => {
@@ -719,8 +746,10 @@ export default function WorkspacePage() {
             refSel={genRefSel}
             onRefSelChange={setGenRefSel}
             scene={active}
-            useRootAssets={genUseRootAssets}
-            onUseRootAssetsChange={setGenUseRootAssets}
+            rootAssets={rootAssets}
+            rootSel={genRootSel}
+            onRootSelChange={setGenRootSel}
+            sceneDefaultRootIds={(active as any).selected_root_asset_image_ids ?? {}}
             onGenerate={async () => {
               const basePrompt = (genPromptDraft || currentPrompt?.content || currentMP?.content || '').trim()
               if (!basePrompt) { alert('프롬프트를 입력하거나 마스터 프롬프트를 먼저 만들어주세요.'); return }
@@ -753,15 +782,11 @@ export default function WorkspacePage() {
                 }
               }
 
-              // 레퍼런스 URL 모음 (오브제 + 루트에셋)
+              // 레퍼런스 URL 모음 (레퍼런스 라이브러리 + 루트 에셋 인라인 선택)
               const refUrls: string[] = allSelectedUrls(genRefSel, referenceAssets)
-              if (genUseRootAssets) {
-                const rootImgs = (active as any).selected_root_asset_image_ids ?? {}
-                for (const cat of ['character', 'space', 'object', 'misc']) {
-                  const ids: string[] = rootImgs[cat] ?? []
-                  for (const id of ids) {
-                    if (!refUrls.includes(id) && id.startsWith('http')) refUrls.push(id)
-                  }
+              for (const cat of ['character', 'space', 'object', 'misc'] as const) {
+                for (const url of Array.from(genRootSel[cat])) {
+                  if (!refUrls.includes(url) && url.startsWith('http')) refUrls.push(url)
                 }
               }
 
@@ -1354,7 +1379,8 @@ function GeneratePanel({
   ratio, onRatioChange,
   generating, onGenerate,
   referenceAssets, camera, onCameraSelect, onCameraDeselect,
-  refSel, onRefSelChange, scene, useRootAssets, onUseRootAssetsChange,
+  refSel, onRefSelChange, scene,
+  rootAssets, rootSel, onRootSelChange, sceneDefaultRootIds,
 }: {
   sceneId: string
   projectId: string
@@ -1376,8 +1402,10 @@ function GeneratePanel({
   refSel: RefSelection
   onRefSelChange: (next: RefSelection) => void
   scene: Scene
-  useRootAssets: boolean
-  onUseRootAssetsChange: (v: boolean) => void
+  rootAssets: RootAssetSeed[]
+  rootSel: Record<'character' | 'space' | 'object' | 'misc', Set<string>>
+  onRootSelChange: React.Dispatch<React.SetStateAction<Record<'character' | 'space' | 'object' | 'misc', Set<string>>>>
+  sceneDefaultRootIds: Record<string, string[]>
 }) {
   const engineOptions = type === 't2i' ? T2I_ENGINES : I2V_ENGINES
 
@@ -1525,12 +1553,14 @@ function GeneratePanel({
           )}
         </div>
 
-        {/* 루트 에셋 박스 */}
-        <div className="field-label">루트 에셋</div>
+        {/* 루트 에셋 인라인 피커 */}
+        <div className="field-label">루트 에셋 (이번 생성에 사용)</div>
         <RootAssetBox
-          scene={scene}
-          enabled={useRootAssets}
-          onToggle={onUseRootAssetsChange}
+          rootAssets={rootAssets}
+          selection={rootSel}
+          onChange={onRootSelChange}
+          sceneDefaultRootIds={sceneDefaultRootIds}
+          projectId={projectId}
         />
 
         <button
@@ -1561,91 +1591,228 @@ function GeneratePanel({
   )
 }
 
-// ─── 루트 에셋 박스 (씬에 마킹된 인물/공간/오브제/기타 토글로 사용) ───
+// ─── 루트 에셋 인라인 피커 ─────────────────────────────────────
+// 프로젝트 전체 루트 에셋 시드를 카테고리별로 그리드 노출.
+// 씬에 마킹된 default 이미지는 prefilled (badge 표시).
+// 사용자는 이번 attempt에서 자유롭게 추가 선택/해제 가능.
 function RootAssetBox({
-  scene, enabled, onToggle,
-}: { scene: Scene; enabled: boolean; onToggle: (v: boolean) => void }) {
-  const marks = (scene as any).root_asset_marks ?? {}
-  const images = (scene as any).selected_root_asset_image_ids ?? {}
-  const cats: { key: 'character' | 'space' | 'object' | 'misc'; label: string }[] = [
-    { key: 'character', label: '인물' },
-    { key: 'space',     label: '공간' },
-    { key: 'object',    label: '오브제' },
-    { key: 'misc',      label: '기타' },
+  rootAssets, selection, onChange, sceneDefaultRootIds, projectId,
+}: {
+  rootAssets: RootAssetSeed[]
+  selection: Record<'character' | 'space' | 'object' | 'misc', Set<string>>
+  onChange: React.Dispatch<React.SetStateAction<Record<'character' | 'space' | 'object' | 'misc', Set<string>>>>
+  sceneDefaultRootIds: Record<string, string[]>
+  projectId: string
+}) {
+  const cats: { key: 'character' | 'space' | 'object' | 'misc'; label: string; color: string }[] = [
+    { key: 'character', label: '인물',   color: 'var(--accent)' },
+    { key: 'space',     label: '공간',   color: 'var(--info)' },
+    { key: 'object',    label: '오브제', color: 'var(--violet)' },
+    { key: 'misc',      label: '기타',   color: 'var(--ink-3)' },
   ]
-  const hasContent = cats.some(c => (marks[c.key] && marks[c.key].trim()) || ((images[c.key] ?? []).length > 0))
+
+  const totalSelected =
+    selection.character.size + selection.space.size + selection.object.size + selection.misc.size
+
+  const byCat = new Map<string, RootAssetSeed[]>()
+  for (const c of cats) byCat.set(c.key, [])
+  for (const a of rootAssets) {
+    const arr = byCat.get(a.category)
+    if (arr) arr.push(a)
+  }
+
+  function toggle(cat: 'character' | 'space' | 'object' | 'misc', url: string) {
+    onChange(prev => {
+      const next = { ...prev, [cat]: new Set(prev[cat]) }
+      if (next[cat].has(url)) next[cat].delete(url)
+      else next[cat].add(url)
+      return next
+    })
+  }
+
+  function selectAllScene() {
+    onChange(prev => {
+      const next = { ...prev }
+      for (const c of cats) {
+        next[c.key] = new Set<string>([...Array.from(prev[c.key]), ...((sceneDefaultRootIds[c.key] ?? []) as string[])])
+      }
+      return next
+    })
+  }
+
+  function clearAll() {
+    onChange({ character: new Set(), space: new Set(), object: new Set(), misc: new Set() })
+  }
+
+  if (rootAssets.length === 0) {
+    return (
+      <div
+        style={{
+          marginBottom: 14, padding: 14,
+          background: 'var(--bg-2)',
+          border: '1px dashed var(--line-strong)',
+          borderRadius: 'var(--r-md)',
+          textAlign: 'center',
+        }}
+      >
+        <p style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 8 }}>
+          아직 등록된 루트 에셋이 없어요
+        </p>
+        <Link
+          href={`/project/${projectId}/root-assets`}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            padding: '5px 12px', borderRadius: 'var(--r-sm)',
+            fontSize: 11, fontWeight: 500,
+            background: 'var(--accent-soft)', color: 'var(--accent)',
+            border: '1px solid var(--accent-line)',
+          }}
+        >
+          <Plus size={11} />
+          루트 에셋 등록
+        </Link>
+      </div>
+    )
+  }
 
   return (
     <div
       style={{
-        marginBottom: 14,
-        padding: 12,
+        marginBottom: 14, padding: 12,
         background: 'var(--bg-2)',
-        border: `1px solid ${enabled ? 'var(--accent-line)' : 'var(--line)'}`,
+        border: `1px solid ${totalSelected > 0 ? 'var(--accent-line)' : 'var(--line)'}`,
         borderRadius: 'var(--r-md)',
       }}
     >
-      <label className="flex items-center gap-2" style={{ cursor: 'pointer', marginBottom: 10 }}>
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => onToggle(e.target.checked)}
-          style={{ accentColor: 'var(--accent)' }}
-        />
+      {/* 헤더 — 선택 개수 + 일괄 액션 */}
+      <div className="flex items-center" style={{ marginBottom: 10, gap: 6 }}>
         <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink)' }}>
-          이 씬의 루트 에셋 마킹을 생성에 적용
+          {totalSelected > 0 ? `${totalSelected}개 선택됨` : '카테고리별로 선택하세요'}
         </span>
-      </label>
+        <span style={{ flex: 1 }} />
+        <button
+          onClick={selectAllScene}
+          title="이 씬에 마킹된 default 일괄 적용"
+          style={{
+            padding: '3px 8px',
+            fontSize: 10,
+            color: 'var(--accent-2)',
+            background: 'var(--accent-soft)',
+            border: '1px solid var(--accent-line)',
+            borderRadius: 'var(--r-sm)',
+          }}
+        >
+          씬 default
+        </button>
+        <button
+          onClick={clearAll}
+          disabled={totalSelected === 0}
+          style={{
+            padding: '3px 8px',
+            fontSize: 10,
+            color: 'var(--ink-3)',
+            background: 'transparent',
+            border: '1px solid var(--line)',
+            borderRadius: 'var(--r-sm)',
+            opacity: totalSelected === 0 ? 0.4 : 1,
+          }}
+        >
+          전체 해제
+        </button>
+      </div>
 
-      {hasContent ? (
-        <div className="flex flex-col" style={{ gap: 8 }}>
-          {cats.map(c => {
-            const text = marks[c.key]
-            const imgs: string[] = images[c.key] ?? []
-            if (!(text && text.trim()) && imgs.length === 0) return null
-            return (
-              <div key={c.key}>
-                <div className="flex items-center" style={{ gap: 6, marginBottom: 4 }}>
-                  <span
-                    style={{
-                      fontSize: 10, fontWeight: 600, padding: '1px 6px',
-                      borderRadius: 'var(--r-sm)',
-                      background: 'var(--bg-3)', color: 'var(--ink-3)',
-                    }}
-                  >
-                    {c.label}
-                  </span>
-                  {text && text.trim() && (
-                    <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>
-                      {text}
-                    </span>
-                  )}
-                </div>
-                {imgs.length > 0 && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(56px, 1fr))', gap: 4 }}>
-                    {imgs.slice(0, 8).map((url, i) => (
-                      <img
-                        key={i}
-                        src={url}
-                        alt=""
-                        style={{
-                          width: '100%', aspectRatio: '1', objectFit: 'cover',
-                          borderRadius: 'var(--r-sm)',
-                          opacity: enabled ? 1 : 0.4,
-                        }}
-                      />
-                    ))}
-                  </div>
-                )}
+      <div className="flex flex-col" style={{ gap: 12 }}>
+        {cats.map(c => {
+          const seeds = byCat.get(c.key) ?? []
+          if (seeds.length === 0) return null
+          const sceneDefaults = new Set<string>(sceneDefaultRootIds[c.key] ?? [])
+          const sel = selection[c.key]
+          return (
+            <div key={c.key}>
+              <div className="flex items-center" style={{ gap: 6, marginBottom: 6 }}>
+                <span
+                  style={{
+                    fontSize: 10, fontWeight: 700, padding: '1px 7px',
+                    borderRadius: 'var(--r-sm)',
+                    background: c.color, color: '#fff',
+                  }}
+                >
+                  {c.label}
+                </span>
+                <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>
+                  {sel.size > 0 ? `${sel.size}/${seeds.reduce((n, s) => n + (s.reference_image_urls?.length ?? 0), 0)}` : `${seeds.reduce((n, s) => n + (s.reference_image_urls?.length ?? 0), 0)}장`}
+                </span>
               </div>
-            )
-          })}
-        </div>
-      ) : (
-        <p style={{ fontSize: 11, color: 'var(--ink-4)' }}>
-          씬 경계 편집에서 인물/공간/오브제/기타를 마킹하면 여기에 표시되고 생성에 자동 첨부됩니다.
-        </p>
-      )}
+              <div className="flex flex-col" style={{ gap: 8 }}>
+                {seeds.map(seed => (
+                  <div key={seed.id}>
+                    <div style={{ fontSize: 10, color: 'var(--ink-3)', marginBottom: 3 }}>
+                      {seed.name}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(48px, 1fr))', gap: 4 }}>
+                      {(seed.reference_image_urls ?? []).map((url, i) => {
+                        const picked = sel.has(url)
+                        const isDefault = sceneDefaults.has(url)
+                        return (
+                          <button
+                            key={i}
+                            onClick={() => toggle(c.key, url)}
+                            title={isDefault ? '씬 default · 클릭으로 토글' : '클릭으로 선택'}
+                            style={{
+                              position: 'relative',
+                              width: '100%', aspectRatio: '1',
+                              padding: 0, overflow: 'hidden',
+                              borderRadius: 'var(--r-sm)',
+                              border: `2px solid ${picked ? 'var(--accent)' : isDefault ? 'var(--accent-line)' : 'var(--line)'}`,
+                              cursor: 'pointer',
+                              background: 'var(--bg-3)',
+                            }}
+                          >
+                            <img
+                              src={url}
+                              alt=""
+                              style={{
+                                width: '100%', height: '100%', objectFit: 'cover',
+                                opacity: picked ? 1 : 0.65,
+                                transition: 'opacity 0.12s',
+                              }}
+                            />
+                            {picked && (
+                              <div
+                                style={{
+                                  position: 'absolute', top: 2, right: 2,
+                                  width: 14, height: 14, borderRadius: '50%',
+                                  background: 'var(--accent)',
+                                  display: 'grid', placeItems: 'center',
+                                }}
+                              >
+                                <Check size={9} style={{ color: '#fff' }} />
+                              </div>
+                            )}
+                            {isDefault && !picked && (
+                              <div
+                                style={{
+                                  position: 'absolute', bottom: 2, left: 2,
+                                  fontSize: 8, fontWeight: 600,
+                                  padding: '0 4px', borderRadius: 2,
+                                  background: 'rgba(255,255,255,0.85)',
+                                  color: 'var(--accent-2)',
+                                }}
+                              >
+                                default
+                              </div>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

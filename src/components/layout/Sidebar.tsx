@@ -50,8 +50,8 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'GENERATION',
     items: [
       { href: 'workspace', label: 'Shot Workspace',     icon: Frame, badge: 'NEW' },
-      { href: 't2i',       label: 'T2I',                icon: ImageIcon },
-      { href: 'i2v',       label: 'I2V',                icon: Video },
+      { href: 't2i',       label: '이미지 라이브러리',   icon: ImageIcon },
+      { href: 'i2v',       label: '영상 라이브러리',     icon: Video },
       { href: 'lipsync',   label: '립싱크',             icon: Mic },
       { href: 't2v',       label: 'T2V',                icon: Clapperboard, badge: '개발중' },
     ],
