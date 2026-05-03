@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { GenerationToastProvider } from "@/components/ui/GenerationToast";
+import { ToastProvider } from "@/components/ui/Toast";
 
 export const metadata: Metadata = {
   title: "AI 영상 협업툴",
@@ -15,6 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider>
           {children}
           <GenerationToastProvider />
+          <ToastProvider />
         </ThemeProvider>
       </body>
     </html>

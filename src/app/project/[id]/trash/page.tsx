@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Trash2, RotateCcw, Loader2, AlertTriangle } from 'lucide-react'
+import { toast } from '@/components/ui/Toast'
 import { sortScenesByNumber, compareSceneNumbers } from '@/lib/sceneSort'
 import Pill from '@/components/ui/Pill'
 
@@ -106,11 +107,12 @@ export default function TrashPage() {
     try {
       const { error } = await supabase.from('shot_decisions').delete().eq('id', it.decision_id)
       if (error) {
-        alert('복구 실패: ' + error.message)
+        toast.error('복구 실패', error.message)
         return
       }
       await supabase.from('attempt_outputs').update({ archived: false }).eq('id', it.output_id)
       await load()
+      toast.success('복구 완료')
     } finally { setBusy(null) }
   }
 
@@ -121,10 +123,11 @@ export default function TrashPage() {
     try {
       const { error } = await supabase.from('attempt_outputs').delete().eq('id', it.output_id)
       if (error) {
-        alert('삭제 실패: ' + error.message)
+        toast.error('삭제 실패', error.message)
         return
       }
       await load()
+      toast.success('영구 삭제됨')
     } finally { setBusy(null) }
   }
 
@@ -136,7 +139,7 @@ export default function TrashPage() {
       const ids = items.map(i => i.output_id)
       const { error } = await supabase.from('attempt_outputs').delete().in('id', ids)
       if (error) {
-        alert('일괄 삭제 실패: ' + error.message)
+        toast.error('일괄 삭제 실패', error.message)
         return
       }
       await load()

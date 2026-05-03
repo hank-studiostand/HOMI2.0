@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import ProjectMembersModal from './ProjectMembersModal'
+import { useTheme } from '@/components/theme/ThemeProvider'
 
 interface PresenceMember {
   userId: string
@@ -56,27 +57,13 @@ export default function ProjectTopBar({ projectId, projectName }: ProjectTopBarP
   const [totalPct, setTotalPct] = useState(0)
   const [counts, setCounts] = useState({ review: 0, revise: 0, generating: 0 })
   const [membersModalOpen, setMembersModalOpen] = useState(false)
-  // 다크모드
-  const [theme, setTheme] = useState<'light' | 'dark'>('light')
+  // 다크모드 — 사이드바와 단일 source (ThemeProvider hook)
+  const { theme, toggle: toggleTheme } = useTheme()
   // ⌘K
   const [searchOpen, setSearchOpen] = useState(false)
   // 알림
   const [notifOpen, setNotifOpen] = useState(false)
   const [notifs, setNotifs] = useState<{ id: string; title: string; subtitle: string; created_at: string; scene_id: string }[]>([])
-
-  // theme 초기화 + persist
-  useEffect(() => {
-    const saved = (typeof window !== 'undefined' && localStorage.getItem('theme')) as 'light' | 'dark' | null
-    const initial = saved ?? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-    setTheme(initial)
-    document.documentElement.dataset.theme = initial
-  }, [])
-  function toggleTheme() {
-    const next = theme === 'light' ? 'dark' : 'light'
-    setTheme(next)
-    document.documentElement.dataset.theme = next
-    try { localStorage.setItem('theme', next) } catch {}
-  }
 
   // ⌘K 단축키
   useEffect(() => {

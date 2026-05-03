@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Pill from '@/components/ui/Pill'
 import { GitBranch, Image as ImageIcon, Video, Mic, Wand2 } from 'lucide-react'
@@ -46,6 +46,7 @@ function formatRel(iso: string): string {
 
 export default function VersionPage() {
   const { id: projectId } = useParams<{ id: string }>()
+  const router = useRouter()
   const supabase = createClient()
   const [events, setEvents] = useState<TimelineEvent[]>([])
   const [loading, setLoading] = useState(true)
@@ -120,28 +121,39 @@ export default function VersionPage() {
             const head = list[0]
             return (
               <div key={sceneId} className="card">
-                <div
-                  className="flex items-center gap-2"
-                  style={{ padding: '12px 14px', borderBottom: '1px solid var(--line)', background: 'var(--bg-1)' }}
+                <button
+                  onClick={() => router.push(`/project/${projectId}/workspace?scene=${sceneId}`)}
+                  className="flex items-center gap-2 w-full text-left"
+                  style={{ padding: '12px 14px', borderBottom: '1px solid var(--line)', background: 'var(--bg-1)', transition: 'background 0.12s' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-2)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'var(--bg-1)')}
+                  title="이 씬 워크스페이스 열기"
                 >
                   <GitBranch size={14} style={{ color: 'var(--accent)' }} />
                   <span className="mono" style={{ color: 'var(--accent)' }}>{head.scene_number}</span>
                   <span style={{ fontSize: 13, fontWeight: 500 }}>{head.scene_title}</span>
                   <span className="ml-auto muted" style={{ fontSize: 11 }}>{list.length}건</span>
-                </div>
+                </button>
                 <div style={{ padding: '8px 14px' }}>
                   {list.map(e => {
                     const meta = TYPE_META[e.type]
                     const Icon = meta?.icon ?? Wand2
                     return (
-                      <div
+                      <button
                         key={e.id}
-                        className="flex items-center gap-3"
+                        onClick={() => router.push(`/project/${projectId}/workspace?scene=${e.scene_id}`)}
+                        className="flex items-center gap-3 w-full text-left"
                         style={{
-                          padding: '8px 0',
+                          padding: '8px 6px',
                           borderBottom: '1px dashed var(--line)',
                           fontSize: 13,
+                          background: 'transparent',
+                          borderRadius: 'var(--r-sm)',
+                          transition: 'background 0.12s',
                         }}
+                        onMouseEnter={ev => (ev.currentTarget.style.background = 'var(--bg-2)')}
+                        onMouseLeave={ev => (ev.currentTarget.style.background = 'transparent')}
+                        title="이 씬 워크스페이스 열기"
                       >
                         <div
                           style={{
@@ -162,7 +174,7 @@ export default function VersionPage() {
                         </Pill>
                         <div className="flex-1" />
                         <span className="muted" style={{ fontSize: 12 }}>{formatRel(e.created_at)}</span>
-                      </div>
+                      </button>
                     )
                   })}
                 </div>

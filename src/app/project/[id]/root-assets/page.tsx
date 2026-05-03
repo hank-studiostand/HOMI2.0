@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation'
 import {
   Upload, Loader2, User2, MapPin, Package, MoreHorizontal, Plus, X, Trash2, Edit2, Library,
 } from 'lucide-react'
+import { toast } from '@/components/ui/Toast'
 import type { RootAssetSeed, RootAssetCategory, Asset } from '@/types'
 import { cn } from '@/lib/utils'
 
@@ -39,7 +40,7 @@ function RootAssetCard({
 
   async function handleUploadImage(file: File) {
     if (!file.type.startsWith('image/')) {
-      alert('이미지 파일만 업로드할 수 있습니다.')
+      toast.error('이미지 파일만 업로드할 수 있습니다.')
       return
     }
 
@@ -54,7 +55,7 @@ function RootAssetCard({
         .upload(path, file, { upsert: false })
 
       if (uploadErr) {
-        alert(`업로드 실패: ${uploadErr.message}`)
+        toast.error(`업로드 실패: ${uploadErr.message}`)
         return
       }
 
