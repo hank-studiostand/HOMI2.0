@@ -136,14 +136,43 @@ emit_scenes 툴을 호출해서 결과를 반환하세요.`,
 }
 
 export async function POST(req: NextRequest) {
-  const { scriptId, projectId, content, manualScenes, sceneMarks } = await req.json() as { scriptId: string; projectId: string; content?: string; manualScenes?: string[]; sceneMarks?: { content: string; marks: Record<string, string> }[] }
+  const body = await req.json() as {
+    scriptId: string
+    projectId: string
+    content?: string
+    manualScenes?: string[]
+    manualSceneRows?: { scene_number?: string; title?: string; content: string; label?: string }[]
+    sceneMarks?: { content: string; marks: Record<string, string> }[]
+  }
+  const { scriptId, projectId, content, manualScenes, manualSceneRows, sceneMarks } = body
   const admin = createAdminClient()
 
   let scenes: ClassifiedScene[] = []
 
   try {
-    if (manualScenes && Array.isArray(manualScenes) && manualScenes.length > 0) {
-      // ── 경로 A: 사용자가 직접 씬 경계를 지정한 경우 ──
+    // ── 경로 A0 (최우선): 사용자가 scene-editor에서 번호까지 다 매긴 경우 ──
+    // Claude를 거치지 않고 사용자 번호/내용을 그대로 사용
+    const allNumbered = manualSceneRows
+      && Array.isArray(manualSceneRows)
+      && manualSceneRows.length > 0
+      && manualSceneRows.every(r => r.scene_number && r.scene_number.trim())
+
+    if (allNumbered && manualSceneRows) {
+      scenes = manualSceneRows.map((r, i) => {
+        const text = (r.content ?? '').trim()
+        const fallbackTitle = (r.title?.trim() || r.label?.trim()
+          || (text.split(/[.\n]/).find(s => s.trim())?.trim().slice(0, 40))
+          || `씬 ${r.scene_number}`)
+        return {
+          scene_number: r.scene_number!.trim(),
+          title: fallbackTitle,
+          content: text,
+          order_index: i,
+        }
+      })
+      console.log(`[classify] manualSceneRows 경로 — Claude 우회, ${scenes.length}개 씬`)
+    } else if (manualScenes && Array.isArray(manualScenes) && manualScenes.length > 0) {
+      // ── 경로 A: 텍스트 블록 단위 사용자 입력 ──
       scenes = await classifyFromManualScenes(manualScenes)
     } else {
       // ── 경로 B: 대본 전체를 AI가 자동 분류 ──

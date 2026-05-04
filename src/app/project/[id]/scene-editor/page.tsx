@@ -267,6 +267,113 @@ function RootAssetMarksEditor({
   )
 }
 
+// ── 4요소 자동분석 드롭다운 (각 씬 아래 inline) ──────────────
+function MarksDropdownPanel({
+  scene, onUpdate,
+}: {
+  scene: Scene
+  onUpdate: (id: string, updates: Partial<Scene>) => void
+}) {
+  const marks = scene.rootAssetMarks ?? { character: '', space: '', object: '', misc: '' }
+  const filled = (Object.values(marks) as string[]).filter(v => v && v.trim()).length
+  const [open, setOpen] = useState(filled > 0)
+  const fields = [
+    { key: 'character' as const, label: '캐릭터', emoji: '🧑', color: 'var(--accent)' },
+    { key: 'space'     as const, label: '공간',   emoji: '🏞', color: 'var(--info)' },
+    { key: 'object'    as const, label: '오브제', emoji: '📦', color: 'var(--violet)' },
+    { key: 'misc'      as const, label: '기타',   emoji: '✨', color: 'var(--ink-3)' },
+  ]
+  return (
+    <div
+      style={{
+        marginTop: 6,
+        background: 'var(--bg-1)',
+        border: '1px solid var(--line)',
+        borderRadius: 'var(--r-md)',
+        overflow: 'hidden',
+      }}
+    >
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center text-left"
+        style={{
+          padding: '8px 12px',
+          gap: 8,
+          background: open ? 'var(--bg-2)' : 'transparent',
+          fontSize: 11, color: 'var(--ink-3)',
+          borderBottom: open ? '1px solid var(--line)' : '0',
+        }}
+      >
+        <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          4요소 분석
+        </span>
+        <span style={{ flex: 1 }} />
+        {!open && filled > 0 && (
+          <span className="flex items-center" style={{ gap: 4 }}>
+            {fields.filter(f => marks[f.key]?.trim()).map(f => (
+              <span
+                key={f.key}
+                style={{
+                  padding: '1px 7px', borderRadius: 999,
+                  fontSize: 10, color: '#fff', background: f.color,
+                }}
+              >
+                {f.label}: {marks[f.key].trim().slice(0, 12)}{marks[f.key].trim().length > 12 ? '…' : ''}
+              </span>
+            ))}
+          </span>
+        )}
+        {!open && filled === 0 && (
+          <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>
+            비어있음 — 상단 "대본 자동 분석" 버튼으로 일괄 채우거나, 펼쳐서 직접 입력
+          </span>
+        )}
+        <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>{open ? '접기 ▲' : '펼치기 ▼'}</span>
+      </button>
+      {open && (
+        <div style={{ padding: '10px 12px', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+          {fields.map(f => (
+            <div key={f.key}>
+              <label
+                className="flex items-center"
+                style={{
+                  gap: 4, marginBottom: 4,
+                  fontSize: 10, fontWeight: 600, color: f.color,
+                  letterSpacing: '0.04em', textTransform: 'uppercase',
+                }}
+              >
+                <span>{f.emoji}</span> {f.label}
+              </label>
+              <input
+                type="text"
+                value={marks[f.key]}
+                onChange={e => onUpdate(scene.id, {
+                  rootAssetMarks: { ...marks, [f.key]: e.target.value },
+                })}
+                placeholder={`${f.label} (예: ${
+                  f.key === 'character' ? '진오, 미정' :
+                  f.key === 'space' ? '카페, 거실' :
+                  f.key === 'object' ? '책상, 자전거' :
+                  '비, 알람시계'
+                })`}
+                style={{
+                  width: '100%',
+                  padding: '5px 8px',
+                  background: 'var(--bg-2)',
+                  border: `1px solid ${marks[f.key]?.trim() ? f.color : 'var(--line)'}`,
+                  borderRadius: 'var(--r-sm)',
+                  fontSize: 12, color: 'var(--ink)',
+                  outline: 'none',
+                }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── 씬 라벨 에디터 ───────────────────────────────────────────
 
 function LabelEditor({
@@ -740,9 +847,6 @@ export default function SceneEditorPage() {
             {/* 라벨 (씬 번호와 별개) */}
             <LabelEditor scene={scene} onUpdate={updateScene} />
 
-            {/* 루트 에셋 마크 */}
-            <RootAssetMarksEditor scene={scene} onUpdate={updateScene} />
-
             {/* 합치기 */}
             {idx > 0 && (
               <button
@@ -791,6 +895,9 @@ export default function SceneEditorPage() {
             overflow: 'hidden',
           }}
         />
+
+        {/* 4요소 자동 분석 드롭다운 — 씬 아래에 inline */}
+        <MarksDropdownPanel scene={scene} onUpdate={updateScene} />
       </div>
     )
   })
