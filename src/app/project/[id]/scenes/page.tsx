@@ -263,7 +263,9 @@ export default function ScenesPage() {
         fetchScenes()
       }
     } catch (err) {
-      setPromptError('네트워크 오류')
+      console.error('[bulk master prompts]', err)
+      const msg = err instanceof Error ? err.message : String(err)
+      setPromptError('네트워크 오류: ' + msg)
     } finally {
       setBulkGenerating(false)
       setBulkProgress(null)

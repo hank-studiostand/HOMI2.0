@@ -1,0 +1,159 @@
+import { NextRequest, NextResponse } from 'next/server'
+import Anthropic from '@anthropic-ai/sdk'
+import { createAdminClient } from '@/lib/supabase/admin'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+// 동시 호출 한도 — Claude/Anthropic rate limit 보호
+const CONCURRENCY = 3
+
+type SingleResult = { sceneId: string; ok: boolean; error?: string }
+
+async function generateOne(
+  admin: ReturnType<typeof createAdminClient>,
+  sceneId: string,
+): Promise<SingleResult> {
+  // 1) scene + settings
+  const { data: scene, error: sceneErr } = await admin
+    .from('scenes')
+    .select('*, settings:scene_settings(*)')
+    .eq('id', sceneId)
+    .single()
+
+  if (sceneErr || !scene) {
+    return { sceneId, ok: false, error: `씬 조회 실패: ${sceneErr?.message ?? 'not found'}` }
+  }
+
+  const settings = Array.isArray(scene.settings)
+    ? (scene.settings[0] ?? {})
+    : (scene.settings ?? {})
+
+  const angleMap: Record<string, string> = {
+    'eye-level': 'eye level shot', 'low-angle': 'low angle shot',
+    'high-angle': 'high angle shot', 'birds-eye': "bird's eye view",
+    'dutch-angle': 'dutch angle', 'overhead': 'overhead shot',
+  }
+  const lensMap: Record<string, string> = {
+    wide: 'wide angle lens', standard: 'standard lens',
+    telephoto: 'telephoto lens', fisheye: 'fisheye lens',
+    macro: 'macro lens', anamorphic: 'anamorphic lens',
+  }
+
+  let promptContent = ''
+  let negContent = 'blurry, low quality, distorted, ugly, bad anatomy, watermark, text, logo'
+
+  try {
+    const message = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      messages: [{
+        role: 'user',
+        content: `You are a professional cinematographer creating an AI image generation prompt.
+
+Scene content:
+${scene.content}
+
+Technical settings:
+- Camera angle: ${angleMap[settings.angle] ?? settings.angle ?? 'eye level shot'}
+- Lens: ${lensMap[settings.lens] ?? settings.lens ?? 'standard lens'}
+- Aspect ratio: ${(settings as any).aspect_ratio ?? '16:9'}
+- Number of subjects: ${settings.object_count ?? 1}
+- Mood: ${settings.mood || 'cinematic'}
+- Lighting: ${settings.lighting || 'natural'}
+- Notes: ${settings.notes || 'none'}
+
+Write a detailed image generation prompt in English.
+Requirements:
+- Describe exactly what is VISIBLE in the frame
+- Include camera angle, lens type, composition
+- Include subject positions, actions, expressions
+- Include atmosphere, lighting, color palette
+- Max 150 words
+
+Respond ONLY in this exact format:
+PROMPT: [the prompt text]
+NEGATIVE: [10 negative keywords, comma separated]`,
+      }],
+    })
+
+    const text = message.content[0].type === 'text' ? message.content[0].text : ''
+    const promptMatch = text.match(/PROMPT:\s*([\s\S]*?)(?=NEGATIVE:|$)/)
+    const negMatch = text.match(/NEGATIVE:\s*([\s\S]*)/)
+    promptContent = promptMatch?.[1]?.trim() ?? text.trim()
+    negContent = negMatch?.[1]?.trim() ?? negContent
+  } catch (err) {
+    return { sceneId, ok: false, error: `AI 생성 실패: ${err instanceof Error ? err.message : String(err)}` }
+  }
+
+  // 2) version 증가
+  const { data: existing } = await admin
+    .from('master_prompts')
+    .select('version')
+    .eq('scene_id', sceneId)
+    .order('version', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const { error: insErr } = await admin.from('master_prompts').insert({
+    scene_id: sceneId,
+    content: promptContent,
+    negative_prompt: negContent,
+    version: (existing?.version ?? 0) + 1,
+  })
+
+  if (insErr) return { sceneId, ok: false, error: `저장 실패: ${insErr.message}` }
+  return { sceneId, ok: true }
+}
+
+// 동시 N개씩 처리 (rate limit 보호)
+async function runWithConcurrency<T>(
+  items: T[],
+  worker: (item: T) => Promise<SingleResult>,
+  concurrency: number,
+): Promise<SingleResult[]> {
+  const results: SingleResult[] = []
+  let idx = 0
+  async function next(): Promise<void> {
+    while (idx < items.length) {
+      const i = idx++
+      try {
+        results.push(await worker(items[i]))
+      } catch (e) {
+        results.push({
+          sceneId: String((items[i] as any) ?? ''),
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+        })
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => next()))
+  return results
+}
+
+export async function POST(req: NextRequest) {
+  const { sceneIds, projectId } = await req.json() as { sceneIds: string[]; projectId: string }
+  if (!Array.isArray(sceneIds) || sceneIds.length === 0) {
+    return NextResponse.json({ error: 'sceneIds 필요' }, { status: 400 })
+  }
+  const admin = createAdminClient()
+
+  const results = await runWithConcurrency(sceneIds, (id) => generateOne(admin, id), CONCURRENCY)
+
+  // 프로젝트 updated_at 갱신
+  if (projectId) {
+    try {
+      await admin.from('projects').update({ updated_at: new Date().toISOString() }).eq('id', projectId)
+    } catch {}
+  }
+
+  return NextResponse.json({
+    success: true,
+    results,
+    summary: {
+      total: results.length,
+      succeeded: results.filter(r => r.ok).length,
+      failed: results.filter(r => !r.ok).length,
+    },
+  })
+}
