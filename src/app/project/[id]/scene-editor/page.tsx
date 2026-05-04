@@ -587,8 +587,9 @@ export default function SceneEditorPage() {
     const validScenes = scenes.filter(sc => sc.content.trim())
     const manualScenes = validScenes.map(s => s.content.trim())
     // 사용자가 scene-editor에서 직접 정한 번호/라벨을 그대로 보냄 (Claude 우회)
-    const manualSceneRows = validScenes.map(sc => ({
-      scene_number: sc.sceneNumber?.trim() ?? '',
+    // 비어있는 번호는 array index + 1로 자동 채워서 항상 "전체 번호 있음" 분기 타게.
+    const manualSceneRows = validScenes.map((sc, i) => ({
+      scene_number: (sc.sceneNumber?.trim()) || String(i + 1),
       title: sc.label?.trim() ?? '',
       content: sc.content.trim(),
       label: sc.label?.trim() ?? '',
