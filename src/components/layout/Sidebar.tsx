@@ -7,7 +7,7 @@ import { useTheme } from '@/components/theme/ThemeProvider'
 import {
   FileText, Layers, Image as ImageIcon, Video, Mic, Archive,
   FolderOpen, ChevronLeft, Settings, LogOut, Scissors,
-  Clapperboard, Package,
+  Clapperboard, Package, Sparkles,
   Home, Frame, CheckCircle2, GitBranch, Sun, Moon, Trash2 } from 'lucide-react'
 
 type IconCmp = React.ComponentType<{ size?: number | string; className?: string; style?: React.CSSProperties }>
@@ -40,6 +40,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'STRUCTURE',
     items: [
+      { href: 'asset-make',  label: '에셋 메이킹',          icon: Sparkles, badge: 'NEW' },
       { href: 'root-assets', label: '루트 에셋',             icon: Package },
       { href: 'scenes',      label: '씬 분류 (Shot Board)', icon: Layers },
       { href: 'assets',      label: '에셋 라이브러리',       icon: FolderOpen },
