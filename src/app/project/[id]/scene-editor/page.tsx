@@ -584,7 +584,15 @@ export default function SceneEditorPage() {
     if (!scriptId || !scenes.length) return
     setClassifying(true)
     setError(null)
-    const manualScenes = scenes.map(s => s.content.trim()).filter(Boolean)
+    const validScenes = scenes.filter(sc => sc.content.trim())
+    const manualScenes = validScenes.map(s => s.content.trim())
+    // 사용자가 scene-editor에서 직접 정한 번호/라벨을 그대로 보냄 (Claude 우회)
+    const manualSceneRows = validScenes.map(sc => ({
+      scene_number: sc.sceneNumber?.trim() ?? '',
+      title: sc.label?.trim() ?? '',
+      content: sc.content.trim(),
+      label: sc.label?.trim() ?? '',
+    }))
     // 자동 추출된 root_asset_marks를 같이 전송 → classify가 새 씬에 동기화
     const sceneMarks = scenes
       .filter(sc => sc.rootAssetMarks && Object.values(sc.rootAssetMarks).some(v => v && v.trim()))
@@ -593,7 +601,7 @@ export default function SceneEditorPage() {
       const res = await fetch('/api/scenes/classify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scriptId, projectId, manualScenes, sceneMarks }),
+        body: JSON.stringify({ scriptId, projectId, manualScenes, manualSceneRows, sceneMarks }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
