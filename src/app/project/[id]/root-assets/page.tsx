@@ -339,50 +339,67 @@ function SceneAssignModal({
               {scenes.map(sc => {
                 const checked = selectedSceneIds.has(sc.id)
                 const marks = (sc as any).root_asset_marks ?? {}
-                const markChips: { key: RootAssetCategory; label: string; color: string; value: string }[] = [
+                const markRows: { key: RootAssetCategory; label: string; color: string; value: string }[] = [
                   { key: 'character', label: '인물',   color: 'var(--accent)', value: (marks.character ?? '').trim() },
                   { key: 'space',     label: '공간',   color: 'var(--info)',   value: (marks.space     ?? '').trim() },
                   { key: 'object',    label: '오브제', color: 'var(--violet)', value: (marks.object    ?? '').trim() },
                   { key: 'misc',      label: '기타',   color: 'var(--ink-3)',  value: (marks.misc      ?? '').trim() },
                 ]
-                const hasAnyMark = markChips.some(c => c.value)
                 return (
-                  <button key={sc.id} onClick={() => toggle(sc.id)} className="flex items-start w-full text-left"
-                    style={{ padding: '8px 10px', gap: 8, borderRadius: 'var(--r-sm)', background: checked ? 'var(--accent-soft)' : 'transparent', border: `1px solid ${checked ? 'var(--accent-line)' : 'var(--line)'}` }}>
-                    <span style={{ width: 16, height: 16, borderRadius: 4, background: checked ? 'var(--accent)' : 'transparent', border: `1.5px solid ${checked ? 'var(--accent)' : 'var(--line-strong)'}`, display: 'grid', placeItems: 'center', flexShrink: 0, marginTop: 2 }}>
+                  <button key={sc.id} onClick={() => toggle(sc.id)} className="grid w-full text-left"
+                    style={{
+                      gridTemplateColumns: 'auto minmax(0, 1.2fr) minmax(0, 1.4fr)',
+                      alignItems: 'center',
+                      padding: '8px 12px', gap: 12,
+                      borderRadius: 'var(--r-sm)',
+                      background: checked ? 'var(--accent-soft)' : 'transparent',
+                      border: `1px solid ${checked ? 'var(--accent-line)' : 'var(--line)'}`,
+                    }}>
+                    {/* 좌: 체크박스 */}
+                    <span style={{ width: 16, height: 16, borderRadius: 4, background: checked ? 'var(--accent)' : 'transparent', border: `1.5px solid ${checked ? 'var(--accent)' : 'var(--line-strong)'}`, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
                       {checked && <Check size={11} style={{ color: '#fff' }} />}
                     </span>
-                    <div className="flex-1" style={{ minWidth: 0 }}>
-                      <div className="flex items-center" style={{ gap: 8 }}>
-                        <span className="mono" style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', minWidth: 50, flexShrink: 0 }}>{sc.scene_number}</span>
-                        <span style={{ fontSize: 12, color: 'var(--ink-2)', flex: 1 }} className="truncate">{sc.title || '(제목 없음)'}</span>
-                      </div>
-                      {hasAnyMark && (
-                        <div className="flex flex-wrap" style={{ gap: 4, marginTop: 5, paddingLeft: 58 }}>
-                          {markChips.filter(c => c.value).map(c => {
-                            const isCurrentCategory = c.key === seed.category
-                            return (
-                              <span
-                                key={c.key}
-                                title={`${c.label}: ${c.value}`}
-                                style={{
-                                  display: 'inline-flex', alignItems: 'center', gap: 3,
-                                  padding: '1px 6px', borderRadius: 999,
-                                  fontSize: 10, lineHeight: 1.4,
-                                  background: isCurrentCategory ? c.color : 'var(--bg-3)',
-                                  color: isCurrentCategory ? '#fff' : 'var(--ink-2)',
-                                  border: `1px solid ${isCurrentCategory ? c.color : 'var(--line)'}`,
-                                  fontWeight: isCurrentCategory ? 600 : 500,
-                                  maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                }}
-                              >
-                                <span style={{ fontSize: 9, opacity: isCurrentCategory ? 0.85 : 0.65 }}>{c.label}</span>
-                                <span>{c.value}</span>
-                              </span>
-                            )
-                          })}
-                        </div>
-                      )}
+
+                    {/* 중: 씬 번호 + 제목 */}
+                    <div className="flex items-center" style={{ gap: 8, minWidth: 0 }}>
+                      <span className="mono" style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', minWidth: 50, flexShrink: 0 }}>{sc.scene_number}</span>
+                      <span style={{ fontSize: 12, color: 'var(--ink-2)', flex: 1, minWidth: 0 }} className="truncate">{sc.title || '(제목 없음)'}</span>
+                    </div>
+
+                    {/* 우: 4요소 프리뷰 컬럼 */}
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: '2px 8px',
+                        fontSize: 10, lineHeight: 1.4,
+                        minWidth: 0,
+                      }}
+                    >
+                      {markRows.map(row => {
+                        const isCurrentCategory = row.key === seed.category
+                        const empty = !row.value
+                        return (
+                          <div
+                            key={row.key}
+                            title={empty ? `${row.label}: (없음)` : `${row.label}: ${row.value}`}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 4,
+                              minWidth: 0,
+                              padding: '1px 4px', borderRadius: 4,
+                              background: isCurrentCategory ? row.color : 'transparent',
+                              color: isCurrentCategory ? '#fff' : (empty ? 'var(--ink-5)' : 'var(--ink-2)'),
+                              border: isCurrentCategory ? `1px solid ${row.color}` : '1px solid transparent',
+                              fontWeight: isCurrentCategory ? 600 : 400,
+                            }}
+                          >
+                            <span style={{ fontSize: 9, opacity: isCurrentCategory ? 0.85 : 0.55, flexShrink: 0 }}>{row.label}</span>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                              {empty ? '—' : row.value}
+                            </span>
+                          </div>
+                        )
+                      })}
                     </div>
                   </button>
                 )
