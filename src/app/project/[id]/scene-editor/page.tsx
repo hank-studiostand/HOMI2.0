@@ -60,6 +60,13 @@ interface Scene {
     object: string
     misc: string
   }
+  // 비주얼 세팅 — scene_settings 테이블의 angle/lens/lighting/mood 매핑
+  visualSetting?: {
+    angle?:    string  // eye-level / low-angle / high-angle / birds-eye / dutch-angle / overhead
+    lens?:     string  // wide / standard / telephoto / fisheye / macro / anamorphic
+    lighting?: string  // natural / golden / blue_hour / studio / dramatic / backlit / neon / candlelight
+    mood?:     string  // 자유 텍스트 (e.g. "쓸쓸한", "긴장된")
+  }
 }
 
 // ── localStorage 헬퍼 ─────────────────────────────────────────
@@ -83,6 +90,8 @@ function loadFromLocal(projectId: string): Scene[] | null {
       label: s.label,
       labelMode: s.labelMode,
       customLabel: s.customLabel,
+      rootAssetMarks: s.rootAssetMarks,
+      visualSetting: s.visualSetting,
     }))
   } catch { return null }
 }
@@ -267,15 +276,49 @@ function RootAssetMarksEditor({
   )
 }
 
-// ── 4요소 자동분석 드롭다운 (각 씬 아래 inline) ──────────────
-function MarksDropdownPanel({
+// ── 비주얼 세팅 드롭다운 (각 씬 아래 inline) ──────────────
+// 4요소(인물/공간/오브제/기타) + 카메라(앵글/렌즈/조명) + 무드
+const ANGLE_OPTIONS = [
+  { v: '', label: '자동' },
+  { v: 'eye-level',  label: '아이레벨' },
+  { v: 'low-angle',  label: '로우앵글' },
+  { v: 'high-angle', label: '하이앵글' },
+  { v: 'birds-eye',  label: '버즈아이' },
+  { v: 'dutch-angle',label: '더치앵글' },
+  { v: 'overhead',   label: '오버헤드' },
+]
+const LENS_OPTIONS = [
+  { v: '', label: '자동' },
+  { v: 'wide',       label: '광각 (24mm)' },
+  { v: 'standard',   label: '표준 (50mm)' },
+  { v: 'telephoto',  label: '망원 (135mm)' },
+  { v: 'macro',      label: '마크로' },
+  { v: 'fisheye',    label: '어안' },
+  { v: 'anamorphic', label: '아나모픽' },
+]
+const LIGHTING_OPTIONS = [
+  { v: '', label: '자동' },
+  { v: 'natural',    label: '자연광' },
+  { v: 'golden',     label: '골든아워' },
+  { v: 'blue_hour',  label: '블루아워' },
+  { v: 'studio',     label: '스튜디오' },
+  { v: 'dramatic',   label: '드라마틱' },
+  { v: 'backlit',    label: '역광' },
+  { v: 'neon',       label: '네온' },
+  { v: 'candlelight',label: '촛불' },
+]
+
+function VisualSettingsPanel({
   scene, onUpdate,
 }: {
   scene: Scene
   onUpdate: (id: string, updates: Partial<Scene>) => void
 }) {
   const marks = scene.rootAssetMarks ?? { character: '', space: '', object: '', misc: '' }
-  const filled = (Object.values(marks) as string[]).filter(v => v && v.trim()).length
+  const visual = scene.visualSetting ?? {}
+  const marksFilled = (Object.values(marks) as string[]).filter(v => v && v.trim()).length
+  const visualFilled = (Object.values(visual) as (string | undefined)[]).filter(v => v && v.trim()).length
+  const filled = marksFilled + visualFilled
   const [open, setOpen] = useState(filled > 0)
   const fields = [
     { key: 'character' as const, label: '캐릭터', emoji: '🧑', color: 'var(--accent)' },
@@ -305,7 +348,7 @@ function MarksDropdownPanel({
         }}
       >
         <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          4요소 분석
+          비주얼 세팅
         </span>
         <span style={{ flex: 1 }} />
         {!open && filled > 0 && (
@@ -325,49 +368,158 @@ function MarksDropdownPanel({
         )}
         {!open && filled === 0 && (
           <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>
-            비어있음 — 상단 "대본 자동 분석" 버튼으로 일괄 채우거나, 펼쳐서 직접 입력
+            비어있음 — 4요소(자동분석 가능) + 카메라·무드(직접 설정) · 마스터 프롬프트에 자동 반영
           </span>
         )}
         <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>{open ? '접기 ▲' : '펼치기 ▼'}</span>
       </button>
       {open && (
-        <div style={{ padding: '10px 12px', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-          {fields.map(f => (
-            <div key={f.key}>
-              <label
-                className="flex items-center"
+        <div style={{ padding: '10px 12px' }}>
+          {/* 1) 4요소 */}
+          <div
+            style={{
+              fontSize: 9, fontWeight: 700, color: 'var(--ink-4)',
+              letterSpacing: '0.06em', textTransform: 'uppercase',
+              marginBottom: 6,
+            }}
+          >
+            4요소
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 12 }}>
+            {fields.map(f => (
+              <div key={f.key}>
+                <label
+                  className="flex items-center"
+                  style={{
+                    gap: 4, marginBottom: 4,
+                    fontSize: 10, fontWeight: 600, color: f.color,
+                    letterSpacing: '0.04em', textTransform: 'uppercase',
+                  }}
+                >
+                  <span>{f.emoji}</span> {f.label}
+                </label>
+                <input
+                  type="text"
+                  value={marks[f.key]}
+                  onChange={e => onUpdate(scene.id, {
+                    rootAssetMarks: { ...marks, [f.key]: e.target.value },
+                  })}
+                  placeholder={`${f.label} (예: ${
+                    f.key === 'character' ? '진오, 미정' :
+                    f.key === 'space' ? '카페, 거실' :
+                    f.key === 'object' ? '책상, 자전거' :
+                    '비, 알람시계'
+                  })`}
+                  style={{
+                    width: '100%',
+                    padding: '5px 8px',
+                    background: 'var(--bg-2)',
+                    border: `1px solid ${marks[f.key]?.trim() ? f.color : 'var(--line)'}`,
+                    borderRadius: 'var(--r-sm)',
+                    fontSize: 12, color: 'var(--ink)',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* 2) 카메라 + 무드 */}
+          <div
+            style={{
+              fontSize: 9, fontWeight: 700, color: 'var(--ink-4)',
+              letterSpacing: '0.06em', textTransform: 'uppercase',
+              marginBottom: 6,
+            }}
+          >
+            카메라 / 무드
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+            <div>
+              <label className="flex items-center" style={{ gap: 4, marginBottom: 4, fontSize: 10, fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase' }}>
+                📷 앵글
+              </label>
+              <select
+                value={visual.angle ?? ''}
+                onChange={e => onUpdate(scene.id, {
+                  visualSetting: { ...visual, angle: e.target.value || undefined },
+                })}
                 style={{
-                  gap: 4, marginBottom: 4,
-                  fontSize: 10, fontWeight: 600, color: f.color,
-                  letterSpacing: '0.04em', textTransform: 'uppercase',
+                  width: '100%', padding: '5px 8px',
+                  background: 'var(--bg-2)',
+                  border: `1px solid ${visual.angle ? 'var(--accent)' : 'var(--line)'}`,
+                  borderRadius: 'var(--r-sm)',
+                  fontSize: 12, color: 'var(--ink)', outline: 'none',
                 }}
               >
-                <span>{f.emoji}</span> {f.label}
+                {ANGLE_OPTIONS.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="flex items-center" style={{ gap: 4, marginBottom: 4, fontSize: 10, fontWeight: 600, color: 'var(--info)', textTransform: 'uppercase' }}>
+                🔍 렌즈
+              </label>
+              <select
+                value={visual.lens ?? ''}
+                onChange={e => onUpdate(scene.id, {
+                  visualSetting: { ...visual, lens: e.target.value || undefined },
+                })}
+                style={{
+                  width: '100%', padding: '5px 8px',
+                  background: 'var(--bg-2)',
+                  border: `1px solid ${visual.lens ? 'var(--info)' : 'var(--line)'}`,
+                  borderRadius: 'var(--r-sm)',
+                  fontSize: 12, color: 'var(--ink)', outline: 'none',
+                }}
+              >
+                {LENS_OPTIONS.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="flex items-center" style={{ gap: 4, marginBottom: 4, fontSize: 10, fontWeight: 600, color: 'var(--warn)', textTransform: 'uppercase' }}>
+                💡 조명
+              </label>
+              <select
+                value={visual.lighting ?? ''}
+                onChange={e => onUpdate(scene.id, {
+                  visualSetting: { ...visual, lighting: e.target.value || undefined },
+                })}
+                style={{
+                  width: '100%', padding: '5px 8px',
+                  background: 'var(--bg-2)',
+                  border: `1px solid ${visual.lighting ? 'var(--warn)' : 'var(--line)'}`,
+                  borderRadius: 'var(--r-sm)',
+                  fontSize: 12, color: 'var(--ink)', outline: 'none',
+                }}
+              >
+                {LIGHTING_OPTIONS.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="flex items-center" style={{ gap: 4, marginBottom: 4, fontSize: 10, fontWeight: 600, color: 'var(--violet)', textTransform: 'uppercase' }}>
+                🎭 무드
               </label>
               <input
                 type="text"
-                value={marks[f.key]}
+                value={visual.mood ?? ''}
                 onChange={e => onUpdate(scene.id, {
-                  rootAssetMarks: { ...marks, [f.key]: e.target.value },
+                  visualSetting: { ...visual, mood: e.target.value },
                 })}
-                placeholder={`${f.label} (예: ${
-                  f.key === 'character' ? '진오, 미정' :
-                  f.key === 'space' ? '카페, 거실' :
-                  f.key === 'object' ? '책상, 자전거' :
-                  '비, 알람시계'
-                })`}
+                placeholder="예: 쓸쓸한, 긴장된, 따뜻한"
                 style={{
-                  width: '100%',
-                  padding: '5px 8px',
+                  width: '100%', padding: '5px 8px',
                   background: 'var(--bg-2)',
-                  border: `1px solid ${marks[f.key]?.trim() ? f.color : 'var(--line)'}`,
+                  border: `1px solid ${visual.mood?.trim() ? 'var(--violet)' : 'var(--line)'}`,
                   borderRadius: 'var(--r-sm)',
-                  fontSize: 12, color: 'var(--ink)',
-                  outline: 'none',
+                  fontSize: 12, color: 'var(--ink)', outline: 'none',
                 }}
               />
             </div>
-          ))}
+          </div>
+
+          <p style={{ marginTop: 10, fontSize: 10, color: 'var(--ink-4)', lineHeight: 1.5 }}>
+            💡 이 비주얼 세팅은 씬 분류에서 마스터 프롬프트 만들 때 자동으로 반영됩니다.
+          </p>
         </div>
       )}
     </div>
@@ -721,6 +873,7 @@ export default function SceneEditorPage() {
       title: sc.label?.trim() ?? '',
       content: sc.content.trim(),
       label: sc.label?.trim() ?? '',
+      visualSetting: sc.visualSetting,  // angle/lens/lighting/mood
     }))
     // 자동 추출된 root_asset_marks를 같이 전송 → classify가 새 씬에 동기화
     const sceneMarks = scenes
@@ -896,8 +1049,8 @@ export default function SceneEditorPage() {
           }}
         />
 
-        {/* 4요소 자동 분석 드롭다운 — 씬 아래에 inline */}
-        <MarksDropdownPanel scene={scene} onUpdate={updateScene} />
+        {/* 비주얼 세팅 드롭다운 — 씬 아래에 inline */}
+        <VisualSettingsPanel scene={scene} onUpdate={updateScene} />
       </div>
     )
   })

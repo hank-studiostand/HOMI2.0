@@ -141,7 +141,7 @@ export async function POST(req: NextRequest) {
     projectId: string
     content?: string
     manualScenes?: string[]
-    manualSceneRows?: { scene_number?: string; title?: string; content: string; label?: string }[]
+    manualSceneRows?: { scene_number?: string; title?: string; content: string; label?: string; visualSetting?: { angle?: string; lens?: string; lighting?: string; mood?: string } }[]
     sceneMarks?: { content: string; marks: Record<string, string> }[]
   }
   const { scriptId, projectId, content, manualScenes, manualSceneRows, sceneMarks } = body
@@ -240,6 +240,43 @@ emit_scenes 툴을 호출해서 결과를 반환하세요.`,
       { error: `삽입 실패: ${insErr.message}` },
       { status: 500 },
     )
+
+  // ── visualSetting 동기화 — scene_settings 테이블에 저장 ──
+  if (manualSceneRows && manualSceneRows.length > 0) {
+    const { data: createdScenes2 } = await admin
+      .from('scenes')
+      .select('id, scene_number, content')
+      .eq('project_id', projectId)
+    for (const row of manualSceneRows) {
+      if (!row.visualSetting) continue
+      const vs = row.visualSetting
+      const hasAny = (vs.angle && vs.angle.trim())
+        || (vs.lens && vs.lens.trim())
+        || (vs.lighting && vs.lighting.trim())
+        || (vs.mood && vs.mood.trim())
+      if (!hasAny) continue
+      // scene_number로 매칭
+      const target = (createdScenes2 ?? []).find(c =>
+        (c.scene_number ?? '').trim() === (row.scene_number ?? '').trim(),
+      )
+      if (!target) continue
+      // upsert into scene_settings (scene_id unique)
+      const updates: Record<string, any> = {}
+      if (vs.angle?.trim())    updates.angle    = vs.angle.trim()
+      if (vs.lens?.trim())     updates.lens     = vs.lens.trim()
+      if (vs.lighting?.trim()) updates.lighting = vs.lighting.trim()
+      if (vs.mood?.trim())     updates.mood     = vs.mood.trim()
+      if (Object.keys(updates).length === 0) continue
+      // 먼저 row 존재 여부
+      const { data: existing } = await admin
+        .from('scene_settings').select('id').eq('scene_id', target.id).maybeSingle()
+      if (existing) {
+        await admin.from('scene_settings').update(updates).eq('scene_id', target.id)
+      } else {
+        await admin.from('scene_settings').insert({ scene_id: target.id, ...updates })
+      }
+    }
+  }
 
   // root_asset_marks 동기화 — sceneMarks의 content와 새 씬의 content를 startswith 매칭
   if (sceneMarks && Array.isArray(sceneMarks) && sceneMarks.length > 0) {
