@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useParams } from 'next/navigation'
 import {
   Upload, Loader2, User2, MapPin, Package, MoreHorizontal, Plus, X, Trash2, Edit2, Library,
-  Check, Film,
+  Check, Film, Sparkles, Wand2,
 } from 'lucide-react'
 import { toast } from '@/components/ui/Toast'
 import { sortScenesByNumber } from '@/lib/sceneSort'
@@ -372,6 +372,7 @@ export default function RootAssetsPage() {
   const [seeds, setSeeds] = useState<RootAssetSeed[]>([])
   const [scenes, setScenes] = useState<Scene[]>([])
   const [loading, setLoading] = useState(true)
+  const [autoMatching, setAutoMatching] = useState(false)
   const supabase = createClient()
 
   useEffect(() => {
@@ -428,6 +429,96 @@ export default function RootAssetsPage() {
     setSeeds(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s))
   }
 
+  // 씬 마크 텍스트(예: '진오', '카페') ↔ 시드 이름 매칭하여 자동 할당
+  async function autoMatchByMarks() {
+    if (seeds.length === 0 || scenes.length === 0) {
+      toast.warning('매칭 불가', '씬 또는 루트 에셋이 없어요')
+      return
+    }
+    setAutoMatching(true)
+    try {
+      type Match = { sceneId: string; category: RootAssetCategory; seedId: string; sceneLabel: string; seedName: string; markText: string }
+      const matches: Match[] = []
+      for (const sc of scenes) {
+        const marks = ((sc as any).root_asset_marks ?? {}) as Record<string, string | undefined>
+        for (const cat of ['character', 'space', 'object', 'misc'] as const) {
+          const markText = (marks[cat] ?? '').trim()
+          if (!markText) continue
+          // 마크 텍스트 안에 들어있는 키워드들 (콤마/슬래시/공백으로 구분)
+          const tokens = markText.split(/[,\/·、,\s]+/).map(t => t.trim()).filter(Boolean)
+          if (tokens.length === 0) continue
+          for (const seed of seeds) {
+            if (seed.category !== cat) continue
+            const seedName = (seed.name ?? '').trim().toLowerCase()
+            if (!seedName) continue
+            // 토큰 중 하나라도 시드 이름에 포함되거나 그 반대면 매칭
+            const hit = tokens.some(t => {
+              const tt = t.toLowerCase()
+              return tt === seedName || tt.includes(seedName) || seedName.includes(tt)
+            })
+            if (hit) {
+              matches.push({
+                sceneId: sc.id, category: cat, seedId: seed.id,
+                sceneLabel: `${sc.scene_number} ${sc.title || ''}`.trim(),
+                seedName: seed.name, markText,
+              })
+            }
+          }
+        }
+      }
+      if (matches.length === 0) {
+        toast.info('매칭 없음', '시드 이름과 일치하는 씬 마크가 없어요. 시드 이름을 마크 텍스트와 같게 (예: "진오") 만들어보세요.')
+        return
+      }
+      // 사용자 확인
+      const ok = confirm(
+        `${matches.length}개 매칭 발견:\n\n` +
+        matches.slice(0, 8).map(m => `· ${m.sceneLabel} [${m.category}] "${m.markText}" → ${m.seedName}`).join('\n') +
+        (matches.length > 8 ? `\n... 외 ${matches.length - 8}개` : '') +
+        '\n\n각 씬에 시드 이미지를 자동 할당할까요?',
+      )
+      if (!ok) return
+      // 적용 — 씬별로 selected_root_asset_image_ids 갱신 (dedup)
+      const sceneUpdate = new Map<string, Record<string, string[]>>()
+      for (const sc of scenes) {
+        sceneUpdate.set(sc.id, JSON.parse(JSON.stringify((sc as any).selected_root_asset_image_ids ?? {})))
+      }
+      for (const m of matches) {
+        const seed = seeds.find(s => s.id === m.seedId)
+        if (!seed) continue
+        const cur = sceneUpdate.get(m.sceneId)!
+        const list = cur[m.category] ?? []
+        const set = new Set(list)
+        for (const u of (seed.reference_image_urls ?? [])) set.add(u)
+        cur[m.category] = Array.from(set)
+      }
+      let succeeded = 0, failed = 0
+      for (const [sceneId, sel] of sceneUpdate) {
+        // 변경 안 된 씬은 스킵
+        const orig = scenes.find(s => s.id === sceneId)
+        const origSel = ((orig as any)?.selected_root_asset_image_ids ?? {}) as Record<string, string[]>
+        const same = Object.keys({...origSel, ...sel}).every(k => {
+          const a = origSel[k] ?? []
+          const b = sel[k] ?? []
+          return a.length === b.length && a.every((u, i) => u === b[i])
+        })
+        if (same) continue
+        const { error } = await supabase.from('scenes').update({ selected_root_asset_image_ids: sel }).eq('id', sceneId)
+        if (error) failed++
+        else succeeded++
+      }
+      toast.success(
+        '자동 매칭 적용됨',
+        `${succeeded}개 씬에 적용${failed > 0 ? ` · ${failed}개 실패` : ''}`,
+      )
+      await fetchScenes()
+    } catch (e: any) {
+      toast.error('자동 매칭 실패', e?.message ?? String(e))
+    } finally {
+      setAutoMatching(false)
+    }
+  }
+
   const filtered = activeTab === 'all' ? seeds : seeds.filter(s => s.category === activeTab)
   const counts = useMemo(() => {
     const c = { all: seeds.length, character: 0, space: 0, object: 0, misc: 0 }
@@ -451,6 +542,22 @@ export default function RootAssetsPage() {
             <p className="text-[13px] mt-1" style={{ color: 'var(--ink-3)' }}>프로젝트의 인물 / 공간 / 오브제 라이브러리 · {seeds.length}개</p>
           </div>
           <div className="flex items-center" style={{ gap: 8 }}>
+            <button
+              onClick={autoMatchByMarks}
+              disabled={autoMatching || seeds.length === 0 || scenes.length === 0}
+              className="flex items-center"
+              style={{
+                padding: '6px 12px', gap: 5, fontSize: 12, fontWeight: 500,
+                background: 'var(--accent-soft)', color: 'var(--accent)',
+                border: '1px solid var(--accent-line)',
+                borderRadius: 'var(--r-md)',
+                opacity: (autoMatching || seeds.length === 0 || scenes.length === 0) ? 0.5 : 1,
+              }}
+              title="각 씬의 인물/공간/오브제 마크 텍스트와 시드 이름을 비교해 자동 할당"
+            >
+              {autoMatching ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
+              AI 자동 매칭
+            </button>
             {CATEGORIES.map(cat => (
               <button key={`add-${cat.key}`} onClick={() => addSeed(cat.key)} className="flex items-center"
                 style={{ padding: '6px 12px', gap: 5, fontSize: 12, fontWeight: 500, background: 'transparent', color: 'var(--ink-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)' }}

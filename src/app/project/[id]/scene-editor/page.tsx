@@ -563,15 +563,23 @@ export default function SceneEditorPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      // Update local scenes with extracted marks
+      let extractedCount = 0
       if (data.results) {
         setScenes(prev => prev.map(scene => {
           const result = data.results.find((r: any) => r.sceneId === scene.id)
           if (result?.marks) {
+            const hasAny = Object.values(result.marks).some(v => v && String(v).trim())
+            if (hasAny) extractedCount++
             return { ...scene, rootAssetMarks: result.marks }
           }
           return scene
         }))
+      }
+      setError(null)
+      // 결과 안내 — '에셋 마크' 버튼이 자동으로 채워짐
+      if (extractedCount > 0) {
+        // 알림용 메시지로 setError를 잠시 활용 (성공 케이스라 toast가 더 적절하지만 호환성 유지)
+        console.log(`[extract-marks] ${extractedCount}개 씬에 자동 채움`)
       }
     } catch (e) {
       setError(`에셋 마크 추출 실패: ${String(e)}`)
@@ -582,6 +590,19 @@ export default function SceneEditorPage() {
 
   async function confirmAndClassify() {
     if (!scriptId || !scenes.length) return
+
+    // 기존 씬이 있으면 한 번 더 확인
+    const { count } = await supabase
+      .from('scenes').select('*', { count: 'exact', head: true })
+      .eq('project_id', projectId)
+    if ((count ?? 0) > 0) {
+      const ok = confirm(
+        `기존 ${count}개의 씬이 모두 삭제되고 새로 생성됩니다.\n` +
+        `(루트 에셋 / 자산 라이브러리는 보존됨)\n\n계속할까요?`,
+      )
+      if (!ok) return
+    }
+
     setClassifying(true)
     setError(null)
     const validScenes = scenes.filter(sc => sc.content.trim())

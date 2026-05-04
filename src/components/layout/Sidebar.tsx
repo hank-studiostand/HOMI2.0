@@ -40,9 +40,9 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'STRUCTURE',
     items: [
+      { href: 'root-assets', label: '루트 에셋',             icon: Package },
       { href: 'scenes',      label: '씬 분류 (Shot Board)', icon: Layers },
       { href: 'assets',      label: '에셋 라이브러리',       icon: FolderOpen },
-      { href: 'root-assets', label: '루트 에셋',             icon: Package },
     ],
   },
   {
