@@ -258,33 +258,54 @@ export default function AssetMakePage() {
   )
 
   return (
-    <div style={{ background: 'var(--bg)', color: 'var(--ink)', minHeight: '100%' }}>
+    <div className="h-full flex flex-col" style={{ background: 'var(--bg)', color: 'var(--ink)' }}>
       {/* ── 페이지 헤더 ── */}
-      <div className="ph">
-        <div className="ph-row">
-          <div className="ph-title-wrap">
-            <div className="ph-icon" style={{ background: 'var(--accent-soft)' }}>
-              <Sparkles size={16} style={{ color: 'var(--accent)' }} />
+      <div
+        style={{
+          padding: '20px 28px 16px',
+          borderBottom: '1px solid var(--line)',
+          background: 'var(--bg)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 3,
+        }}
+      >
+        <div className="flex items-end justify-between" style={{ gap: 16 }}>
+          <div className="flex items-center" style={{ gap: 12 }}>
+            <div
+              style={{
+                width: 36, height: 36, borderRadius: 10,
+                background: 'var(--accent-soft)',
+                display: 'grid', placeItems: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <Sparkles size={18} style={{ color: 'var(--accent)' }} />
             </div>
             <div>
-              <h1 className="ph-title">에셋 메이킹</h1>
-              <p className="ph-sub">프롬프트 · 레퍼런스 · 카메라 · 무드로 임의의 이미지 에셋을 만들어 프로젝트에 추가합니다.</p>
+              <h1 style={{ margin: 0, fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink)' }}>
+                에셋 메이킹
+              </h1>
+              <p className="text-[13px] mt-1" style={{ color: 'var(--ink-3)' }}>
+                프롬프트 · 레퍼런스 · 카메라 · 무드로 임의의 이미지 에셋을 만들어 프로젝트에 추가합니다.
+              </p>
             </div>
           </div>
-          <div className="ph-actions">
+          <div className="flex items-center" style={{ gap: 8 }}>
             <span className="text-xs" style={{ color: 'var(--ink-4)' }}>
-              생성된 에셋: <b style={{ color: 'var(--ink-2)' }}>{made.length}</b>장
+              생성된 에셋 <b style={{ color: 'var(--ink-2)' }}>{made.length}</b>장
             </span>
           </div>
         </div>
       </div>
 
       <div
+        className="flex-1 overflow-y-auto"
         style={{
           display: 'grid',
           gridTemplateColumns: 'minmax(420px, 480px) 1fr',
-          gap: 16,
-          padding: 16,
+          gap: 20,
+          padding: '20px 28px',
           alignItems: 'start',
         }}
       >
