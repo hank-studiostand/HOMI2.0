@@ -8,6 +8,7 @@ import { sortScenesByNumber } from '@/lib/sceneSort'
 import {
   ChevronLeft, Sparkles, Check, RotateCcw, Trash2, X,
   Image as ImageIcon, Film, MessageCircle, Send, Loader2, Plus,
+  Edit2, ChevronDown, ChevronRight, Save, FileText,
 } from 'lucide-react'
 import type { Scene, SatisfactionScore, Asset, RootAssetSeed } from '@/types'
 import Pill, { type PillVariant } from '@/components/ui/Pill'
@@ -1741,8 +1742,11 @@ function GeneratePanel({
 
   return (
     <div style={{ padding: '18px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
-      {/* 좌측 — 프롬프트 */}
+      {/* 좌측 — 씬 컨텍스트 + 프롬프트 */}
       <div>
+        {/* 씬 컨텍스트 (씬 경계 편집 텍스트 + 4요소 마크) */}
+        <SceneContextPanel scene={scene} />
+
         <div className="field-label">프롬프트</div>
         <textarea
           value={promptDraft}
@@ -2472,6 +2476,230 @@ function RootAssetBox({
             </div>
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+
+// ─── 씬 컨텍스트 패널 (씬 경계 편집 텍스트 + 4요소 마크 인라인 편집) ───
+function SceneContextPanel({ scene }: { scene: Scene }) {
+  const supabase = createClient()
+  const [textOpen, setTextOpen] = useState(true)
+  const initialMarks = (scene as any).root_asset_marks ?? {}
+  const [marks, setMarks] = useState<{ character?: string; space?: string; object?: string; misc?: string }>({
+    character: initialMarks.character ?? '',
+    space:     initialMarks.space     ?? '',
+    object:    initialMarks.object    ?? '',
+    misc:      initialMarks.misc      ?? '',
+  })
+  const [editingKey, setEditingKey] = useState<null | 'character' | 'space' | 'object' | 'misc'>(null)
+  const [draftValue, setDraftValue] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  // 씬이 바뀌면 marks 초기화
+  useEffect(() => {
+    const m = (scene as any).root_asset_marks ?? {}
+    setMarks({
+      character: m.character ?? '',
+      space:     m.space     ?? '',
+      object:    m.object    ?? '',
+      misc:      m.misc      ?? '',
+    })
+    setEditingKey(null)
+  }, [scene.id])
+
+  async function persistMarks(next: typeof marks) {
+    setSaving(true)
+    try {
+      const { error } = await supabase
+        .from('scenes')
+        .update({ root_asset_marks: next })
+        .eq('id', scene.id)
+      if (error) throw error
+    } catch (e) {
+      console.error('[scene-context] root_asset_marks 저장 실패:', e)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function startEdit(key: 'character' | 'space' | 'object' | 'misc') {
+    setEditingKey(key)
+    setDraftValue(marks[key] ?? '')
+  }
+
+  async function commitEdit() {
+    if (!editingKey) return
+    const next = { ...marks, [editingKey]: draftValue.trim() }
+    setMarks(next)
+    setEditingKey(null)
+    await persistMarks(next)
+  }
+
+  async function clearMark(key: 'character' | 'space' | 'object' | 'misc') {
+    const next = { ...marks, [key]: '' }
+    setMarks(next)
+    await persistMarks(next)
+  }
+
+  const ROWS: { key: 'character' | 'space' | 'object' | 'misc'; label: string; color: string; placeholder: string }[] = [
+    { key: 'character', label: '인물',   color: 'var(--accent)', placeholder: '예: 진오, 수연' },
+    { key: 'space',     label: '공간',   color: 'var(--info)',   placeholder: '예: 안방, 식탁 앞' },
+    { key: 'object',    label: '오브제', color: 'var(--violet)', placeholder: '예: 알람 시계, 이불' },
+    { key: 'misc',      label: '기타',   color: 'var(--ink-3)',  placeholder: '예: 새벽 분위기' },
+  ]
+
+  return (
+    <div
+      style={{
+        marginBottom: 14,
+        background: 'var(--bg-2)',
+        border: '1px solid var(--line)',
+        borderRadius: 'var(--r-md)',
+        overflow: 'hidden',
+      }}
+    >
+      {/* 씬 경계 편집 텍스트 (collapsible) */}
+      <button
+        onClick={() => setTextOpen(o => !o)}
+        className="w-full flex items-center"
+        style={{
+          padding: '8px 12px', gap: 6,
+          fontSize: 11, fontWeight: 600,
+          color: 'var(--ink-2)',
+          background: 'var(--bg-3)',
+          borderBottom: textOpen ? '1px solid var(--line)' : 'none',
+          textAlign: 'left',
+        }}
+      >
+        {textOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        <FileText size={12} style={{ color: 'var(--ink-3)' }} />
+        <span>씬 #{scene.scene_number} {scene.title ? `· ${scene.title}` : ''}</span>
+        <span style={{ flex: 1 }} />
+        <span style={{ fontSize: 10, color: 'var(--ink-4)', fontWeight: 400 }}>씬 경계 편집 원문</span>
+      </button>
+      {textOpen && (
+        <div
+          style={{
+            padding: '10px 12px',
+            fontSize: 12, lineHeight: 1.65,
+            color: 'var(--ink-2)',
+            whiteSpace: 'pre-wrap',
+            maxHeight: 180,
+            overflowY: 'auto',
+            borderBottom: '1px solid var(--line)',
+          }}
+        >
+          {scene.content?.trim() ? scene.content : (
+            <span style={{ color: 'var(--ink-5)', fontStyle: 'italic' }}>
+              (씬 본문이 비어 있어요. 씬 경계 편집에서 채워주세요)
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* 4요소 마크 — 인라인 편집/삭제 */}
+      <div style={{ padding: '8px 10px' }}>
+        <div className="flex items-center" style={{ gap: 6, marginBottom: 6 }}>
+          <Sparkles size={11} style={{ color: 'var(--accent)' }} />
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-2)' }}>4요소 마크</span>
+          {saving && <Loader2 size={10} className="animate-spin" style={{ color: 'var(--ink-4)' }} />}
+          <span style={{ flex: 1 }} />
+          <span style={{ fontSize: 10, color: 'var(--ink-5)' }}>씬 경계 편집과 동기화</span>
+        </div>
+        <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+          {ROWS.map(row => {
+            const value = marks[row.key] ?? ''
+            const isEditing = editingKey === row.key
+            return (
+              <div
+                key={row.key}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '6px 8px',
+                  background: 'var(--bg)',
+                  border: `1px solid ${isEditing ? row.color : 'var(--line)'}`,
+                  borderRadius: 'var(--r-sm)',
+                  minHeight: 30,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 10, fontWeight: 700,
+                    color: row.color,
+                    minWidth: 36, flexShrink: 0,
+                  }}
+                >
+                  {row.label}
+                </span>
+                {isEditing ? (
+                  <>
+                    <input
+                      autoFocus
+                      value={draftValue}
+                      onChange={e => setDraftValue(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') { e.preventDefault(); void commitEdit() }
+                        if (e.key === 'Escape') { e.preventDefault(); setEditingKey(null) }
+                      }}
+                      placeholder={row.placeholder}
+                      style={{
+                        flex: 1, minWidth: 0,
+                        background: 'transparent', border: 'none', outline: 'none',
+                        fontSize: 12, color: 'var(--ink)',
+                      }}
+                    />
+                    <button
+                      onClick={() => void commitEdit()}
+                      title="저장 (Enter)"
+                      style={{ padding: 2, color: row.color, flexShrink: 0 }}
+                    >
+                      <Save size={11} />
+                    </button>
+                    <button
+                      onClick={() => setEditingKey(null)}
+                      title="취소 (Esc)"
+                      style={{ padding: 2, color: 'var(--ink-4)', flexShrink: 0 }}
+                    >
+                      <X size={11} />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span
+                      style={{
+                        flex: 1, minWidth: 0,
+                        fontSize: 12, color: value ? 'var(--ink)' : 'var(--ink-5)',
+                        fontStyle: value ? 'normal' : 'italic',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}
+                      title={value || '(비어 있음)'}
+                    >
+                      {value || '(비어 있음)'}
+                    </span>
+                    <button
+                      onClick={() => startEdit(row.key)}
+                      title="편집"
+                      style={{ padding: 2, color: 'var(--ink-4)', flexShrink: 0 }}
+                    >
+                      <Edit2 size={10} />
+                    </button>
+                    {value && (
+                      <button
+                        onClick={() => void clearMark(row.key)}
+                        title="삭제"
+                        style={{ padding: 2, color: 'var(--danger)', flexShrink: 0 }}
+                      >
+                        <Trash2 size={10} />
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
