@@ -37,10 +37,10 @@ const RATIOS: { value: string; label: string }[] = [
 ]
 
 const ENGINES: { value: string; label: string; available: boolean }[] = [
-  { value: 'nanobanana',       label: '나노바나나 (Gemini 2.5 Flash Image)', available: true },
-  { value: 'midjourney',       label: 'Midjourney',       available: false },
-  { value: 'gpt-image',        label: 'GPT Image',         available: false },
-  { value: 'stable-diffusion', label: 'Stable Diffusion',  available: false },
+  { value: 'nanobanana',       label: '나노바나나 2 (Gemini 3.1 Flash Image)', available: true },
+  { value: 'gpt-image',        label: 'GPT Image (gpt-image-1)',           available: true },
+  { value: 'midjourney',       label: 'Midjourney',                         available: false },
+  { value: 'stable-diffusion', label: 'Stable Diffusion',                   available: false },
 ]
 
 const COUNTS = [1, 2, 4, 6, 8]

@@ -1676,7 +1676,7 @@ function DecisionModal({
 
 // ─── Generate 패널 — 프롬프트 + 엔진 + 화면비 + 생성 ─────────
 const T2I_ENGINES = [
-  { value: 'nanobanana',       label: '나노바나나' },
+  { value: 'nanobanana',       label: '나노바나나 2' },
   { value: 'gpt-image',        label: 'GPT Image' },
   { value: 'midjourney',       label: 'Midjourney' },
   { value: 'stable-diffusion', label: 'Stable Diffusion' },

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { generateViaOpenAI } from '@/lib/openai-images'
 
 // ── 화면비 → Gemini 지원 매핑 ────────────────────────────────
 const SUPPORTED_GEMINI = ['21:9','16:9','4:3','3:2','1:1','9:16','3:4','2:3','5:4','4:5']
@@ -72,7 +73,7 @@ async function generateViaNanobanana(
   // 1회 호출당 1장 → count장 병렬 호출
   const calls = Array.from({ length: count }, () =>
     fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent',
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent',
       {
         method: 'POST',
         headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
@@ -165,6 +166,10 @@ export async function POST(req: NextRequest) {
       const apiKey = process.env.GEMINI_API_KEY
       if (!apiKey) throw new Error('GEMINI_API_KEY가 설정되지 않았습니다.')
       images = await generateViaNanobanana(apiKey, fullPrompt, ratio, n, referenceImages)
+    } else if (eng === 'gpt-image' || eng === 'gpt-image-1' || eng === 'openai') {
+      const apiKey = process.env.OPENAI_API_KEY
+      if (!apiKey) throw new Error('OPENAI_API_KEY가 설정되지 않았습니다. .env.local에 키를 추가하고 서버를 재시작하세요.')
+      images = await generateViaOpenAI(apiKey, fullPrompt, ratio, n, referenceImages)
     } else {
       throw new Error(`${eng} 엔진은 에셋 메이킹에서 아직 지원되지 않습니다.`)
     }

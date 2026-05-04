@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { generateViaOpenAI } from '@/lib/openai-images'
 
 const ASPECT_RATIO_MAP: Record<string, string> = {
   '16:9': '16:9', '9:16': '9:16', '1:1': '1:1',
@@ -86,7 +87,7 @@ async function generateViaNanobanana(
   // 나노바나나는 1회 호출에 이미지 1장 → count만큼 병렬 호출
   const calls = Array.from({ length: count }, () =>
     fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent',
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent',
       {
         method: 'POST',
         headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
@@ -160,7 +161,7 @@ export async function POST(req: NextRequest) {
         imageUrls.push(url)
       }
 
-      console.log(`[T2I] nanobanana(gemini-2.5-flash-image)로 ${imageUrls.length}장 생성 완료`)
+      console.log(`[T2I] nanobanana(gemini-3.1-flash-image-preview)로 ${imageUrls.length}장 생성 완료`)
 
     } else if (engine === 'midjourney') {
       const mjUrl = process.env.MIDJOURNEY_API_URL
@@ -215,10 +216,30 @@ export async function POST(req: NextRequest) {
 
       console.log(`[T2I] midjourney로 ${imageUrls.length}장 저장 완료`)
 
-    } else if (engine === 'gpt-image') {
-      // TODO: OPENAI_API_KEY 추가 후 https://api.openai.com/v1/images/generations 호출
-      // 모델: gpt-image-1, response_format: 'b64_json'
-      throw new Error('GPT Image 엔진은 아직 준비 중입니다. OPENAI_API_KEY 설정 후 활성화됩니다.')
+    } else if (engine === 'gpt-image' || engine === 'gpt-image-1' || engine === 'openai') {
+      const apiKey = process.env.OPENAI_API_KEY
+      if (!apiKey) throw new Error('OPENAI_API_KEY가 설정되지 않았습니다. .env.local에 키를 추가하고 서버를 재시작하세요.')
+
+      // 레퍼런스 이미지 base64 변환 (있는 경우)
+      let referenceImages: Array<{ b64: string; mimeType: string }> | undefined
+      if (Array.isArray(referenceImageUrls) && referenceImageUrls.length > 0) {
+        const fetched = await Promise.allSettled(
+          referenceImageUrls.slice(0, 5).map((url: string) => fetchImageAsBase64(url))
+        )
+        referenceImages = fetched
+          .filter((r): r is PromiseFulfilledResult<{ b64: string; mimeType: string }> => r.status === 'fulfilled')
+          .map(r => r.value)
+        console.log(`[T2I/openai] 레퍼런스 ${referenceImages.length}장 첨부`)
+      }
+
+      const images = await generateViaOpenAI(apiKey, prompt, aspectRatio ?? '16:9', 4, referenceImages)
+      if (images.length === 0) throw new Error('OpenAI에서 이미지가 생성되지 않았습니다.')
+
+      for (const img of images) {
+        const url = await uploadBase64(admin, img.b64, img.mimeType, projectId, attemptId)
+        imageUrls.push(url)
+      }
+      console.log(`[T2I] gpt-image-1으로 ${imageUrls.length}장 생성 완료`)
 
     } else if (engine === 'stable-diffusion' || engine === 'dalle') {
       throw new Error(`${engine} 엔진은 아직 준비 중입니다.`)
