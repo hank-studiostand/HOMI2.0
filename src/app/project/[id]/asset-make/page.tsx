@@ -15,8 +15,15 @@ interface MadeAsset {
   url: string
   name: string
   prompt: string
+  ratio: string
   createdAt: string
   promotedToRoot?: boolean
+}
+
+// 화면비 문자열 → CSS aspectRatio
+function ratioToCss(r: string): string {
+  if (!r || !r.includes(':')) return '16/9'
+  return r.replace(':', '/')
 }
 
 const RATIOS: { value: string; label: string }[] = [
@@ -95,6 +102,7 @@ export default function AssetMakePage() {
           url: a.url,
           name: a.name,
           prompt: ((a.metadata as any)?.prompt as string) ?? '',
+          ratio: ((a.metadata as any)?.aspect_ratio as string) ?? '16:9',
           createdAt: a.created_at,
         }))
       setMade(prior)
@@ -190,6 +198,7 @@ export default function AssetMakePage() {
         url: a.url,
         name: a.name,
         prompt: fullPromptPreview,
+        ratio,
         createdAt: new Date().toISOString(),
       }))
       setMade(p => [...newOnes, ...p])
@@ -197,7 +206,7 @@ export default function AssetMakePage() {
       const newAssetRows = newOnes.map(n => ({
         id: n.id, project_id: projectId, scene_id: null,
         type: 'reference' as const, name: n.name, url: n.url, thumbnail_url: n.url,
-        tags: ['asset-make'], metadata: { source: 'asset-make' }, archived: false,
+        tags: ['asset-make'], metadata: { source: 'asset-make', aspect_ratio: n.ratio }, archived: false,
         attempt_id: null, satisfaction_score: null, created_at: n.createdAt,
       })) as unknown as Asset[]
       setAllAssets(p => [...newAssetRows, ...p])
@@ -217,8 +226,8 @@ export default function AssetMakePage() {
         project_id: projectId,
         category: 'misc',
         name: seedName,
-        ref_image_urls: [asset.url],
-        notes: asset.prompt.slice(0, 200),
+        description: asset.prompt.slice(0, 200),
+        reference_image_urls: [asset.url],
       })
       if (error) throw error
       setMade(p => p.map(m => m.id === asset.id ? { ...m, promotedToRoot: true } : m))
@@ -507,7 +516,7 @@ export default function AssetMakePage() {
           ) : (
             <div
               className="grid gap-3"
-              style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}
+              style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}
             >
               {made.map(asset => (
                 <ResultCard
@@ -606,7 +615,7 @@ function ResultCard({
         background: 'var(--bg-2)',
       }}
     >
-      <div style={{ aspectRatio: '1', background: 'var(--bg-3)', position: 'relative' }}>
+      <div style={{ aspectRatio: ratioToCss(asset.ratio), background: 'var(--bg-3)', position: 'relative' }}>
         <img src={asset.url} alt={asset.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         {asset.promotedToRoot && (
           <div
