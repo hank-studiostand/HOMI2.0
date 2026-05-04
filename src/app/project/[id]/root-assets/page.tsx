@@ -338,14 +338,52 @@ function SceneAssignModal({
             <div className="flex flex-col" style={{ gap: 2 }}>
               {scenes.map(sc => {
                 const checked = selectedSceneIds.has(sc.id)
+                const marks = (sc as any).root_asset_marks ?? {}
+                const markChips: { key: RootAssetCategory; label: string; color: string; value: string }[] = [
+                  { key: 'character', label: '인물',   color: 'var(--accent)', value: (marks.character ?? '').trim() },
+                  { key: 'space',     label: '공간',   color: 'var(--info)',   value: (marks.space     ?? '').trim() },
+                  { key: 'object',    label: '오브제', color: 'var(--violet)', value: (marks.object    ?? '').trim() },
+                  { key: 'misc',      label: '기타',   color: 'var(--ink-3)',  value: (marks.misc      ?? '').trim() },
+                ]
+                const hasAnyMark = markChips.some(c => c.value)
                 return (
-                  <button key={sc.id} onClick={() => toggle(sc.id)} className="flex items-center w-full text-left"
-                    style={{ padding: '7px 10px', gap: 8, borderRadius: 'var(--r-sm)', background: checked ? 'var(--accent-soft)' : 'transparent', border: `1px solid ${checked ? 'var(--accent-line)' : 'var(--line)'}` }}>
-                    <span style={{ width: 16, height: 16, borderRadius: 4, background: checked ? 'var(--accent)' : 'transparent', border: `1.5px solid ${checked ? 'var(--accent)' : 'var(--line-strong)'}`, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                  <button key={sc.id} onClick={() => toggle(sc.id)} className="flex items-start w-full text-left"
+                    style={{ padding: '8px 10px', gap: 8, borderRadius: 'var(--r-sm)', background: checked ? 'var(--accent-soft)' : 'transparent', border: `1px solid ${checked ? 'var(--accent-line)' : 'var(--line)'}` }}>
+                    <span style={{ width: 16, height: 16, borderRadius: 4, background: checked ? 'var(--accent)' : 'transparent', border: `1.5px solid ${checked ? 'var(--accent)' : 'var(--line-strong)'}`, display: 'grid', placeItems: 'center', flexShrink: 0, marginTop: 2 }}>
                       {checked && <Check size={11} style={{ color: '#fff' }} />}
                     </span>
-                    <span className="mono" style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', minWidth: 50 }}>{sc.scene_number}</span>
-                    <span style={{ fontSize: 12, color: 'var(--ink-2)', flex: 1 }} className="truncate">{sc.title || '(제목 없음)'}</span>
+                    <div className="flex-1" style={{ minWidth: 0 }}>
+                      <div className="flex items-center" style={{ gap: 8 }}>
+                        <span className="mono" style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', minWidth: 50, flexShrink: 0 }}>{sc.scene_number}</span>
+                        <span style={{ fontSize: 12, color: 'var(--ink-2)', flex: 1 }} className="truncate">{sc.title || '(제목 없음)'}</span>
+                      </div>
+                      {hasAnyMark && (
+                        <div className="flex flex-wrap" style={{ gap: 4, marginTop: 5, paddingLeft: 58 }}>
+                          {markChips.filter(c => c.value).map(c => {
+                            const isCurrentCategory = c.key === seed.category
+                            return (
+                              <span
+                                key={c.key}
+                                title={`${c.label}: ${c.value}`}
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 3,
+                                  padding: '1px 6px', borderRadius: 999,
+                                  fontSize: 10, lineHeight: 1.4,
+                                  background: isCurrentCategory ? c.color : 'var(--bg-3)',
+                                  color: isCurrentCategory ? '#fff' : 'var(--ink-2)',
+                                  border: `1px solid ${isCurrentCategory ? c.color : 'var(--line)'}`,
+                                  fontWeight: isCurrentCategory ? 600 : 500,
+                                  maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                }}
+                              >
+                                <span style={{ fontSize: 9, opacity: isCurrentCategory ? 0.85 : 0.65 }}>{c.label}</span>
+                                <span>{c.value}</span>
+                              </span>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </button>
                 )
               })}
