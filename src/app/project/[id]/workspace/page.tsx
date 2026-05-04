@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -9,6 +9,7 @@ import {
   ChevronLeft, Sparkles, Check, RotateCcw, Trash2, X,
   Image as ImageIcon, Film, MessageCircle, Send, Loader2, Plus,
   Edit2, ChevronDown, ChevronRight, Save, FileText,
+  Undo2, Redo2, History,
 } from 'lucide-react'
 import type { Scene, SatisfactionScore, Asset, RootAssetSeed } from '@/types'
 import Pill, { type PillVariant } from '@/components/ui/Pill'
@@ -16,6 +17,29 @@ import CameraReferencePanel, { buildCameraPrompt } from '@/components/ui/CameraR
 import SceneReferencePicker, {
   emptyRefSelection, allSelectedUrls, type RefSelection,
 } from '@/components/ui/SceneReferencePicker'
+
+// ─── Prompt history (per-project, per-type, localStorage, max 30) ──
+const PROMPT_HISTORY_MAX = 30
+const PROMPT_HISTORY_DEBOUNCE_MS = 1500
+
+function promptHistoryKey(projectId: string, type: 't2i' | 'i2v') {
+  return `workspace:promptHistory:${projectId}:${type}`
+}
+function loadPromptHistory(projectId: string, type: 't2i' | 'i2v'): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(promptHistoryKey(projectId, type))
+    const arr = raw ? JSON.parse(raw) : []
+    if (Array.isArray(arr)) return arr.filter(x => typeof x === 'string').slice(-PROMPT_HISTORY_MAX)
+  } catch {}
+  return []
+}
+function savePromptHistory(projectId: string, type: 't2i' | 'i2v', list: string[]) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(promptHistoryKey(projectId, type), JSON.stringify(list.slice(-PROMPT_HISTORY_MAX)))
+  } catch {}
+}
 
 interface PromptVersion {
   id: string
@@ -1740,6 +1764,86 @@ function GeneratePanel({
 }) {
   const engineOptions = type === 't2i' ? T2I_ENGINES : I2V_ENGINES
 
+  // ─── Prompt history (T2I/I2V 분리, 최대 30개, localStorage 영속) ───
+  const [history, setHistory] = useState<string[]>([])
+  const [cursor, setCursor]   = useState<number>(-1)   // -1 = 라이브 (히스토리 진입 안 함)
+  const navigatingRef         = useRef(false)           // 네비게이션으로 인한 setDraft인지 표시
+
+  // 프로젝트/타입 전환 시 히스토리 재로드
+  useEffect(() => {
+    const list = loadPromptHistory(projectId, type)
+    setHistory(list)
+    setCursor(-1)
+  }, [projectId, type])
+
+  // 디바운스 자동 저장 (1.5초 멈추면 저장) — 단, 네비게이션 직후엔 skip
+  useEffect(() => {
+    if (navigatingRef.current) {
+      navigatingRef.current = false
+      return
+    }
+    const draft = promptDraft.trim()
+    if (!draft) return
+    const t = setTimeout(() => {
+      setHistory(prev => {
+        const last = prev[prev.length - 1]
+        if (draft === last) return prev
+        const next = [...prev, draft].slice(-PROMPT_HISTORY_MAX)
+        savePromptHistory(projectId, type, next)
+        return next
+      })
+      setCursor(-1)
+    }, PROMPT_HISTORY_DEBOUNCE_MS)
+    return () => clearTimeout(t)
+  }, [promptDraft, projectId, type])
+
+  function pushHistoryNow() {
+    const draft = promptDraft.trim()
+    if (!draft) return
+    setHistory(prev => {
+      const last = prev[prev.length - 1]
+      if (draft === last) return prev
+      const next = [...prev, draft].slice(-PROMPT_HISTORY_MAX)
+      savePromptHistory(projectId, type, next)
+      return next
+    })
+    setCursor(-1)
+  }
+
+  function navHistory(dir: -1 | 1) {
+    if (history.length === 0) return
+    // cursor === -1 → live → 첫 back은 마지막 항목
+    let nextCursor: number
+    if (cursor === -1) {
+      if (dir === 1) return                 // 라이브 상태에서 forward는 의미없음
+      // 라이브 → 마지막 저장 항목으로. 단, 라이브가 마지막 저장과 다르면 먼저 저장
+      const live = promptDraft.trim()
+      if (live && live !== history[history.length - 1]) {
+        const merged = [...history, live].slice(-PROMPT_HISTORY_MAX)
+        setHistory(merged)
+        savePromptHistory(projectId, type, merged)
+        nextCursor = merged.length - 2     // 새로 추가된 라이브 바로 직전 항목
+        navigatingRef.current = true
+        onPromptChange(merged[nextCursor])
+        setCursor(nextCursor)
+        return
+      }
+      nextCursor = history.length - 1
+      // 마지막 항목이 이미 표시되고 있다면 한 칸 더 뒤로
+      if (history[nextCursor] === live && nextCursor > 0) nextCursor -= 1
+    } else {
+      nextCursor = cursor + dir
+    }
+    if (nextCursor < 0 || nextCursor >= history.length) return
+    navigatingRef.current = true
+    onPromptChange(history[nextCursor])
+    setCursor(nextCursor)
+  }
+
+  const canBack    = history.length > 0 && (cursor === -1 || cursor > 0)
+  const canForward = cursor !== -1 && cursor < history.length - 1
+  const displayPos = cursor === -1 ? history.length : cursor + 1   // 1-indexed
+
   return (
     <div style={{ padding: '18px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
       {/* 좌측 — 씬 컨텍스트 + 프롬프트 */}
@@ -1747,7 +1851,75 @@ function GeneratePanel({
         {/* 씬 컨텍스트 (씬 경계 편집 텍스트 + 4요소 마크) */}
         <SceneContextPanel scene={scene} />
 
-        <div className="field-label">프롬프트</div>
+        <div className="flex items-center" style={{ marginBottom: 6, gap: 6 }}>
+          <span className="field-label" style={{ margin: 0 }}>프롬프트</span>
+          <span style={{ flex: 1 }} />
+          {/* 프롬프트 히스토리 툴바 */}
+          <div
+            className="flex items-center"
+            style={{
+              gap: 2, padding: '2px 4px',
+              border: '1px solid var(--line)',
+              borderRadius: 'var(--r-sm)',
+              background: 'var(--bg-2)',
+            }}
+          >
+            <History size={11} style={{ color: 'var(--ink-4)', marginLeft: 2, marginRight: 2 }} />
+            <span
+              className="mono"
+              style={{
+                fontSize: 10, color: 'var(--ink-3)',
+                padding: '0 6px',
+                fontVariantNumeric: 'tabular-nums',
+                minWidth: 38, textAlign: 'center',
+              }}
+              title={`${type.toUpperCase()} 프롬프트 히스토리 — 최대 ${PROMPT_HISTORY_MAX}개 저장`}
+            >
+              {history.length === 0 ? '0/0' : `${displayPos}/${history.length}`}
+            </span>
+            <button
+              onClick={() => navHistory(-1)}
+              disabled={!canBack}
+              title="이전 (뒤로)"
+              style={{
+                padding: '3px 5px', borderRadius: 'var(--r-sm)',
+                color: canBack ? 'var(--ink-2)' : 'var(--ink-5)',
+                opacity: canBack ? 1 : 0.4,
+                background: 'transparent',
+              }}
+            >
+              <Undo2 size={12} />
+            </button>
+            <button
+              onClick={() => navHistory(1)}
+              disabled={!canForward}
+              title="다음 (앞으로)"
+              style={{
+                padding: '3px 5px', borderRadius: 'var(--r-sm)',
+                color: canForward ? 'var(--ink-2)' : 'var(--ink-5)',
+                opacity: canForward ? 1 : 0.4,
+                background: 'transparent',
+              }}
+            >
+              <Redo2 size={12} />
+            </button>
+            <button
+              onClick={pushHistoryNow}
+              title="현재 프롬프트 즉시 저장"
+              style={{
+                padding: '3px 6px', borderRadius: 'var(--r-sm)',
+                color: 'var(--accent)',
+                background: 'var(--accent-soft)',
+                border: '1px solid var(--accent-line)',
+                marginLeft: 2,
+                display: 'flex', alignItems: 'center', gap: 3,
+                fontSize: 10, fontWeight: 600,
+              }}
+            >
+              <Save size={11} /> 저장
+            </button>
+          </div>
+        </div>
         <textarea
           value={promptDraft}
           onChange={(e) => onPromptChange(e.target.value)}
