@@ -972,7 +972,8 @@ export default function WorkspacePage() {
             onEditOutput={(id) => {
               const target = candidates.find(o => o.id === id)
               if (!target?.url || target.type !== 't2i') return
-              setEditTarget({ id: target.id, url: target.url, prompt: target.prompt })
+              const meta = attempts.find(a => a.id === target.attempt_id)
+              setEditTarget({ id: target.id, url: target.url, prompt: meta?.prompt })
             }}
             onQuickDecide={async (id, dec) => {
               if (!meId || !activeId) return
