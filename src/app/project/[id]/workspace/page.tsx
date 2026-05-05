@@ -291,12 +291,13 @@ export default function WorkspacePage() {
         })
       }
     }
-    // temp placeholders 보존 — DB에 아직 반영 안 된 in-flight 큐는 유지
-    // (사용자가 방금 누른 생성 버튼의 placeholder가 reload로 사라지는 깜빡임 방지)
+    // in-flight placeholder 보존 — DB에 아직 outputs가 안 박힌 큐는 화면에 유지.
+    // placeholder는 id가 'temp_'로 시작하고 url=null. attempt_id는 임시(temp_a_) 또는
+    // attempt insert 직후 realAttemptId로 교체된 상태일 수 있음.
+    // 해당 attempt에 outputs가 들어왔으면 placeholder 제거 (자연 swap).
     setOutputs(prev => {
       const tempPlaceholders = prev.filter(o =>
-        o.attempt_id?.startsWith('temp_a_') &&
-        // DB에 동일 attempt_id가 없거나, 해당 attempt에 outputs가 아직 없을 때만 유지
+        typeof o.id === 'string' && o.id.startsWith('temp_') && !o.url &&
         !flat.some(f => f.attempt_id === o.attempt_id)
       )
       return [...flat, ...tempPlaceholders]
@@ -931,7 +932,7 @@ export default function WorkspacePage() {
             recentAttempts={attempts}
             selectedOutputId={selectedIds[0] ?? null}
             onJumpToResults={() => setCenterTab('results')}
-            onSelectOutput={(id) => setSelectedIds([id])}
+            onSelectOutput={(id) => setSelectedIds(prev => prev[0] === id ? [] : [id])}
             onZoomOutput={(id) => {
               const list = candidates.filter(o => o.url) as Array<{ id: string; url: string; engine?: string; type?: string; prompt?: string }>
               const items: LightboxItem[] = list.map(o => ({
@@ -1084,6 +1085,14 @@ export default function WorkspacePage() {
                 setGenerating(false)
                 return
               }
+              // attempt 생성 성공 — placeholder의 attempt_id를 실제 UUID로 교체.
+              // 이렇게 하면 API 완료 후 loadSceneData에서 outputs가 들어왔을 때
+              // 병합 로직(flat.some(f => f.attempt_id === o.attempt_id))이 일치되어
+              // placeholder가 자연 제거됨 (잔존 방지).
+              const realAttemptId = attempt.id as string
+              setOutputs(prev => prev.map(o =>
+                o.attempt_id === tempAttempt ? { ...o, attempt_id: realAttemptId } : o
+              ))
 
               // 2단계 — API 호출 (긴 작업 — fire-and-forget으로 백그라운드)
               // 락은 즉시 해제해서 사용자가 다른 큐를 동시에 돌릴 수 있게.
@@ -1104,7 +1113,8 @@ export default function WorkspacePage() {
                     const j = await r.json().catch(() => ({}))
                     alert('생성 실패: ' + (j.error ?? r.statusText))
                     await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attempt.id)
-                    setOutputs(prev => prev.filter(o => o.attempt_id !== tempAttempt))
+                    // placeholder는 realAttemptId로 박혀있음 — 즉시 제거
+                    setOutputs(prev => prev.filter(o => o.attempt_id !== realAttemptId))
                     return
                   }
                   if (active && active.id) await loadSceneData(active.id)
