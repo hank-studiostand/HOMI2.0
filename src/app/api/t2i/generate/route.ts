@@ -87,7 +87,7 @@ async function generateViaNanobanana(
   // 나노바나나는 1회 호출에 이미지 1장 → count만큼 병렬 호출
   const calls = Array.from({ length: count }, () =>
     fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent',
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent',
       {
         method: 'POST',
         headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
         imageUrls.push(url)
       }
 
-      console.log(`[T2I] nanobanana(gemini-3.1-flash-image-preview)로 ${imageUrls.length}장 생성 완료`)
+      console.log(`[T2I] nanobanana(gemini-2.5-flash-image)로 ${imageUrls.length}장 생성 완료`)
 
     } else if (engine === 'midjourney') {
       const mjUrl = process.env.MIDJOURNEY_API_URL

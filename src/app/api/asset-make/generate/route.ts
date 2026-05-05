@@ -73,7 +73,7 @@ async function generateViaNanobanana(
   // 1회 호출당 1장 → count장 병렬 호출
   const calls = Array.from({ length: count }, () =>
     fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent',
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent',
       {
         method: 'POST',
         headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },

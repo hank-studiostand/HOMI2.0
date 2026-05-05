@@ -37,8 +37,8 @@ const RATIOS: { value: string; label: string }[] = [
 ]
 
 const ENGINES: { value: string; label: string; available: boolean }[] = [
-  { value: 'nanobanana',       label: '나노바나나 2 (Gemini 3.1 Flash Image)', available: true },
-  { value: 'gpt-image',        label: 'GPT Image (gpt-image-1)',           available: true },
+  { value: 'nanobanana',       label: '나노바나나 (Gemini 2.5 Flash Image)', available: true },
+  { value: 'gpt-image',        label: 'GPT Image (gpt-image-1, org verify 필요)', available: true },
   { value: 'midjourney',       label: 'Midjourney',                         available: false },
   { value: 'stable-diffusion', label: 'Stable Diffusion',                   available: false },
 ]
@@ -142,7 +142,14 @@ export default function AssetMakePage() {
           toast.warning('이미지 파일만 업로드 가능합니다')
           continue
         }
-        const path = `asset-make-refs/${projectId}/${Date.now()}_${file.name.replace(/\s+/g, '_')}`
+        // Supabase Storage는 ASCII만 허용 — 한글 등 비ASCII 문자 제거
+        const ext = (file.name.split('.').pop() ?? 'png').toLowerCase().replace(/[^a-z0-9]/g, '')
+        const safeBase = file.name
+          .replace(/\.[^.]+$/, '')        // 확장자 제거
+          .replace(/[^\w.-]+/g, '_')      // 비ASCII/특수문자 → _
+          .replace(/_+/g, '_')             // 연속 _ 정리
+          .slice(0, 40) || 'ref'
+        const path = `asset-make-refs/${projectId}/${Date.now()}_${safeBase}.${ext || 'png'}`
         const { data, error } = await supabase.storage.from('assets').upload(path, file)
         if (error) {
           toast.error(`업로드 실패: ${error.message}`)
