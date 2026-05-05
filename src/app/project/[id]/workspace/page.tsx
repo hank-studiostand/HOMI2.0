@@ -17,6 +17,7 @@ import CameraReferencePanel, { buildCameraPrompt } from '@/components/ui/CameraR
 import SceneReferencePicker, {
   emptyRefSelection, allSelectedUrls, type RefSelection,
 } from '@/components/ui/SceneReferencePicker'
+import ImageLightbox, { type LightboxItem } from '@/components/ui/ImageLightbox'
 
 // ─── Prompt history (per-project, per-type, localStorage, max 30) ──
 const PROMPT_HISTORY_MAX = 30
@@ -119,6 +120,13 @@ export default function WorkspacePage() {
   const [genRatio, setGenRatio] = useState<string>('16:9')
   const [generating, setGenerating] = useState(false)
   const [referenceAssets, setReferenceAssets] = useState<Asset[]>([])
+
+  // 라이트박스 (결과 클릭 시 팝업)
+  const [lightboxState, setLightboxState] = useState<{ items: LightboxItem[]; idx: number } | null>(null)
+  const openLightbox = useCallback((items: LightboxItem[], idx: number) => {
+    if (!items || items.length === 0) return
+    setLightboxState({ items, idx: Math.max(0, Math.min(idx, items.length - 1)) })
+  }, [])
   const [genCamera, setGenCamera] = useState<{ angle?: string; shotSize?: string; lens?: string; lighting?: string }>({})
   const [genRefSel, setGenRefSel] = useState<RefSelection>(emptyRefSelection())
   // 루트 에셋 — 프로젝트 전체 seeds + 이번 attempt에 선택된 이미지 URL set per-카테고리
@@ -157,10 +165,14 @@ export default function WorkspacePage() {
   // 레퍼런스 자산 (오브제/캐릭터/공간 선택용)
   useEffect(() => {
     void (async () => {
+      // type='reference' (업로드된 레퍼런스) + type='t2i' (지금까지 생성된 이미지)
       const { data } = await supabase
         .from('assets').select('*')
-        .eq('project_id', projectId).eq('type', 'reference')
+        .eq('project_id', projectId)
+        .in('type', ['reference', 't2i'])
+        .eq('archived', false)
         .order('created_at', { ascending: false })
+        .limit(300)
       setReferenceAssets((data ?? []) as Asset[])
     })()
   }, [projectId, supabase])
@@ -884,6 +896,17 @@ export default function WorkspacePage() {
             selectedOutputId={selectedIds[0] ?? null}
             onJumpToResults={() => setCenterTab('results')}
             onSelectOutput={(id) => setSelectedIds([id])}
+            onZoomOutput={(id) => {
+              const list = candidates.filter(o => o.url) as Array<{ id: string; url: string; engine?: string; type?: string; prompt?: string }>
+              const items: LightboxItem[] = list.map(o => ({
+                url: o.url!,
+                name: (o as any).engine ?? '',
+                caption: (o as any).prompt ?? '',
+                isVideo: (o as any).type === 'i2v' || (o as any).type === 'lipsync',
+              }))
+              const idx = list.findIndex(o => o.id === id)
+              openLightbox(items, idx >= 0 ? idx : 0)
+            }}
             onQuickDecide={async (id, dec) => {
               if (!meId || !activeId) return
               if (id.startsWith('temp_')) return
@@ -1105,7 +1128,22 @@ export default function WorkspacePage() {
             {focused ? (
               <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 18, marginBottom: 24 }}>
                 <div className="card overflow-hidden" style={{ padding: 0 }}>
-                  <div style={{ aspectRatio: '16/9', background: 'var(--bg-3)', position: 'relative' }}>
+                  <div
+                    onClick={() => {
+                      if (!focused?.url) return
+                      const list = candidates.filter(o => o.url) as Array<{ id: string; url: string; engine?: string; type?: string; prompt?: string }>
+                      const items: LightboxItem[] = list.map(o => ({
+                        url: o.url!,
+                        name: (o as any).engine ?? '',
+                        caption: (o as any).prompt ?? '',
+                        isVideo: (o as any).type === 'i2v' || (o as any).type === 'lipsync',
+                      }))
+                      const idx = list.findIndex(o => o.id === focused.id)
+                      openLightbox(items, idx >= 0 ? idx : 0)
+                    }}
+                    title="클릭해서 크게 보기"
+                    style={{ aspectRatio: '16/9', background: 'var(--bg-3)', position: 'relative', cursor: focused.url ? 'zoom-in' : 'default' }}
+                  >
                     {focused.url
                       ? (focused.type === 't2i'
                         ? <img src={focused.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -1344,6 +1382,15 @@ export default function WorkspacePage() {
           onSubmit={submitDecision}
         />
       )}
+      {/* 라이트박스 — 결과 클릭 시 팝업 */}
+      {lightboxState && (
+        <ImageLightbox
+          items={lightboxState.items}
+          initialIndex={lightboxState.idx}
+          onClose={() => setLightboxState(null)}
+        />
+      )}
+
     </div>
   )
 }
@@ -1725,7 +1772,7 @@ function GeneratePanel({
   refSel, onRefSelChange, scene,
   rootAssets, rootSel, onRootSelChange, sceneDefaultRootIds,
   recentOutputs, recentAttempts, selectedOutputId, onJumpToResults,
-  onSelectOutput, onQuickDecide, onQuickRate,
+  onSelectOutput, onZoomOutput, onQuickDecide, onQuickRate,
   optimizing, onOptimize,
 }: {
   sceneId: string
@@ -1757,6 +1804,7 @@ function GeneratePanel({
   selectedOutputId: string | null
   onJumpToResults: () => void
   onSelectOutput: (id: string) => void
+  onZoomOutput?: (id: string) => void
   onQuickDecide: (id: string, decision: 'approved' | 'revise_requested' | 'removed') => Promise<void> | void
   onQuickRate: (id: string, score: number) => Promise<void> | void
   optimizing: boolean
@@ -1971,6 +2019,7 @@ function GeneratePanel({
               selectedOutputId={selectedOutputId}
               isI2VMode={type === 'i2v'}
               onSelect={onSelectOutput}
+              onZoom={onZoomOutput}
               onQuickDecide={onQuickDecide}
               onQuickRate={onQuickRate}
             />
@@ -2200,13 +2249,14 @@ function GeneratePanel({
 // ─── Generate 탭 인라인 결과 strip — 반응형 + 호버 퀵액션 ──────
 function InlineResultStrip({
   outputs, attempts, selectedOutputId, isI2VMode,
-  onSelect, onQuickDecide, onQuickRate,
+  onSelect, onZoom, onQuickDecide, onQuickRate,
 }: {
   outputs: OutputItem[]
   attempts: AttemptMeta[]
   selectedOutputId: string | null
   isI2VMode: boolean
   onSelect: (id: string) => void
+  onZoom?: (id: string) => void
   onQuickDecide: (id: string, d: 'approved' | 'revise_requested' | 'removed') => Promise<void> | void
   onQuickRate: (id: string, score: number) => Promise<void> | void
 }) {
@@ -2247,6 +2297,7 @@ function InlineResultStrip({
                   isI2VSource={isI2VMode && selectedOutputId === r.id}
                   selectableAsSource={isI2VMode && r.type === 't2i' && !!r.url}
                   onSelect={() => onSelect(r.id)}
+                  onZoom={onZoom ? () => onZoom(r.id) : undefined}
                   onQuickDecide={(d) => onQuickDecide(r.id, d)}
                   onQuickRate={(score) => onQuickRate(r.id, score)}
                 />
@@ -2261,12 +2312,13 @@ function InlineResultStrip({
 
 function InlineResultCard({
   item, isI2VSource, selectableAsSource,
-  onSelect, onQuickDecide, onQuickRate,
+  onSelect, onZoom, onQuickDecide, onQuickRate,
 }: {
   item: OutputItem
   isI2VSource: boolean
   selectableAsSource: boolean
   onSelect: () => void
+  onZoom?: () => void
   onQuickDecide: (d: 'approved' | 'revise_requested' | 'removed') => Promise<void> | void
   onQuickRate: (score: number) => Promise<void> | void
 }) {
@@ -2360,10 +2412,29 @@ function InlineResultCard({
           style={{
             position: 'absolute', inset: 0,
             background: 'linear-gradient(180deg, rgba(0,0,0,0.05) 30%, rgba(0,0,0,0.65) 100%)',
-            display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+            display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
             padding: 8, gap: 6,
           }}
         >
+          {/* 확대 버튼 (우상단) */}
+          {onZoom && (
+            <div className="flex justify-end">
+              <button
+                onClick={(e) => { e.stopPropagation(); onZoom() }}
+                title="크게 보기"
+                style={{
+                  padding: '4px 8px', borderRadius: 'var(--r-sm)', fontSize: 10, fontWeight: 600,
+                  background: 'rgba(0,0,0,0.55)', color: '#fff',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  display: 'inline-flex', alignItems: 'center', gap: 3,
+                }}
+              >
+                <ImageIcon size={11} /> 확대
+              </button>
+            </div>
+          )}
+          {/* 별점 + OK/Revise/Remove (그룹) */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {/* 별점 */}
           <div className="flex items-center justify-center" style={{ gap: 2 }}>
             {[1, 2, 3, 4, 5].map(n => (
@@ -2420,6 +2491,7 @@ function InlineResultCard({
             >
               <Trash2 size={11} />
             </button>
+          </div>
           </div>
         </div>
       )}

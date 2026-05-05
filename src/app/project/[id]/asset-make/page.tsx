@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { toast } from '@/components/ui/Toast'
 import CameraReferencePanel, { buildCameraPrompt } from '@/components/ui/CameraReferencePanel'
+import ImageLightbox, { type LightboxItem } from '@/components/ui/ImageLightbox'
 import type { Asset, RootAssetSeed } from '@/types'
 
 interface MadeAsset {
@@ -72,6 +73,9 @@ export default function AssetMakePage() {
   // 업로드형 레퍼런스 (직접 업로드)
   const [uploadedRefUrls, setUploadedRefUrls] = useState<string[]>([])
   const [uploading, setUploading] = useState(false)
+
+  // 라이트박스 (결과 클릭)
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null)
 
   // 생성 상태
   const [generating, setGenerating] = useState(false)
@@ -546,12 +550,13 @@ export default function AssetMakePage() {
               className="grid gap-3"
               style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}
             >
-              {made.map(asset => (
+              {made.map((asset, i) => (
                 <ResultCard
                   key={asset.id}
                   asset={asset}
                   onPromote={() => promoteToRoot(asset)}
                   onDelete={() => deleteMade(asset)}
+                  onClick={() => setLightboxIdx(i)}
                 />
               ))}
             </div>
@@ -560,6 +565,14 @@ export default function AssetMakePage() {
       </div>
 
       {/* ─── 에셋에서 선택 모달 ──────────────────────────── */}
+      {lightboxIdx !== null && (
+        <ImageLightbox
+          items={made.map(m => ({ url: m.url, name: m.name, caption: m.prompt })) as LightboxItem[]}
+          initialIndex={lightboxIdx}
+          onClose={() => setLightboxIdx(null)}
+        />
+      )}
+
       {refOpen && (
         <RefPickerModal
           assets={refCandidates}
@@ -629,10 +642,12 @@ function ResultCard({
   asset,
   onPromote,
   onDelete,
+  onClick,
 }: {
   asset: MadeAsset
   onPromote: () => void
   onDelete: () => void
+  onClick: () => void
 }) {
   return (
     <div
@@ -643,7 +658,11 @@ function ResultCard({
         background: 'var(--bg-2)',
       }}
     >
-      <div style={{ aspectRatio: ratioToCss(asset.ratio), background: 'var(--bg-3)', position: 'relative' }}>
+      <div
+        onClick={onClick}
+        style={{ aspectRatio: ratioToCss(asset.ratio), background: 'var(--bg-3)', position: 'relative', cursor: 'zoom-in' }}
+        title="클릭해서 크게 보기"
+      >
         <img src={asset.url} alt={asset.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         {asset.promotedToRoot && (
           <div
