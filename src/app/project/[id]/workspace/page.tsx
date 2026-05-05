@@ -119,6 +119,20 @@ export default function WorkspacePage() {
   // ── Generate 탭 상태 ──────────────────────────────
   const [centerTab, setCenterTab] = useState<'results' | 'generate'>('results')
   const [genPromptDraft, setGenPromptDraft] = useState('')
+
+  // I2V 모드 진입 시 — 명시적으로 첫 T2I 결과를 소스로 자동 선택 (visible)
+  // 사용자가 다른 카드 클릭하면 selectedIds가 변경되어 즉시 source가 바뀜
+  // (focused fallback이 보이지 않게 처리되던 혼선 제거)
+  useEffect(() => {
+    if (genType !== 'i2v') return
+    setSelectedIds(prev => {
+      if (prev.length > 0) return prev
+      // 가장 최근 T2I 결과 (filteredCandidates는 아직 정의 전이므로 outputs/attempts 기반)
+      const firstT2I = outputs.find(o => o.type === 't2i' && !!o.url && !o.archived)
+      return firstT2I ? [firstT2I.id] : []
+    })
+  }, [genType, outputs])
+
   const [genType, setGenType] = useState<'t2i' | 'i2v'>('t2i')
   const [genEngine, setGenEngine] = useState<string>('nanobanana')
   const [genRatio, setGenRatio] = useState<string>('16:9')
@@ -127,6 +141,9 @@ export default function WorkspacePage() {
 
   // 라이트박스 (결과 클릭 시 팝업)
   const [lightboxState, setLightboxState] = useState<{ items: LightboxItem[]; idx: number } | null>(null)
+
+  // T2I 편집 모달 (결과 카드의 '편집' 버튼)
+  const [editTarget, setEditTarget] = useState<{ id: string; url: string; prompt?: string } | null>(null)
   const openLightbox = useCallback((items: LightboxItem[], idx: number) => {
     if (!items || items.length === 0) return
     setLightboxState({ items, idx: Math.max(0, Math.min(idx, items.length - 1)) })
@@ -939,7 +956,10 @@ export default function WorkspacePage() {
             recentAttempts={attempts}
             selectedOutputId={selectedIds[0] ?? null}
             onJumpToResults={() => setCenterTab('results')}
-            onSelectOutput={(id) => setSelectedIds(prev => prev[0] === id ? [] : [id])}
+            onSelectOutput={(id) => setSelectedIds(prev =>
+              // I2V 모드에서는 토글 끄지 않고 무조건 swap (소스 항상 1개 유지)
+              genType === 'i2v' ? [id] : (prev[0] === id ? [] : [id])
+            )}
             onZoomOutput={(id) => {
               const list = candidates.filter(o => o.url) as Array<{ id: string; url: string; engine?: string; type?: string; prompt?: string }>
               const items: LightboxItem[] = list.map(o => ({
@@ -950,6 +970,11 @@ export default function WorkspacePage() {
               }))
               const idx = list.findIndex(o => o.id === id)
               openLightbox(items, idx >= 0 ? idx : 0)
+            }}
+            onEditOutput={(id) => {
+              const target = candidates.find(o => o.id === id)
+              if (!target?.url || target.type !== 't2i') return
+              setEditTarget({ id: target.id, url: target.url, prompt: target.prompt })
             }}
             onQuickDecide={async (id, dec) => {
               if (!meId || !activeId) return
@@ -1057,8 +1082,10 @@ export default function WorkspacePage() {
               }
 
               // I2V는 source image 필수 — 없으면 막기
-              if (genType === 'i2v' && !focused?.url) {
-                alert('I2V 영상 생성에는 소스 이미지가 필요해요.\n좌측 "최근 결과"에서 이미지를 클릭해 소스로 선택하세요.')
+              const explicitSrcId = selectedIds[0]
+              const explicitSrc = explicitSrcId ? filteredCandidates.find(o => o.id === explicitSrcId) : null
+              if (genType === 'i2v' && !explicitSrc?.url) {
+                alert('I2V 영상 생성에는 소스 이미지가 필요해요.\n좌측 "최근 결과"에서 T2I 이미지를 클릭해 소스로 선택하세요.')
                 return
               }
 
@@ -1067,7 +1094,11 @@ export default function WorkspacePage() {
               // 옵티미스틱 placeholder — T2I는 4장, I2V는 1장이 일반적
               const placeholderCount = genType === 't2i' ? 4 : 1
               const tempAttempt = `temp_a_${Date.now()}`
-              const sourceUrlForI2V = focused?.url ?? null
+              // I2V 소스는 명시적으로 선택된 카드만 사용 (focused fallback 사용 시 자동 첫번째 혼선 발생)
+              const explicitSource = selectedIds[0]
+                ? filteredCandidates.find(o => o.id === selectedIds[0])
+                : null
+              const sourceUrlForI2V = explicitSource?.url ?? null
               const ownerSceneId = active.id
               const placeholders: OutputItem[] = Array.from({ length: placeholderCount }, (_, i) => ({
                 id: `temp_${Date.now()}_${i}_${Math.random().toString(36).slice(2,7)}`,
@@ -1448,6 +1479,20 @@ export default function WorkspacePage() {
           items={lightboxState.items}
           initialIndex={lightboxState.idx}
           onClose={() => setLightboxState(null)}
+        />
+      )}
+
+      {/* T2I 편집 모달 */}
+      {editTarget && activeId && (
+        <T2IEditModal
+          target={editTarget}
+          projectId={projectId}
+          sceneId={activeId}
+          onClose={() => setEditTarget(null)}
+          onDone={async () => {
+            setEditTarget(null)
+            if (activeId) await loadSceneData(activeId)
+          }}
         />
       )}
 
@@ -1832,7 +1877,7 @@ function GeneratePanel({
   refSel, onRefSelChange, scene,
   rootAssets, rootSel, onRootSelChange, sceneDefaultRootIds,
   recentOutputs, recentAttempts, selectedOutputId, onJumpToResults,
-  onSelectOutput, onZoomOutput, onQuickDecide, onQuickRate,
+  onSelectOutput, onZoomOutput, onEditOutput, onQuickDecide, onQuickRate,
   optimizing, onOptimize,
 }: {
   sceneId: string
@@ -1865,6 +1910,7 @@ function GeneratePanel({
   onJumpToResults: () => void
   onSelectOutput: (id: string) => void
   onZoomOutput?: (id: string) => void
+  onEditOutput?: (id: string) => void
   onQuickDecide: (id: string, decision: 'approved' | 'revise_requested' | 'removed') => Promise<void> | void
   onQuickRate: (id: string, score: number) => Promise<void> | void
   optimizing: boolean
@@ -2080,6 +2126,7 @@ function GeneratePanel({
               isI2VMode={type === 'i2v'}
               onSelect={onSelectOutput}
               onZoom={onZoomOutput}
+              onEdit={onEditOutput}
               onQuickDecide={onQuickDecide}
               onQuickRate={onQuickRate}
             />
@@ -2309,7 +2356,7 @@ function GeneratePanel({
 // ─── Generate 탭 인라인 결과 strip — 반응형 + 호버 퀵액션 ──────
 function InlineResultStrip({
   outputs, attempts, selectedOutputId, isI2VMode,
-  onSelect, onZoom, onQuickDecide, onQuickRate,
+  onSelect, onZoom, onEdit, onQuickDecide, onQuickRate,
 }: {
   outputs: OutputItem[]
   attempts: AttemptMeta[]
@@ -2317,6 +2364,7 @@ function InlineResultStrip({
   isI2VMode: boolean
   onSelect: (id: string) => void
   onZoom?: (id: string) => void
+  onEdit?: (id: string) => void
   onQuickDecide: (id: string, d: 'approved' | 'revise_requested' | 'removed') => Promise<void> | void
   onQuickRate: (id: string, score: number) => Promise<void> | void
 }) {
@@ -2358,6 +2406,7 @@ function InlineResultStrip({
                   selectableAsSource={isI2VMode && r.type === 't2i' && !!r.url}
                   onSelect={() => onSelect(r.id)}
                   onZoom={onZoom ? () => onZoom(r.id) : undefined}
+                  onEdit={onEdit && r.type === 't2i' && !!r.url ? () => onEdit(r.id) : undefined}
                   onQuickDecide={(d) => onQuickDecide(r.id, d)}
                   onQuickRate={(score) => onQuickRate(r.id, score)}
                 />
@@ -2372,13 +2421,14 @@ function InlineResultStrip({
 
 function InlineResultCard({
   item, isI2VSource, selectableAsSource,
-  onSelect, onZoom, onQuickDecide, onQuickRate,
+  onSelect, onZoom, onEdit, onQuickDecide, onQuickRate,
 }: {
   item: OutputItem
   isI2VSource: boolean
   selectableAsSource: boolean
   onSelect: () => void
   onZoom?: () => void
+  onEdit?: () => void
   onQuickDecide: (d: 'approved' | 'revise_requested' | 'removed') => Promise<void> | void
   onQuickRate: (score: number) => Promise<void> | void
 }) {
@@ -2476,21 +2526,37 @@ function InlineResultCard({
             padding: 8, gap: 6,
           }}
         >
-          {/* 확대 버튼 (우상단) */}
-          {onZoom && (
-            <div className="flex justify-end">
-              <button
-                onClick={(e) => { e.stopPropagation(); onZoom() }}
-                title="크게 보기"
-                style={{
-                  padding: '4px 8px', borderRadius: 'var(--r-sm)', fontSize: 10, fontWeight: 600,
-                  background: 'rgba(0,0,0,0.55)', color: '#fff',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  display: 'inline-flex', alignItems: 'center', gap: 3,
-                }}
-              >
-                <ImageIcon size={11} /> 확대
-              </button>
+          {/* 확대/편집 버튼 (우상단) */}
+          {(onZoom || onEdit) && (
+            <div className="flex justify-end" style={{ gap: 4 }}>
+              {onEdit && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onEdit() }}
+                  title="이 이미지 편집 (Nano Banana inpaint)"
+                  style={{
+                    padding: '4px 8px', borderRadius: 'var(--r-sm)', fontSize: 10, fontWeight: 600,
+                    background: 'var(--accent)', color: '#fff',
+                    border: '1px solid var(--accent)',
+                    display: 'inline-flex', alignItems: 'center', gap: 3,
+                  }}
+                >
+                  <Edit2 size={11} /> 편집
+                </button>
+              )}
+              {onZoom && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onZoom() }}
+                  title="크게 보기"
+                  style={{
+                    padding: '4px 8px', borderRadius: 'var(--r-sm)', fontSize: 10, fontWeight: 600,
+                    background: 'rgba(0,0,0,0.55)', color: '#fff',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    display: 'inline-flex', alignItems: 'center', gap: 3,
+                  }}
+                >
+                  <ImageIcon size={11} /> 확대
+                </button>
+              )}
             </div>
           )}
           {/* 별점 + OK/Revise/Remove (그룹) */}
@@ -3003,6 +3069,195 @@ function SceneContextPanel({ scene }: { scene: Scene }) {
               </div>
             )
           })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+// ─── T2I 편집 모달 ─────────────────────────────────────────
+function T2IEditModal({
+  target, projectId, sceneId, onClose, onDone,
+}: {
+  target: { id: string; url: string; prompt?: string }
+  projectId: string
+  sceneId: string
+  onClose: () => void
+  onDone: () => Promise<void> | void
+}) {
+  const [editPrompt, setEditPrompt] = useState('')
+  const [running, setRunning] = useState(false)
+  const [resultUrl, setResultUrl] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  // ESC로 닫기
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  async function handleEdit() {
+    if (!editPrompt.trim() || running) return
+    setRunning(true)
+    setError(null)
+    setResultUrl(null)
+    try {
+      const r = await fetch('/api/t2i/edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceImageUrl: target.url,
+          editPrompt: editPrompt.trim(),
+          projectId,
+          sceneId,
+        }),
+      })
+      const j = await r.json()
+      if (!r.ok || !j.success) {
+        setError(j.error ?? '편집 실패')
+        return
+      }
+      setResultUrl(j.asset?.url ?? null)
+    } catch (e: any) {
+      setError(e?.message ?? String(e))
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  const PRESET_HINTS = [
+    '배경을 밤하늘로 바꿔줘',
+    '인물 표정을 미소로',
+    '안개를 더 짙게',
+    '의상을 검정 코트로',
+    '카메라 각도를 로우앵글로',
+    '조명을 골든아워로',
+  ]
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 200,
+        background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 24,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="card"
+        style={{
+          width: 'min(960px, 100%)', maxHeight: '88vh',
+          padding: 0, overflow: 'hidden',
+          display: 'flex', flexDirection: 'column',
+        }}
+      >
+        <div className="flex items-center" style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)', gap: 10 }}>
+          <Edit2 size={16} style={{ color: 'var(--accent)' }} />
+          <div style={{ flex: 1 }}>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>이미지 편집</h3>
+            <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--ink-3)' }}>
+              Nano Banana로 이 이미지를 부분 수정합니다. 결과는 새 T2I 에셋으로 저장돼요.
+            </p>
+          </div>
+          <button onClick={onClose} className="btn" style={{ padding: 6 }}><X size={14} /></button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: 18 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+            {/* 원본 */}
+            <div>
+              <div className="field-label">원본</div>
+              <div style={{ aspectRatio: '16/9', borderRadius: 'var(--r-md)', overflow: 'hidden', background: 'var(--bg-3)' }}>
+                <img src={target.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              </div>
+            </div>
+            {/* 결과 */}
+            <div>
+              <div className="field-label">편집 결과</div>
+              <div style={{
+                aspectRatio: '16/9', borderRadius: 'var(--r-md)', overflow: 'hidden',
+                background: 'var(--bg-3)',
+                border: resultUrl ? '2px solid var(--accent)' : '1px dashed var(--line-strong)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {resultUrl ? (
+                  <img src={resultUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : running ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                    <Loader2 size={20} className="animate-spin" style={{ color: 'var(--accent)' }} />
+                    <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>편집 중…</span>
+                  </div>
+                ) : (
+                  <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>편집을 실행하면 여기에 표시</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="field-label">편집 지시</div>
+          <textarea
+            value={editPrompt}
+            onChange={e => setEditPrompt(e.target.value)}
+            placeholder="예: 배경을 밤하늘로 바꿔줘 / 인물 표정을 미소로 / 의상을 검정 코트로..."
+            rows={3}
+            style={{
+              width: '100%', padding: 12,
+              background: 'var(--bg-2)', border: '1px solid var(--line)',
+              borderRadius: 'var(--r-md)', fontSize: 13, color: 'var(--ink)',
+              outline: 'none', resize: 'vertical', lineHeight: 1.6,
+            }}
+          />
+          <div className="flex flex-wrap" style={{ gap: 5, marginTop: 8 }}>
+            {PRESET_HINTS.map(h => (
+              <button
+                key={h}
+                onClick={() => setEditPrompt(p => p ? `${p}, ${h}` : h)}
+                className="btn"
+                style={{ fontSize: 10, padding: '3px 8px' }}
+              >
+                + {h}
+              </button>
+            ))}
+          </div>
+
+          {error && (
+            <div style={{
+              marginTop: 12, padding: '8px 10px',
+              borderRadius: 'var(--r-sm)',
+              background: 'var(--danger-soft)', color: 'var(--danger)',
+              fontSize: 11,
+            }}>
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div style={{ padding: '12px 18px', borderTop: '1px solid var(--line)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} className="btn">닫기</button>
+          {resultUrl && (
+            <button
+              onClick={async () => { await onDone(); }}
+              className="btn primary"
+            >
+              <Check size={13} /> 갤러리 새로고침
+            </button>
+          )}
+          {!resultUrl && (
+            <button
+              onClick={handleEdit}
+              disabled={running || !editPrompt.trim()}
+              className="btn primary"
+              style={{ opacity: running || !editPrompt.trim() ? 0.6 : 1 }}
+            >
+              {running ? <><Loader2 size={13} className="animate-spin" /> 편집 중…</> : <><Sparkles size={13} /> 편집 실행</>}
+            </button>
+          )}
         </div>
       </div>
     </div>
