@@ -162,19 +162,46 @@ export default function WorkspacePage() {
     setMpEditing(true)
   }
 
-  // 레퍼런스 자산 (오브제/캐릭터/공간 선택용)
+  // 레퍼런스 자산 (업로드 + 생성된 T2I) — 시간순(최신 우선) + Realtime
   useEffect(() => {
-    void (async () => {
-      // type='reference' (업로드된 레퍼런스) + type='t2i' (지금까지 생성된 이미지)
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    async function loadRefs() {
       const { data } = await supabase
         .from('assets').select('*')
         .eq('project_id', projectId)
         .in('type', ['reference', 't2i'])
         .eq('archived', false)
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: false })  // 시간순 (최신 우선)
         .limit(300)
-      setReferenceAssets((data ?? []) as Asset[])
-    })()
+      if (!cancelled) setReferenceAssets((data ?? []) as Asset[])
+    }
+    void loadRefs()
+
+    const debouncedReload = () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => { void loadRefs() }, 250)
+    }
+
+    // Realtime — assets 테이블 변경 즉시 반영 (생성/삭제/archived 토글)
+    const ch = supabase
+      .channel(`workspace-refs-${projectId}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'assets', filter: `project_id=eq.${projectId}` },
+        (payload) => {
+          const row = (payload.new ?? payload.old) as any
+          if (!row) return
+          const t = row.type
+          if (t === 'reference' || t === 't2i') debouncedReload()
+        })
+      .subscribe()
+
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+      supabase.removeChannel(ch)
+    }
   }, [projectId, supabase])
 
   // 프로젝트 전체 루트 에셋 시드 (Generate 탭 RootAssetBox용)
@@ -264,7 +291,16 @@ export default function WorkspacePage() {
         })
       }
     }
-    setOutputs(flat)
+    // temp placeholders 보존 — DB에 아직 반영 안 된 in-flight 큐는 유지
+    // (사용자가 방금 누른 생성 버튼의 placeholder가 reload로 사라지는 깜빡임 방지)
+    setOutputs(prev => {
+      const tempPlaceholders = prev.filter(o =>
+        o.attempt_id?.startsWith('temp_a_') &&
+        // DB에 동일 attempt_id가 없거나, 해당 attempt에 outputs가 아직 없을 때만 유지
+        !flat.some(f => f.attempt_id === o.attempt_id)
+      )
+      return [...flat, ...tempPlaceholders]
+    })
     setAttempts(meta)
     setSelectedIds(flat.length > 0 ? [flat[0].id] : [])
 
