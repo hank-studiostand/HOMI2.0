@@ -60,6 +60,7 @@ interface MasterPrompt {
 interface OutputItem {
   id: string
   attempt_id: string
+  scene_id?: string                       // placeholder가 속한 씬을 추적 (씬 전환 시 분리)
   url: string | null
   archived: boolean
   satisfaction_score: SatisfactionScore | null
@@ -98,6 +99,9 @@ export default function WorkspacePage() {
 
   const [scenes, setScenes] = useState<Scene[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
+  // 비동기 콜백에서 항상 최신 activeId를 읽기 위한 ref (클로저 stale 방지)
+  const activeIdRef = useRef<string | null>(null)
+  useEffect(() => { activeIdRef.current = activeId }, [activeId])
   const [versions, setVersions] = useState<PromptVersion[]>([])
   const [masterPrompts, setMasterPrompts] = useState<MasterPrompt[]>([])
   const [outputs, setOutputs] = useState<OutputItem[]>([])
@@ -291,14 +295,13 @@ export default function WorkspacePage() {
         })
       }
     }
-    // in-flight placeholder 보존 — DB에 아직 outputs가 안 박힌 큐는 화면에 유지.
-    // placeholder는 id가 'temp_'로 시작하고 url=null. attempt_id는 임시(temp_a_) 또는
-    // attempt insert 직후 realAttemptId로 교체된 상태일 수 있음.
-    // 해당 attempt에 outputs가 들어왔으면 placeholder 제거 (자연 swap).
+    // in-flight placeholder 보존 — 현재 씬에 한정.
+    // 다른 씬의 placeholder가 섞이지 않도록 scene_id 일치로 필터링.
     setOutputs(prev => {
       const tempPlaceholders = prev.filter(o =>
         typeof o.id === 'string' && o.id.startsWith('temp_') && !o.url &&
-        !flat.some(f => f.attempt_id === o.attempt_id)
+        o.scene_id === sceneId &&                                // 이 씬의 큐만
+        !flat.some(f => f.attempt_id === o.attempt_id)           // 아직 outputs 없는 것만
       )
       return [...flat, ...tempPlaceholders]
     })
@@ -316,6 +319,10 @@ export default function WorkspacePage() {
 
   useEffect(() => {
     if (!activeId) return
+    // 씬 전환 시 다른 씬에 속한 placeholder 즉시 제거 (혼선 방지)
+    setOutputs(prev => prev.filter(o =>
+      !(typeof o.id === 'string' && o.id.startsWith('temp_')) || o.scene_id === activeId
+    ))
     void loadSceneData(activeId)
   }, [activeId, loadSceneData])
 
@@ -1061,9 +1068,12 @@ export default function WorkspacePage() {
               const placeholderCount = genType === 't2i' ? 4 : 1
               const tempAttempt = `temp_a_${Date.now()}`
               const sourceUrlForI2V = focused?.url ?? null
+              const ownerSceneId = active.id
               const placeholders: OutputItem[] = Array.from({ length: placeholderCount }, (_, i) => ({
                 id: `temp_${Date.now()}_${i}_${Math.random().toString(36).slice(2,7)}`,
-                attempt_id: tempAttempt, url: null, archived: false,
+                attempt_id: tempAttempt,
+                scene_id: ownerSceneId,             // 어느 씬의 큐인지 명시
+                url: null, archived: false,
                 satisfaction_score: null, feedback: '',
                 type: genType, engine: genEngine,
                 created_at: new Date().toISOString(),
@@ -1117,7 +1127,11 @@ export default function WorkspacePage() {
                     setOutputs(prev => prev.filter(o => o.attempt_id !== realAttemptId))
                     return
                   }
-                  if (active && active.id) await loadSceneData(active.id)
+                  // 사용자가 다른 씬으로 이동했을 수 있음 — 본래 씬에 머무를 때만 reload.
+                  // (이동했다면 그 씬에 진입할 때 useEffect[activeId]가 자체 reload)
+                  if (active && active.id && activeIdRef.current === active.id) {
+                    await loadSceneData(active.id)
+                  }
                 } catch (e: any) {
                   console.error('[onGenerate background]', e)
                 }
