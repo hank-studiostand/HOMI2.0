@@ -120,21 +120,19 @@ export default function WorkspacePage() {
   const [centerTab, setCenterTab] = useState<'results' | 'generate'>('results')
   const [genPromptDraft, setGenPromptDraft] = useState('')
 
+  const [genType, setGenType] = useState<'t2i' | 'i2v'>('t2i')
+  const [genEngine, setGenEngine] = useState<string>('nanobanana')
+
   // I2V 모드 진입 시 — 명시적으로 첫 T2I 결과를 소스로 자동 선택 (visible)
-  // 사용자가 다른 카드 클릭하면 selectedIds가 변경되어 즉시 source가 바뀜
-  // (focused fallback이 보이지 않게 처리되던 혼선 제거)
+  // 사용자가 다른 카드 클릭하면 selectedIds가 변경되어 즉시 source가 바뀜.
   useEffect(() => {
     if (genType !== 'i2v') return
     setSelectedIds(prev => {
       if (prev.length > 0) return prev
-      // 가장 최근 T2I 결과 (filteredCandidates는 아직 정의 전이므로 outputs/attempts 기반)
       const firstT2I = outputs.find(o => o.type === 't2i' && !!o.url && !o.archived)
       return firstT2I ? [firstT2I.id] : []
     })
   }, [genType, outputs])
-
-  const [genType, setGenType] = useState<'t2i' | 'i2v'>('t2i')
-  const [genEngine, setGenEngine] = useState<string>('nanobanana')
   const [genRatio, setGenRatio] = useState<string>('16:9')
   const [generating, setGenerating] = useState(false)
   const [referenceAssets, setReferenceAssets] = useState<Asset[]>([])
