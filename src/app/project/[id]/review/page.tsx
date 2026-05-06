@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Pill, { type PillVariant } from '@/components/ui/Pill'
-import { CheckCircle2, RotateCcw, Trash2, Eye, MoreHorizontal, Loader2 } from 'lucide-react'
+import { CheckCircle2, RotateCcw, Trash2, Eye, Loader2, Filter, Image as ImageIcon, Film } from 'lucide-react'
 import { toast } from '@/components/ui/Toast'
 
 // Review & Decision — 칸반 4 컬럼 (검토 대기 / 수정 요청 / 승인 / 제거)
@@ -157,192 +157,443 @@ export default function ReviewPage() {
     return r
   }, [outputs])
 
+  // ── 필터 상태 ────────────────────────────────────
+  const [typeFilter, setTypeFilter] = useState<'all' | 't2i' | 'i2v'>('all')
+  const [sceneFilter, setSceneFilter] = useState<string>('all')
+
+  const sceneOptions = useMemo(() => {
+    const seen = new Map<string, { id: string; number: string; title: string }>()
+    for (const o of outputs) {
+      if (!seen.has(o.scene_id)) seen.set(o.scene_id, { id: o.scene_id, number: o.scene_number, title: o.scene_title })
+    }
+    return Array.from(seen.values())
+  }, [outputs])
+
+  const filteredGrouped = useMemo(() => {
+    const result: Record<'review' | 'revise' | 'approved' | 'removed', OutputCard[]> =
+      { review: [], revise: [], approved: [], removed: [] }
+    for (const k of Object.keys(grouped) as Array<'review' | 'revise' | 'approved' | 'removed'>) {
+      result[k] = grouped[k].filter(c => {
+        if (typeFilter !== 'all' && c.type !== typeFilter) return false
+        if (sceneFilter !== 'all' && c.scene_id !== sceneFilter) return false
+        return true
+      })
+    }
+    return result
+  }, [grouped, typeFilter, sceneFilter])
+
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col" style={{ background: 'var(--bg)', color: 'var(--ink)' }}>
+      {/* 헤더 + 필터 */}
       <div
-        className="flex items-end justify-between gap-6"
         style={{
-          padding: '20px 28px 16px',
+          padding: '20px 28px 14px',
           borderBottom: '1px solid var(--line)',
           background: 'var(--bg)',
+          position: 'sticky', top: 0, zIndex: 3,
         }}
       >
-        <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>
-            Review &amp; Decision
-          </h1>
-          <p style={{ marginTop: 4, fontSize: 13, color: 'var(--ink-3)' }}>
-            팀이 만든 결과를 검토하고 승인 / 수정 요청 / 제거합니다.
-          </p>
+        <div className="flex items-end justify-between" style={{ gap: 16, marginBottom: 14 }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>
+              Review &amp; Decision
+            </h1>
+            <p style={{ marginTop: 4, fontSize: 13, color: 'var(--ink-3)' }}>
+              결과를 한눈에 살펴보고 승인 / 수정 요청 / 제거. 키보드: <kbd>A</kbd> 승인 · <kbd>R</kbd> 수정 · <kbd>X</kbd> 제거
+            </p>
+          </div>
+          <div className="flex items-center" style={{ gap: 16, fontSize: 11, color: 'var(--ink-3)' }}>
+            {COLUMNS.map(col => {
+              const Icon = col.icon
+              return (
+                <div key={col.key} className="flex items-center" style={{ gap: 6 }}>
+                  <Icon size={12} />
+                  <span>{col.label}</span>
+                  <Pill variant={col.variant}>{filteredGrouped[col.key].length}</Pill>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+        {/* 필터 행 */}
+        <div className="flex items-center" style={{ gap: 10, fontSize: 12 }}>
+          <Filter size={13} style={{ color: 'var(--ink-4)' }} />
+          {/* 타입 필터 */}
+          <div className="flex" style={{ gap: 4 }}>
+            {(['all', 't2i', 'i2v'] as const).map(t => (
+              <button
+                key={t}
+                onClick={() => setTypeFilter(t)}
+                style={{
+                  padding: '4px 10px', borderRadius: 'var(--r-sm)',
+                  fontSize: 11, fontWeight: 500,
+                  background: typeFilter === t ? 'var(--accent-soft)' : 'var(--bg-3)',
+                  color: typeFilter === t ? 'var(--accent)' : 'var(--ink-3)',
+                  border: `1px solid ${typeFilter === t ? 'var(--accent-line)' : 'var(--line)'}`,
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                }}
+              >
+                {t === 't2i' && <ImageIcon size={11} />}
+                {t === 'i2v' && <Film size={11} />}
+                {t === 'all' ? '전체' : t.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          {/* 씬 필터 */}
+          <select
+            value={sceneFilter}
+            onChange={e => setSceneFilter(e.target.value)}
+            style={{
+              padding: '4px 10px', borderRadius: 'var(--r-sm)',
+              fontSize: 11, color: 'var(--ink-2)',
+              background: 'var(--bg-3)', border: '1px solid var(--line)',
+              outline: 'none',
+              minWidth: 200,
+            }}
+          >
+            <option value="all">모든 씬</option>
+            {sceneOptions.map(s => (
+              <option key={s.id} value={s.id}>{s.number} {s.title}</option>
+            ))}
+          </select>
+          <span style={{ flex: 1 }} />
+          {(typeFilter !== 'all' || sceneFilter !== 'all') && (
+            <button
+              onClick={() => { setTypeFilter('all'); setSceneFilter('all') }}
+              className="btn"
+              style={{ fontSize: 11, padding: '4px 10px' }}
+            >
+              필터 초기화
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto" style={{ padding: 20 }}>
-        <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', minWidth: 1200 }}>
-          {COLUMNS.map(col => {
-            const Icon = col.icon
-            const list = grouped[col.key]
-            return (
-              <div key={col.key} className="card" style={{ background: 'var(--bg-1)' }}>
+      {/* 본문 — 검토 대기 상단 강조 + 결정된 것 하단 컴팩트 3열 */}
+      <div className="flex-1 overflow-auto" style={{ padding: '20px 28px' }}>
+        {loading ? (
+          <div className="flex items-center justify-center" style={{ padding: 60, color: 'var(--ink-4)' }}>
+            <Loader2 size={20} className="animate-spin" /> <span style={{ marginLeft: 8 }}>불러오는 중…</span>
+          </div>
+        ) : (
+          <>
+            {/* 검토 대기 — 큰 카드 그리드 (focal point) */}
+            <section style={{ marginBottom: 28 }}>
+              <div className="flex items-center" style={{ gap: 8, marginBottom: 12 }}>
+                <Eye size={16} style={{ color: 'var(--accent)' }} />
+                <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>검토 대기</h2>
+                <span style={{ fontSize: 12, color: 'var(--ink-4)' }}>{filteredGrouped.review.length}개</span>
+              </div>
+              {filteredGrouped.review.length === 0 ? (
                 <div
-                  className="flex items-center justify-between"
-                  style={{ padding: '12px 14px', borderBottom: '1px solid var(--line)' }}
+                  style={{
+                    border: '1px dashed var(--line-strong)',
+                    borderRadius: 12, padding: 40,
+                    textAlign: 'center', color: 'var(--ink-4)',
+                    background: 'var(--bg-2)', fontSize: 13,
+                  }}
                 >
-                  <div className="row" style={{ gap: 8 }}>
-                    <Icon size={14} />
-                    <span style={{ fontSize: 13, fontWeight: 600 }}>{col.label}</span>
-                  </div>
-                  <Pill variant={col.variant}>{list.length}</Pill>
+                  검토 대기 중인 결과가 없어요. 워크스페이스에서 결과를 만들거나 필터를 조정해 보세요.
                 </div>
-
-                <div className="flex flex-col" style={{ padding: 12, gap: 10, maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' }}>
-                  {loading && <div className="empty">불러오는 중...</div>}
-                  {!loading && list.length === 0 && <div className="empty">없음</div>}
-                  {list.map(c => (
+              ) : (
+                <div
+                  className="grid"
+                  style={{
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                    gap: 14,
+                  }}
+                >
+                  {filteredGrouped.review.map(c => (
                     <ReviewCard
                       key={c.id}
                       c={c}
                       busy={busyId === c.id}
+                      compact={false}
                       onOpen={() => router.push(`/project/${projectId}/workspace?scene=${c.scene_id}`)}
                       onDecide={(d) => quickDecide(c, d)}
                     />
                   ))}
                 </div>
+              )}
+            </section>
+
+            {/* 이미 결정된 것 — 3열 컴팩트 */}
+            <section>
+              <div className="flex items-center" style={{ gap: 8, marginBottom: 12 }}>
+                <CheckCircle2 size={14} style={{ color: 'var(--ink-3)' }} />
+                <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--ink-2)' }}>결정 기록</h2>
               </div>
-            )
-          })}
-        </div>
+              <div
+                className="grid"
+                style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}
+              >
+                {(['revise', 'approved', 'removed'] as const).map(k => {
+                  const col = COLUMNS.find(x => x.key === k)!
+                  const Icon = col.icon
+                  const list = filteredGrouped[k]
+                  const accentColor = k === 'approved' ? 'var(--ok)'
+                                     : k === 'revise' ? 'var(--accent)'
+                                     : 'var(--danger)'
+                  return (
+                    <div
+                      key={k}
+                      style={{
+                        background: 'var(--bg-2)',
+                        border: '1px solid var(--line)',
+                        borderTop: `3px solid ${accentColor}`,
+                        borderRadius: 'var(--r-md)',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <div className="flex items-center justify-between" style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
+                        <div className="flex items-center" style={{ gap: 6 }}>
+                          <Icon size={12} style={{ color: accentColor }} />
+                          <span style={{ fontSize: 12, fontWeight: 600 }}>{col.label}</span>
+                        </div>
+                        <Pill variant={col.variant}>{list.length}</Pill>
+                      </div>
+                      <div className="flex flex-col" style={{ padding: 8, gap: 6, maxHeight: 480, overflowY: 'auto' }}>
+                        {list.length === 0 ? (
+                          <div style={{ fontSize: 11, color: 'var(--ink-4)', textAlign: 'center', padding: 16 }}>없음</div>
+                        ) : list.map(c => (
+                          <ReviewCard
+                            key={c.id}
+                            c={c}
+                            busy={busyId === c.id}
+                            compact={true}
+                            onOpen={() => router.push(`/project/${projectId}/workspace?scene=${c.scene_id}`)}
+                            onDecide={(d) => quickDecide(c, d)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          </>
+        )}
       </div>
     </div>
   )
 }
 
-// ─── Review 카드 (호버 퀵 결정 + 클릭 시 워크스페이스 진입) ─────
+// ─── Review 카드 (action 버튼 항상 노출, decision 상태별 색상) ─────
 function ReviewCard({
-  c, busy, onOpen, onDecide,
+  c, busy, compact, onOpen, onDecide,
 }: {
   c: OutputCard
   busy: boolean
+  compact: boolean
   onOpen: () => void
   onDecide: (d: 'approved' | 'revise_requested' | 'removed') => void
 }) {
   const [hover, setHover] = useState(false)
+  const isVideo = c.type === 'i2v' || c.type === 'lipsync'
+  const decision = c.decision?.decision_type
+  const accentColor =
+    decision === 'approved' ? 'var(--ok)'
+    : decision === 'revise_requested' ? 'var(--accent)'
+    : decision === 'removed' ? 'var(--danger)'
+    : 'var(--line)'
+
+  // 키보드 단축키 — 호버 중인 카드만 반응
+  useEffect(() => {
+    if (!hover || busy) return
+    function onKey(e: KeyboardEvent) {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      const k = e.key.toLowerCase()
+      if (k === 'a') { e.preventDefault(); onDecide('approved') }
+      else if (k === 'r') { e.preventDefault(); onDecide('revise_requested') }
+      else if (k === 'x') { e.preventDefault(); onDecide('removed') }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [hover, busy, onDecide])
+
   return (
     <div
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      className="card"
-      style={{ background: 'var(--bg-2)', position: 'relative', cursor: 'pointer' }}
-      onClick={onOpen}
-      title="이 씬 워크스페이스 열기"
+      style={{
+        background: 'var(--bg-2)',
+        border: `2px solid ${accentColor}`,
+        borderRadius: 'var(--r-md)',
+        overflow: 'hidden',
+        position: 'relative',
+        transition: 'border-color 0.15s, box-shadow 0.15s',
+        boxShadow: hover ? '0 4px 16px rgba(0,0,0,0.10)' : 'none',
+        opacity: decision === 'removed' ? 0.65 : 1,
+      }}
     >
-                      {c.url ? (
-                        c.type === 'i2v' || c.type === 'lipsync' ? (
-                          <video src={c.url} className="w-full" style={{ aspectRatio: '16/9', objectFit: 'cover' }} muted preload="metadata" />
-                        ) : (
-                          <img src={c.url} alt="" className="w-full" style={{ aspectRatio: '16/9', objectFit: 'cover' }} />
-                        )
-                      ) : (
-                        <div className="shimmer" style={{ aspectRatio: '16/9' }} />
-                      )}
-                      <div style={{ padding: 10 }}>
-                        <div className="row" style={{ gap: 6, marginBottom: 4 }}>
-                          <Pill variant="gen">{c.type.toUpperCase()}</Pill>
-                          <span className="mono" style={{ color: 'var(--ink-4)' }}>{c.scene_number}</span>
-                        </div>
-                        <div style={{ fontSize: 12, color: 'var(--ink-2)' }} className="truncate">
-                          {c.scene_title}
-                        </div>
-                        {c.decision?.reason_tags && c.decision.reason_tags.length > 0 && (
-                          <div className="flex flex-wrap" style={{ gap: 4, marginTop: 6 }}>
-                            {c.decision.reason_tags.map(t => (
-                              <span
-                                key={t}
-                                style={{
-                                  padding: '1px 7px', borderRadius: 999,
-                                  fontSize: 10,
-                                  background: 'var(--accent-soft)', color: 'var(--accent-2)',
-                                  border: '1px solid var(--accent-line)',
-                                }}
-                              >
-                                {t}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        {(c.decision?.comment || c.feedback) && (
-                          <div
-                            style={{
-                              marginTop: 6, padding: 6,
-                              background: 'var(--bg-3)', borderRadius: 'var(--r-sm)',
-                              fontSize: 11, color: 'var(--ink-3)',
-                            }}
-                          >
-                            {c.decision?.comment || c.feedback}
-                          </div>
-                        )}
-                      </div>
-                      {/* 호버 시 퀵 결정 액션바 (카드 wrapper 클릭 이벤트는 stopPropagation) */}
-                      {hover && !busy && (
-                        <div
-                          onClick={(e) => e.stopPropagation()}
-                          className="flex items-center"
-                          style={{
-                            position: 'absolute', bottom: 0, left: 0, right: 0,
-                            padding: 6, gap: 4,
-                            background: 'linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.8) 60%)',
-                          }}
-                        >
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onDecide('approved') }}
-                            title="승인"
-                            style={{
-                              flex: 1, padding: '5px 0',
-                              borderRadius: 'var(--r-sm)', fontSize: 11, fontWeight: 600,
-                              background: 'var(--ok)', color: '#fff',
-                              border: '1px solid var(--ok)',
-                            }}
-                          >
-                            <CheckCircle2 size={11} style={{ display: 'inline', marginRight: 3 }} />
-                            승인
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onDecide('revise_requested') }}
-                            title="수정 요청"
-                            style={{
-                              padding: '5px 9px',
-                              borderRadius: 'var(--r-sm)', fontSize: 11,
-                              background: 'var(--accent)', color: '#fff',
-                              border: '1px solid var(--accent)',
-                            }}
-                          >
-                            <RotateCcw size={11} />
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onDecide('removed') }}
-                            title="휴지통으로"
-                            style={{
-                              padding: '5px 9px',
-                              borderRadius: 'var(--r-sm)', fontSize: 11,
-                              background: 'var(--danger)', color: '#fff',
-                              border: '1px solid var(--danger)',
-                            }}
-                          >
-                            <Trash2 size={11} />
-                          </button>
-                        </div>
-                      )}
-                      {busy && (
-                        <div
-                          style={{
-                            position: 'absolute', inset: 0,
-                            background: 'rgba(0,0,0,0.45)',
-                            display: 'grid', placeItems: 'center',
-                          }}
-                        >
-                          <Loader2 size={20} className="animate-spin" style={{ color: '#fff' }} />
-                        </div>
-                      )}
-                    </div>
+      {/* 미디어 */}
+      <div
+        onClick={onOpen}
+        style={{
+          aspectRatio: '16/9',
+          background: 'var(--bg-3)',
+          cursor: 'pointer',
+          position: 'relative',
+        }}
+        title="이 씬 워크스페이스 열기"
+      >
+        {c.url ? (
+          isVideo
+            ? <video src={c.url} muted preload="metadata"
+                onMouseEnter={e => (e.target as HTMLVideoElement).play().catch(()=>{})}
+                onMouseLeave={e => { (e.target as HTMLVideoElement).pause(); (e.target as HTMLVideoElement).currentTime = 0 }}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : <img src={c.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : (
+          <div className="shimmer" style={{ width: '100%', height: '100%' }} />
+        )}
+        {/* 좌상단: 타입 + 씬번호 배지 */}
+        <div style={{ position: 'absolute', top: 6, left: 6, display: 'flex', gap: 4 }}>
+          <span
+            style={{
+              padding: '2px 7px', borderRadius: 4,
+              fontSize: 9, fontWeight: 700,
+              background: 'rgba(0,0,0,0.65)', color: '#fff',
+              display: 'inline-flex', alignItems: 'center', gap: 3,
+            }}
+          >
+            {isVideo ? <Film size={9} /> : <ImageIcon size={9} />}
+            {c.type.toUpperCase()}
+          </span>
+          <span
+            className="mono"
+            style={{
+              padding: '2px 7px', borderRadius: 4,
+              fontSize: 9, fontWeight: 600,
+              background: 'rgba(0,0,0,0.65)', color: '#fff',
+            }}
+          >
+            {c.scene_number}
+          </span>
+        </div>
+        {/* 우상단: 결정 배지 */}
+        {decision && (
+          <div style={{ position: 'absolute', top: 6, right: 6 }}>
+            {decision === 'approved' && <Pill variant="approved">승인</Pill>}
+            {decision === 'revise_requested' && <Pill variant="revise">수정요청</Pill>}
+            {decision === 'removed' && <Pill variant="removed">제거</Pill>}
+          </div>
+        )}
+      </div>
+
+      {/* 본문 (compact 모드는 더 작은 padding) */}
+      {!compact && (
+        <div style={{ padding: '8px 10px' }}>
+          <div
+            style={{ fontSize: 12, color: 'var(--ink-2)', fontWeight: 500 }}
+            className="truncate"
+            title={c.scene_title}
+          >
+            {c.scene_title || '(제목 없음)'}
+          </div>
+          {c.decision?.reason_tags && c.decision.reason_tags.length > 0 && (
+            <div className="flex flex-wrap" style={{ gap: 3, marginTop: 5 }}>
+              {c.decision.reason_tags.map(t => (
+                <span
+                  key={t}
+                  style={{
+                    padding: '1px 6px', borderRadius: 999,
+                    fontSize: 9,
+                    background: 'var(--accent-soft)', color: 'var(--accent-2)',
+                    border: '1px solid var(--accent-line)',
+                  }}
+                >{t}</span>
+              ))}
+            </div>
+          )}
+          {(c.decision?.comment || c.feedback) && (
+            <div
+              style={{
+                marginTop: 5, padding: '5px 7px',
+                background: 'var(--bg-3)', borderRadius: 'var(--r-sm)',
+                fontSize: 11, color: 'var(--ink-3)',
+                overflow: 'hidden', textOverflow: 'ellipsis',
+                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+              }}
+              title={c.decision?.comment || c.feedback}
+            >
+              {c.decision?.comment || c.feedback}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* compact: 정보 한 줄로 */}
+      {compact && (
+        <div style={{ padding: '6px 8px', fontSize: 11, color: 'var(--ink-3)' }} className="truncate" title={c.scene_title}>
+          {c.scene_title || '(제목 없음)'}
+        </div>
+      )}
+
+      {/* 결정 액션바 — 항상 노출 (호버 의존 X) */}
+      {!busy && (
+        <div
+          className="flex items-center"
+          style={{
+            padding: compact ? 5 : 7, gap: 4,
+            borderTop: '1px solid var(--line)',
+            background: 'var(--bg-1)',
+          }}
+        >
+          <button
+            onClick={(e) => { e.stopPropagation(); onDecide('approved') }}
+            title="승인 (단축키 A)"
+            style={{
+              flex: 1, padding: compact ? '4px 0' : '6px 0',
+              borderRadius: 'var(--r-sm)', fontSize: 11, fontWeight: 600,
+              background: decision === 'approved' ? 'var(--ok)' : 'var(--ok-soft)',
+              color: decision === 'approved' ? '#fff' : 'var(--ok)',
+              border: `1px solid ${decision === 'approved' ? 'var(--ok)' : 'transparent'}`,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+            }}
+          >
+            <CheckCircle2 size={11} />
+            {!compact && '승인'}
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDecide('revise_requested') }}
+            title="수정 요청 (단축키 R)"
+            style={{
+              padding: compact ? '4px 8px' : '6px 10px',
+              borderRadius: 'var(--r-sm)', fontSize: 11,
+              background: decision === 'revise_requested' ? 'var(--accent)' : 'var(--accent-soft)',
+              color: decision === 'revise_requested' ? '#fff' : 'var(--accent-2)',
+              border: `1px solid ${decision === 'revise_requested' ? 'var(--accent)' : 'transparent'}`,
+            }}
+          >
+            <RotateCcw size={11} />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDecide('removed') }}
+            title="제거 (단축키 X)"
+            style={{
+              padding: compact ? '4px 8px' : '6px 10px',
+              borderRadius: 'var(--r-sm)', fontSize: 11,
+              background: decision === 'removed' ? 'var(--danger)' : 'var(--danger-soft)',
+              color: decision === 'removed' ? '#fff' : 'var(--danger)',
+              border: `1px solid ${decision === 'removed' ? 'var(--danger)' : 'transparent'}`,
+            }}
+          >
+            <Trash2 size={11} />
+          </button>
+        </div>
+      )}
+      {busy && (
+        <div
+          style={{
+            position: 'absolute', inset: 0,
+            background: 'rgba(0,0,0,0.45)',
+            display: 'grid', placeItems: 'center',
+          }}
+        >
+          <Loader2 size={20} className="animate-spin" style={{ color: '#fff' }} />
+        </div>
+      )}
+    </div>
   )
 }
