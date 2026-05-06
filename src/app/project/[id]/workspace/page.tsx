@@ -2015,31 +2015,59 @@ function GeneratePanel({
 
         <div className="flex items-center" style={{ marginBottom: 6, gap: 6 }}>
           <span className="field-label" style={{ margin: 0 }}>프롬프트</span>
-          {/* 루트에셋 프롬프트 주입 — 선택된 시드의 description을 합쳐서 prompt에 추가 */}
+          {/* 루트에셋 프롬프트 주입 — 선택 우선, 없으면 씬 default 시드, 그래도 없으면 안내 */}
           <button
             type="button"
-            title="선택된 루트 에셋(캐릭터/공간/오브제)의 프롬프트를 현재 입력에 합칩니다"
+            title="선택된 루트 에셋의 프롬프트를 합칩니다 (선택 없으면 씬에 매칭된 시드 자동 사용)"
             onClick={() => {
-              const selectedSeeds: { name: string; desc: string; cat: string }[] = []
-              for (const cat of ['character', 'space', 'object', 'misc'] as const) {
-                const ids = (rootSel as any)[cat] as Set<string>
-                if (!ids || ids.size === 0) continue
-                for (const id of Array.from(ids)) {
-                  const seed = rootAssets.find(s => s.id === id)
-                  if (!seed) continue
-                  const desc = (seed.description ?? '').trim()
-                  if (!desc) continue
-                  selectedSeeds.push({ name: seed.name, desc, cat })
+              type Pick = { id: string; name: string; desc: string; cat: string }
+              const collect = (idsByCat: Record<string, Set<string> | string[] | undefined>): Pick[] => {
+                const out: Pick[] = []
+                for (const cat of ['character', 'space', 'object', 'misc'] as const) {
+                  const v = idsByCat[cat]
+                  const idArr: string[] = Array.isArray(v) ? v : (v instanceof Set ? Array.from(v) : [])
+                  for (const id of idArr) {
+                    const seed = rootAssets.find(s => s.id === id)
+                    if (!seed) continue
+                    out.push({ id: seed.id, name: seed.name, desc: (seed.description ?? '').trim(), cat })
+                  }
                 }
+                return out
               }
-              if (selectedSeeds.length === 0) {
-                alert('선택된 루트 에셋이 없거나 프롬프트(설명)가 비어있어요.\n루트 에셋 페이지에서 캐릭터/공간 프롬프트를 먼저 작성해주세요.')
+
+              // 1차: 명시 선택
+              let picks = collect(rootSel as any)
+              let usedFallback = false
+
+              // 2차 fallback: 선택이 비었으면 씬에 매칭된 기본 시드(sceneDefaultRootIds)
+              if (picks.length === 0) {
+                picks = collect(sceneDefaultRootIds as any)
+                usedFallback = picks.length > 0
+              }
+
+              if (picks.length === 0) {
+                alert('합칠 루트 에셋이 없어요.\n— 좌측 "루트 에셋" 박스에서 시드를 체크하거나\n— 씬 분류에서 씬에 매칭하거나\n— 루트 에셋 페이지에서 시드를 먼저 만들어주세요.')
                 return
               }
-              const block = selectedSeeds.map(s => `[${s.cat === 'character' ? '인물' : s.cat === 'space' ? '공간' : s.cat === 'object' ? '오브제' : '기타'}: ${s.name}] ${s.desc}`).join('\n')
+
+              const withDesc = picks.filter(p => p.desc)
+              if (withDesc.length === 0) {
+                const names = picks.map(p => p.name).join(', ')
+                alert(`선택된 시드(${picks.length}개: ${names})에 모두 프롬프트(설명)가 비어있어요.\n루트 에셋 페이지에서 각 시드의 '캐릭터/공간 프롬프트'를 먼저 채워주세요.`)
+                return
+              }
+
+              const block = withDesc.map(p => {
+                const label = p.cat === 'character' ? '인물' : p.cat === 'space' ? '공간' : p.cat === 'object' ? '오브제' : '기타'
+                return `[${label}: ${p.name}] ${p.desc}`
+              }).join('\n')
               const current = promptDraft.trim()
               const merged = current ? `${current}\n\n${block}` : block
               onPromptChange(merged)
+              const skipped = picks.length - withDesc.length
+              const fallbackNote = usedFallback ? ' (씬 기본 시드 사용)' : ''
+              const skipNote = skipped > 0 ? ` · ${skipped}개는 description이 비어 있어 제외됨` : ''
+              alert(`${withDesc.length}개 시드 프롬프트 합쳐짐${fallbackNote}${skipNote}`)
             }}
             style={{
               padding: '3px 8px', borderRadius: 'var(--r-sm)',
