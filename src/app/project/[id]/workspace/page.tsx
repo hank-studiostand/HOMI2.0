@@ -1861,7 +1861,7 @@ const T2I_ENGINES = [
 const I2V_ENGINES = [
   { value: 'kling',     label: 'Kling I2V' },
   { value: 'kling3',    label: 'Kling 3.0' },
-  { value: 'seedance-2',label: 'Seedance 2.0 (스켈레톤)' },
+  { value: 'seedance-2',label: 'Seedance 2.0' },
 ]
 const RATIOS = ['16:9', '9:16', '1:1', '4:3', '21:9']
 

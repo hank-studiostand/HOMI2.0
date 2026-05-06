@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import crypto from 'crypto'
+import { generateSeedanceI2V } from '@/lib/seedance'
 
 // ── Kling JWT (HS256) ─────────────────────────────────────────────────────────
 function generateKlingJWT(apiKey: string, apiSecret: string): string {
@@ -99,6 +100,7 @@ export async function POST(req: NextRequest) {
     sourceImageUrl,
     projectId,
     sceneId,
+    engine      = 'kling',  // 'kling' | 'kling3' | 'seedance-2'
     duration    = 5,
     aspectRatio = '16:9',
   } = await req.json()
@@ -118,7 +120,15 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const videoUrl = await generateKlingI2V({ sourceImageUrl, prompt, duration, aspectRatio })
+    let videoUrl: string
+    if (engine === 'seedance-2' || engine === 'seedance') {
+      videoUrl = await generateSeedanceI2V({
+        prompt, imageUrl: sourceImageUrl, duration, aspectRatio,
+        resolution: '720p',
+      })
+    } else {
+      videoUrl = await generateKlingI2V({ sourceImageUrl, prompt, duration, aspectRatio })
+    }
 
     if (!videoUrl) throw new Error('No video URL returned')
 
@@ -130,7 +140,7 @@ export async function POST(req: NextRequest) {
       name:       `i2v_${Date.now()}.mp4`,
       url:        videoUrl,
       tags:       [],
-      metadata:   { prompt, source_image: sourceImageUrl, engine: 'kling', duration, aspect_ratio: aspectRatio },
+      metadata:   { prompt, source_image: sourceImageUrl, engine, duration, aspect_ratio: aspectRatio },
       attempt_id: attemptId,
     }).select().single()
 

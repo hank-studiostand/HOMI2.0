@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import crypto from 'crypto'
+import { generateSeedanceT2V } from '@/lib/seedance'
 
 // ── Kling JWT (HS256) ──────────────────────────────────────────────
 function generateKlingJWT(apiKey: string, apiSecret: string): string {
@@ -100,8 +101,17 @@ export async function POST(req: NextRequest) {
   const supabase = await createClient()
 
   try {
-    const modelName = ENGINE_MODEL[engine] ?? ENGINE_MODEL['kling3']
-    const videoUrl  = await callKlingT2V(modelName, prompt, negativePrompt, duration, aspectRatio, mode, cfgScale)
+    let modelName: string
+    let videoUrl: string
+    if (engine === 'seedance-2' || engine === 'seedance') {
+      modelName = process.env.SEEDANCE_MODEL_T2V || 'doubao-seedance-1-0-pro-250528'
+      videoUrl = await generateSeedanceT2V({
+        prompt, duration, aspectRatio, resolution: '720p',
+      })
+    } else {
+      modelName = ENGINE_MODEL[engine] ?? ENGINE_MODEL['kling3']
+      videoUrl = await callKlingT2V(modelName, prompt, negativePrompt, duration, aspectRatio, mode, cfgScale)
+    }
 
     if (videoUrl) {
       const { data: asset } = await supabase.from('assets').insert({
