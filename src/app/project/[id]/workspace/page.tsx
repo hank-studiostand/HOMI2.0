@@ -2018,7 +2018,7 @@ function GeneratePanel({
           {/* 루트에셋 프롬프트 주입 — 선택 우선, 없으면 씬 default 시드, 그래도 없으면 안내 */}
           <button
             type="button"
-            title="선택된 루트 에셋의 프롬프트를 합칩니다 (선택 없으면 씬에 매칭된 시드 자동 사용)"
+            title='우측 패널의 "루트 에셋" 박스에서 체크된 시드의 프롬프트를 합칩니다. 선택 없으면 씬 매칭 → 프로젝트 전체 순으로 자동 사용'
             onClick={() => {
               type Pick = { id: string; name: string; desc: string; cat: string }
               const collect = (idsByCat: Record<string, Set<string> | string[] | undefined>): Pick[] => {
@@ -2037,17 +2037,32 @@ function GeneratePanel({
 
               // 1차: 명시 선택
               let picks = collect(rootSel as any)
-              let usedFallback = false
+              let usedFallback: 'none' | 'scene' | 'project' = 'none'
 
               // 2차 fallback: 선택이 비었으면 씬에 매칭된 기본 시드(sceneDefaultRootIds)
               if (picks.length === 0) {
                 picks = collect(sceneDefaultRootIds as any)
-                usedFallback = picks.length > 0
+                if (picks.length > 0) usedFallback = 'scene'
               }
 
+              // 3차 fallback: 그래도 비었으면 프로젝트 전체의 description 있는 시드 자동 사용
               if (picks.length === 0) {
-                alert('합칠 루트 에셋이 없어요.\n— 좌측 "루트 에셋" 박스에서 시드를 체크하거나\n— 씬 분류에서 씬에 매칭하거나\n— 루트 에셋 페이지에서 시드를 먼저 만들어주세요.')
-                return
+                const allWithDesc = rootAssets.filter(s => (s.description ?? '').trim())
+                if (allWithDesc.length === 0) {
+                  alert('합칠 루트 에셋이 없어요.\n루트 에셋 페이지에서 시드를 만들고 캐릭터/공간 프롬프트(설명)를 작성해주세요.')
+                  return
+                }
+                const names = allWithDesc.map(s => s.name).join(', ')
+                const ok = confirm(
+                  `현재 씬에 매칭된 시드가 없네요.\n\n프로젝트의 모든 시드 중 프롬프트가 입력된 ${allWithDesc.length}개를 합칠까요?\n\n— ${names}\n\n(취소하면 워크스페이스 우측 옵션 패널 하단 "루트 에셋 (이번 생성에 사용)" 박스에서 직접 체크할 수 있어요)`
+                )
+                if (!ok) return
+                picks = allWithDesc.map(s => ({
+                  id: s.id, name: s.name,
+                  desc: (s.description ?? '').trim(),
+                  cat: s.category,
+                }))
+                usedFallback = 'project'
               }
 
               const withDesc = picks.filter(p => p.desc)
@@ -2065,7 +2080,9 @@ function GeneratePanel({
               const merged = current ? `${current}\n\n${block}` : block
               onPromptChange(merged)
               const skipped = picks.length - withDesc.length
-              const fallbackNote = usedFallback ? ' (씬 기본 시드 사용)' : ''
+              const fallbackNote = usedFallback === 'scene' ? ' (씬 기본 시드 사용)'
+                                  : usedFallback === 'project' ? ' (프로젝트 전체 시드 사용)'
+                                  : ''
               const skipNote = skipped > 0 ? ` · ${skipped}개는 description이 비어 있어 제외됨` : ''
               alert(`${withDesc.length}개 시드 프롬프트 합쳐짐${fallbackNote}${skipNote}`)
             }}
