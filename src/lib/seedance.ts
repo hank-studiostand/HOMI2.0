@@ -1,6 +1,21 @@
-// Bytedance ARK / Volcengine "Doubao SeeDance" 비디오 생성 헬퍼
-// — T2V / I2V 공통 진입점
-// — 비동기 task 생성 → polling
+// Bytedance ARK / BytePlus "Dreamina SeeDance 2.0" 비디오 생성 헬퍼
+// — T2V / I2V / R2V (reference-to-video) 공통 진입점
+// — 비동기 task 생성 → 5초 간격 polling
+//
+// API 포맷 (BytePlus 공식 샘플 기준):
+//   POST /api/v3/contents/generations/tasks
+//   Body: {
+//     model: "dreamina-seedance-2-0-260128",
+//     content: [
+//       { type: "text", text: "..." },
+//       { type: "image_url", image_url: { url: "..." }, role: "reference_image" },
+//       ...
+//     ],
+//     ratio: "16:9",        ← prompt에 --ratio 안 붙임
+//     duration: 5,
+//     watermark: false,
+//     generate_audio: false,
+//   }
 //
 // 환경변수:
 //   SEEDANCE_API_KEY        — Bearer 토큰
@@ -15,18 +30,21 @@ const DEFAULT_MODEL_I2V = 'dreamina-seedance-2-0-260128'
 
 interface SeedanceParams {
   prompt: string
-  duration?: number      // 초 단위 — 보통 5 또는 10
-  resolution?: '480p' | '720p' | '1080p'
-  aspectRatio?: string   // '16:9' | '9:16' | '1:1' | '4:3' | '3:4'
+  duration?: number              // 초 단위 (5 / 10 / 15 등 모델 지원 범위)
+  resolution?: '480p' | '720p' | '1080p'   // 해상도 (지원 시)
+  aspectRatio?: string           // '16:9' | '9:16' | '1:1' | '4:3' | '3:4'
   cameraFixed?: boolean
   watermark?: boolean
-  imageUrl?: string      // I2V에서만 사용 (없으면 T2V로 동작)
+  generateAudio?: boolean        // BGM/효과음 자동 생성 (지원 모델 한정)
 }
 
 interface ContentPart {
-  type: 'text' | 'image_url'
+  type: 'text' | 'image_url' | 'video_url' | 'audio_url'
   text?: string
   image_url?: { url: string }
+  video_url?: { url: string }
+  audio_url?: { url: string }
+  role?: 'reference_image' | 'reference_video' | 'reference_audio' | 'first_frame' | 'last_frame'
 }
 
 function getEnv(): { apiKey: string; baseUrl: string } {
@@ -36,18 +54,18 @@ function getEnv(): { apiKey: string; baseUrl: string } {
   return { apiKey, baseUrl }
 }
 
-// 컨트롤 플래그를 prompt 뒤에 --key value 형식으로 붙이는 게 ARK 컨벤션
-function buildPromptWithFlags(p: SeedanceParams): string {
-  const flags: string[] = []
-  if (p.duration)              flags.push(`--duration ${p.duration}`)
-  if (p.resolution)            flags.push(`--resolution ${p.resolution}`)
-  if (p.aspectRatio)           flags.push(`--ratio ${p.aspectRatio}`)
-  if (p.cameraFixed !== undefined) flags.push(`--camerafixed ${p.cameraFixed ? 'true' : 'false'}`)
-  if (p.watermark !== undefined)   flags.push(`--watermark ${p.watermark ? 'true' : 'false'}`)
-  return flags.length > 0 ? `${p.prompt} ${flags.join(' ')}` : p.prompt
+interface CreateTaskBody {
+  model: string
+  content: ContentPart[]
+  ratio?: string
+  duration?: number
+  resolution?: string
+  watermark?: boolean
+  camerafixed?: boolean
+  generate_audio?: boolean
 }
 
-async function createTask(model: string, content: ContentPart[]): Promise<string> {
+async function createTask(body: CreateTaskBody): Promise<string> {
   const { apiKey, baseUrl } = getEnv()
   const res = await fetch(`${baseUrl}/contents/generations/tasks`, {
     method: 'POST',
@@ -55,7 +73,7 @@ async function createTask(model: string, content: ContentPart[]): Promise<string
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ model, content }),
+    body: JSON.stringify(body),
   })
   const text = await res.text()
   if (!res.ok) throw new Error(`Seedance create ${res.status}: ${text.slice(0, 600)}`)
@@ -100,21 +118,51 @@ async function pollTask(taskId: string, maxAttempts = 60, intervalMs = 5_000): P
   throw new Error(`Seedance polling timeout (${(maxAttempts * intervalMs) / 1000}s)`)
 }
 
-// ── T2V ─────────────────────────────────────────────────────────
-export async function generateSeedanceT2V(params: SeedanceParams): Promise<string> {
+function buildExtraParams(p: SeedanceParams): Partial<CreateTaskBody> {
+  const out: Partial<CreateTaskBody> = {}
+  if (p.aspectRatio) out.ratio = p.aspectRatio
+  if (p.duration)    out.duration = p.duration
+  if (p.resolution)  out.resolution = p.resolution
+  if (p.watermark !== undefined)   out.watermark = p.watermark
+  if (p.cameraFixed !== undefined) out.camerafixed = p.cameraFixed
+  if (p.generateAudio !== undefined) out.generate_audio = p.generateAudio
+  return out
+}
+
+// ── T2V (텍스트만) — 레퍼런스 이미지 옵션으로 추가 가능 (R2V) ──────
+export async function generateSeedanceT2V(
+  params: SeedanceParams & { referenceImageUrls?: string[] },
+): Promise<string> {
   const model = process.env.SEEDANCE_MODEL_T2V || DEFAULT_MODEL_T2V
-  const text = buildPromptWithFlags(params)
-  const taskId = await createTask(model, [{ type: 'text', text }])
+  const content: ContentPart[] = [{ type: 'text', text: params.prompt }]
+  if (params.referenceImageUrls && params.referenceImageUrls.length > 0) {
+    for (const url of params.referenceImageUrls.slice(0, 4)) {
+      content.push({ type: 'image_url', image_url: { url }, role: 'reference_image' })
+    }
+  }
+  const taskId = await createTask({
+    model,
+    content,
+    ...buildExtraParams(params),
+    watermark: params.watermark ?? false,
+  })
   return await pollTask(taskId)
 }
 
-// ── I2V ─────────────────────────────────────────────────────────
-export async function generateSeedanceI2V(params: SeedanceParams & { imageUrl: string }): Promise<string> {
+// ── I2V (이미지 → 비디오) ────────────────────────────────────────
+export async function generateSeedanceI2V(
+  params: SeedanceParams & { imageUrl: string },
+): Promise<string> {
   const model = process.env.SEEDANCE_MODEL_I2V || DEFAULT_MODEL_I2V
-  const text = buildPromptWithFlags(params)
-  const taskId = await createTask(model, [
-    { type: 'text', text },
-    { type: 'image_url', image_url: { url: params.imageUrl } },
-  ])
+  const content: ContentPart[] = [
+    { type: 'text', text: params.prompt },
+    { type: 'image_url', image_url: { url: params.imageUrl }, role: 'first_frame' },
+  ]
+  const taskId = await createTask({
+    model,
+    content,
+    ...buildExtraParams(params),
+    watermark: params.watermark ?? false,
+  })
   return await pollTask(taskId)
 }

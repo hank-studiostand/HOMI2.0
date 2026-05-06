@@ -117,6 +117,7 @@ export async function POST(req: NextRequest) {
       modelName = process.env.SEEDANCE_MODEL_T2V || 'dreamina-seedance-2-0-260128'
       videoUrl = await generateSeedanceT2V({
         prompt: fullPrompt, duration, aspectRatio, resolution: '720p',
+        referenceImageUrls: Array.isArray(referenceImageUrls) ? referenceImageUrls.slice(0, 4) : undefined,
       })
     } else if (engine === 'kling3' || engine === 'kling3-omni') {
       modelName = KLING_MODEL[engine] ?? 'kling-v3'
