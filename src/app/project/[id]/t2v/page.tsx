@@ -5,11 +5,12 @@ import { createClient } from '@/lib/supabase/client'
 import { useParams } from 'next/navigation'
 import {
   Clapperboard, Loader2, Film, X, Wand2, Plus, Trash2, Play, Image as ImageIcon,
+  Sparkles, Library, Check, Upload,
 } from 'lucide-react'
 import { toast } from '@/components/ui/Toast'
 import CameraReferencePanel, { buildCameraPrompt } from '@/components/ui/CameraReferencePanel'
 import ImageLightbox, { type LightboxItem } from '@/components/ui/ImageLightbox'
-import type { Asset } from '@/types'
+import type { Asset, Scene } from '@/types'
 
 interface MadeVideo {
   id: string
@@ -35,7 +36,7 @@ const RATIOS: { value: string; label: string }[] = [
   { value: '21:9',  label: '21:9 (시네마)' },
 ]
 
-const DURATIONS = [5, 10]
+const DURATIONS = [5, 10, 15]
 
 const ENGINES: { value: string; label: string; available: boolean; note?: string }[] = [
   { value: 'seedance-2', label: 'Seedance 2.0',          available: true,  note: '추천 — 빠르고 안정적' },
@@ -76,6 +77,18 @@ export default function T2VPage() {
   // 결과
   const [made, setMade] = useState<MadeVideo[]>([])
 
+  // 씬 셀렉터 (선택)
+  const [sceneId, setSceneId] = useState<string>('')
+  const [scenes, setScenes] = useState<Scene[]>([])
+
+  // 레퍼런스 이미지 (최대 3장)
+  const [refOpen, setRefOpen] = useState(false)
+  const [allAssets, setAllAssets] = useState<Asset[]>([])
+  const [selectedRefIds, setSelectedRefIds] = useState<string[]>([])
+
+  // 프롬프트 최적화
+  const [optimizing, setOptimizing] = useState(false)
+
   // 카메라 토큰 자동 합성
   useEffect(() => { setCameraTokens(buildCameraPrompt(camera)) }, [camera])
 
@@ -88,10 +101,28 @@ export default function T2VPage() {
     return parts.join(', ')
   }, [prompt, cameraTokens, mood])
 
-  // 초기 로드 — 기존 t2v-freestyle 결과
+  // 초기 로드 — 씬 + 에셋(레퍼런스용) + 기존 t2v-freestyle 결과
   useEffect(() => {
     if (!projectId) return
     void (async () => {
+      // 씬 목록
+      const { data: scs } = await supabase
+        .from('scenes').select('*')
+        .eq('project_id', projectId)
+        .order('order_index', { ascending: true })
+      setScenes((scs ?? []) as Scene[])
+
+      // 레퍼런스 후보 — reference + t2i 모두
+      const { data: refs } = await supabase
+        .from('assets').select('*')
+        .eq('project_id', projectId)
+        .in('type', ['reference', 't2i'])
+        .eq('archived', false)
+        .order('created_at', { ascending: false })
+        .limit(300)
+      setAllAssets((refs ?? []) as Asset[])
+
+      // 기존 t2v-freestyle 결과
       const { data } = await supabase
         .from('assets').select('*')
         .eq('project_id', projectId)
@@ -128,16 +159,56 @@ export default function T2VPage() {
     setCamera(p => { const n = { ...p }; delete n[type]; return n })
   }
 
+  // 프롬프트 최적화 (Seedance 2.0 컷-단위 스타일)
+  async function handleOptimize() {
+    if (!prompt.trim()) { toast.warning('먼저 프롬프트를 입력해주세요'); return }
+    if (optimizing) return
+    setOptimizing(true)
+    try {
+      const referenceLabels = selectedRefIds
+        .map(id => allAssets.find(a => a.id === id)?.name)
+        .filter((n): n is string => !!n)
+      const sc = scenes.find(s => s.id === sceneId)
+      const sceneContext = sc ? `Scene ${sc.scene_number} - ${sc.title ?? ''}\n${sc.content ?? ''}` : ''
+      const r = await fetch('/api/t2v/optimize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          draft: prompt.trim(),
+          duration, aspectRatio: ratio,
+          cameraTokens, mood: mood.trim() || undefined,
+          referenceLabels,
+          sceneContext: sceneContext || undefined,
+        }),
+      })
+      const j = await r.json()
+      if (!r.ok || !j.optimized) {
+        toast.error(j.error ?? '최적화 실패')
+        return
+      }
+      setPrompt(j.optimized as string)
+      toast.success(`Seedance 컷-단위 프롬프트로 최적화됨 (${j.shotCount}컷)`)
+    } catch (e: any) {
+      toast.error(`최적화 실패: ${e?.message ?? String(e)}`)
+    } finally {
+      setOptimizing(false)
+    }
+  }
+
   async function handleGenerate() {
     if (!prompt.trim()) { toast.warning('프롬프트를 입력해주세요'); return }
     if (generating) return
     setGenerating(true)
     try {
+      const refUrls = selectedRefIds
+        .map(id => allAssets.find(a => a.id === id)?.url)
+        .filter((u): u is string => !!u)
       const res = await fetch('/api/t2v/freestyle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           projectId,
+          sceneId: sceneId || undefined,
           prompt: prompt.trim(),
           negativePrompt: negPrompt.trim() || undefined,
           cameraTokens, mood: mood.trim() || undefined,
@@ -146,6 +217,7 @@ export default function T2VPage() {
           engine,
           mode,
           name: name.trim() || undefined,
+          referenceImageUrls: refUrls.length > 0 ? refUrls : undefined,
         }),
       })
       const json = await res.json()
@@ -233,6 +305,22 @@ export default function T2VPage() {
             maxHeight: 'calc(100vh - 96px)', overflowY: 'auto',
           }}
         >
+          <Field label="씬 (선택)">
+            <select
+              className="input"
+              value={sceneId}
+              onChange={e => setSceneId(e.target.value)}
+              style={{ fontFamily: 'inherit' }}
+            >
+              <option value="">— 씬과 무관 (freestyle) —</option>
+              {scenes.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.scene_number} {s.title ? `· ${s.title}` : ''}
+                </option>
+              ))}
+            </select>
+          </Field>
+
           <Field label="이름 (선택)">
             <input
               className="input"
@@ -241,12 +329,95 @@ export default function T2VPage() {
             />
           </Field>
 
-          <Field label="프롬프트" required>
+          <div>
+            <div className="flex items-center" style={{ marginBottom: 6 }}>
+              <label
+                style={{
+                  fontSize: 11, fontWeight: 600, color: 'var(--ink-3)',
+                  textTransform: 'uppercase', letterSpacing: '0.04em',
+                }}
+              >
+                프롬프트<span style={{ color: 'var(--accent)', marginLeft: 4 }}>*</span>
+              </label>
+              <span style={{ flex: 1 }} />
+              <button
+                type="button"
+                onClick={handleOptimize}
+                disabled={optimizing || !prompt.trim()}
+                title="Seedance 2.0 컷-단위 스타일로 자동 최적화"
+                style={{
+                  padding: '3px 8px', borderRadius: 'var(--r-sm)',
+                  background: 'var(--accent-soft)', color: 'var(--accent)',
+                  border: '1px solid var(--accent-line)',
+                  fontSize: 10, fontWeight: 600,
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  cursor: optimizing || !prompt.trim() ? 'not-allowed' : 'pointer',
+                  opacity: optimizing || !prompt.trim() ? 0.6 : 1,
+                }}
+              >
+                {optimizing
+                  ? <><Loader2 size={10} className="animate-spin" /> 최적화 중…</>
+                  : <><Sparkles size={10} /> 프롬프트 최적화</>}
+              </button>
+            </div>
             <textarea
               className="textarea" rows={5}
               placeholder="예: 이른 새벽, 안개 낀 숲길에서 카메라가 천천히 전진. 양옆으로 양치식물 잎이 흔들리고..."
               value={prompt} onChange={e => setPrompt(e.target.value)}
             />
+          </div>
+
+          {/* 레퍼런스 이미지 */}
+          <Field label={`레퍼런스 이미지 ${selectedRefIds.length > 0 ? `(${selectedRefIds.length}/3)` : '(선택, 최대 3장)'}`}>
+            <div className="flex flex-wrap" style={{ gap: 6, marginBottom: 6 }}>
+              {selectedRefIds.map(id => {
+                const a = allAssets.find(x => x.id === id)
+                if (!a) return null
+                return (
+                  <div
+                    key={id}
+                    style={{
+                      position: 'relative',
+                      width: 56, height: 56, borderRadius: 8,
+                      overflow: 'hidden', border: '1px solid var(--line)',
+                      background: 'var(--bg-3)',
+                    }}
+                  >
+                    <img
+                      src={a.thumbnail_url ?? a.url}
+                      alt={a.name}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRefIds(p => p.filter(x => x !== id))}
+                      style={{
+                        position: 'absolute', top: 2, right: 2,
+                        width: 16, height: 16, borderRadius: 999,
+                        background: 'rgba(0,0,0,0.65)', color: 'white',
+                        display: 'grid', placeItems: 'center', cursor: 'pointer',
+                      }}
+                      title="제거"
+                    >
+                      <X size={9} />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+            <button
+              className="btn"
+              type="button"
+              onClick={() => setRefOpen(true)}
+              disabled={selectedRefIds.length >= 3}
+              style={{ fontSize: 11 }}
+            >
+              <Library size={12} /> 에셋에서 레퍼런스 선택
+            </button>
+            <p style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 4, lineHeight: 1.5 }}>
+              Seedance 2.0은 텍스트 기반 영상 생성이라 레퍼런스 이미지는 정체성 보존 힌트로만 사용됩니다.
+              (선택된 이미지의 이름이 프롬프트에 묶여 일관된 캐릭터/공간을 유지하도록 유도)
+            </p>
           </Field>
 
           <Field label="부정 프롬프트 (선택)">
@@ -448,6 +619,16 @@ export default function T2VPage() {
           onClose={() => setLightboxIdx(null)}
         />
       )}
+
+      {/* ── 레퍼런스 선택 모달 ── */}
+      {refOpen && (
+        <RefPickerModal
+          assets={allAssets}
+          selected={selectedRefIds}
+          onClose={() => setRefOpen(false)}
+          onConfirm={ids => { setSelectedRefIds(ids); setRefOpen(false) }}
+        />
+      )}
     </div>
   )
 }
@@ -553,6 +734,120 @@ function VideoCard({
             title="삭제"
           >
             <Trash2 size={11} />
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+// ─── 레퍼런스 에셋 선택 모달 ─────────────────────────────
+function RefPickerModal({
+  assets, selected, onClose, onConfirm,
+}: {
+  assets: Asset[]
+  selected: string[]
+  onClose: () => void
+  onConfirm: (ids: string[]) => void
+}) {
+  const [picked, setPicked] = useState<string[]>(selected)
+  const cap = 3
+
+  function toggle(id: string) {
+    setPicked(p => {
+      if (p.includes(id)) return p.filter(x => x !== id)
+      if (p.length >= cap) return p
+      return [...p, id]
+    })
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 100,
+        background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(3px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 24,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="card"
+        style={{
+          width: 'min(800px, 100%)', maxHeight: '80vh',
+          padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        }}
+      >
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>레퍼런스 에셋 선택</h3>
+            <p style={{ fontSize: 11, color: 'var(--ink-4)', marginTop: 2 }}>
+              최대 {cap}장 ({picked.length}/{cap} 선택됨)
+            </p>
+          </div>
+          <button onClick={onClose} className="btn" style={{ padding: 6 }}>
+            <X size={14} />
+          </button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+          {assets.length === 0 ? (
+            <div style={{ textAlign: 'center', color: 'var(--ink-4)', padding: 48, fontSize: 12 }}>
+              사용 가능한 에셋이 없습니다.
+            </div>
+          ) : (
+            <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
+              {assets.map(a => {
+                const isPicked = picked.includes(a.id)
+                return (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => toggle(a.id)}
+                    style={{
+                      borderRadius: 8, overflow: 'hidden',
+                      border: `2px solid ${isPicked ? 'var(--accent)' : 'var(--line)'}`,
+                      background: 'var(--bg-3)', cursor: 'pointer',
+                      padding: 0, display: 'flex', flexDirection: 'column',
+                    }}
+                  >
+                    <div style={{ aspectRatio: '1', position: 'relative', background: 'var(--bg-3)' }}>
+                      <img
+                        src={a.thumbnail_url ?? a.url}
+                        alt={a.name}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                      {isPicked && (
+                        <div style={{
+                          position: 'absolute', top: 4, right: 4,
+                          width: 18, height: 18, borderRadius: 999,
+                          background: 'var(--accent)', color: 'white',
+                          display: 'grid', placeItems: 'center',
+                        }}>
+                          <Check size={11} />
+                        </div>
+                      )}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 10, padding: '4px 6px', color: 'var(--ink-3)',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        textAlign: 'left',
+                      }}
+                    >
+                      {a.name}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--line)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} className="btn">취소</button>
+          <button onClick={() => onConfirm(picked)} className="btn primary">
+            <Check size={13} /> 적용
           </button>
         </div>
       </div>

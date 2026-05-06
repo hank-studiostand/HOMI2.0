@@ -71,18 +71,21 @@ export async function POST(req: NextRequest) {
   try {
     const {
       projectId,
+      sceneId,
       prompt,
       negativePrompt = '',
       cameraTokens = '',
       mood = '',
       aspectRatio = '16:9',
       duration    = 5,
-      engine      = 'seedance-2',  // 'kling3' | 'kling3-omni' | 'seedance-2'
+      engine      = 'seedance-2',
       mode        = 'std',
       cfgScale    = 0.5,
       name        = '',
+      referenceImageUrls,
     } = await req.json() as {
       projectId: string
+      sceneId?: string
       prompt: string
       negativePrompt?: string
       cameraTokens?: string
@@ -93,6 +96,7 @@ export async function POST(req: NextRequest) {
       mode?: 'std' | 'pro'
       cfgScale?: number
       name?: string
+      referenceImageUrls?: string[]
     }
 
     if (!projectId)      return NextResponse.json({ error: 'projectId 필요' }, { status: 400 })
@@ -129,8 +133,8 @@ export async function POST(req: NextRequest) {
 
     const { data: asset, error: insErr } = await admin.from('assets').insert({
       project_id: projectId,
-      scene_id: null,                      // freestyle = 씬 독립
-      type: 'i2v',                          // 비디오는 i2v 타입으로 (T2V 결과도 같은 타입)
+      scene_id: sceneId ?? null,            // 씬 선택 시 씬에 묶임, 아니면 freestyle
+      type: 'i2v',
       name: assetName,
       url: videoUrl,
       thumbnail_url: null,
@@ -141,6 +145,7 @@ export async function POST(req: NextRequest) {
         prompt: fullPrompt, negative_prompt: negativePrompt,
         camera: cameraTokens || null, mood: mood || null,
         duration, aspect_ratio: aspectRatio, mode,
+        reference_image_urls: Array.isArray(referenceImageUrls) ? referenceImageUrls : [],
       },
     }).select('id, url, name, created_at').single()
 
