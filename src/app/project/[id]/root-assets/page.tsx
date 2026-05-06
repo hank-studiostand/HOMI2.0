@@ -164,8 +164,27 @@ function RootAssetCard({
             <div className="flex flex-col" style={{ gap: 6, marginBottom: 8 }}>
               <input value={name} onChange={e => setName(e.target.value)} placeholder="이름"
                 style={{ padding: '6px 10px', background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13, color: 'var(--ink)', outline: 'none' }} />
-              <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="설명" rows={2}
-                style={{ padding: '6px 10px', background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 11, color: 'var(--ink)', outline: 'none', resize: 'none' }} />
+              <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: 2 }}>
+                {seed.category === 'character' ? '캐릭터 프롬프트' : seed.category === 'space' ? '공간 프롬프트' : seed.category === 'object' ? '오브제 프롬프트' : '설명'}
+              </label>
+              <textarea
+                value={desc}
+                onChange={e => setDesc(e.target.value)}
+                placeholder={
+                  seed.category === 'character'
+                    ? '예: 40대 한국 남성, 다부진 체격, 키 176cm, 강인하고 순박한 인상, 갈색 가죽 자켓, 오른쪽 눈썹에 작은 흉터'
+                    : seed.category === 'space'
+                    ? '예: 1980년대 한국 분식집, 형광등 조명, 스테인리스 식탁, 빨간 의자, 벽에 메뉴판'
+                    : seed.category === 'object'
+                    ? '예: 빈티지 라이카 카메라, 검은 가죽 케이스, 50mm 단렌즈'
+                    : '추가 설명'
+                }
+                rows={4}
+                style={{ padding: '8px 10px', background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 12, color: 'var(--ink)', outline: 'none', resize: 'vertical', lineHeight: 1.5, minHeight: 64 }}
+              />
+              <p style={{ fontSize: 10, color: 'var(--ink-4)', lineHeight: 1.4, margin: 0 }}>
+                T2I/I2V 생성 시 이 프롬프트가 자동으로 합쳐져 캐릭터/공간 일관성을 유지해요.
+              </p>
               <div className="flex" style={{ gap: 4 }}>
                 <button onClick={handleSave} className="flex-1" style={{ padding: '5px 8px', fontSize: 11, fontWeight: 500, background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)', borderRadius: 'var(--r-sm)' }}>저장</button>
                 <button onClick={() => { setIsEditing(false); setName(seed.name); setDesc(seed.description ?? '') }} className="flex-1" style={{ padding: '5px 8px', fontSize: 11, background: 'transparent', color: 'var(--ink-3)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)' }}>취소</button>
@@ -174,9 +193,20 @@ function RootAssetCard({
           ) : (
             <div style={{ marginBottom: 10 }}>
               <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginBottom: 2 }}>{seed.name || '(이름 없음)'}</p>
-              {seed.description && (
-                <p style={{ fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+              {seed.description ? (
+                <p
+                  style={{ fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                  title={seed.description}
+                >
                   {seed.description}
+                </p>
+              ) : (
+                <p
+                  style={{ fontSize: 10, color: 'var(--ink-5)', fontStyle: 'italic', cursor: 'pointer' }}
+                  onClick={() => setIsEditing(true)}
+                  title="편집 모드로 전환"
+                >
+                  + 프롬프트 추가 (편집 아이콘 클릭)
                 </p>
               )}
             </div>

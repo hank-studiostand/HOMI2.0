@@ -2015,6 +2015,43 @@ function GeneratePanel({
 
         <div className="flex items-center" style={{ marginBottom: 6, gap: 6 }}>
           <span className="field-label" style={{ margin: 0 }}>프롬프트</span>
+          {/* 루트에셋 프롬프트 주입 — 선택된 시드의 description을 합쳐서 prompt에 추가 */}
+          <button
+            type="button"
+            title="선택된 루트 에셋(캐릭터/공간/오브제)의 프롬프트를 현재 입력에 합칩니다"
+            onClick={() => {
+              const selectedSeeds: { name: string; desc: string; cat: string }[] = []
+              for (const cat of ['character', 'space', 'object', 'misc'] as const) {
+                const ids = (rootSel as any)[cat] as Set<string>
+                if (!ids || ids.size === 0) continue
+                for (const id of Array.from(ids)) {
+                  const seed = rootAssets.find(s => s.id === id)
+                  if (!seed) continue
+                  const desc = (seed.description ?? '').trim()
+                  if (!desc) continue
+                  selectedSeeds.push({ name: seed.name, desc, cat })
+                }
+              }
+              if (selectedSeeds.length === 0) {
+                alert('선택된 루트 에셋이 없거나 프롬프트(설명)가 비어있어요.\n루트 에셋 페이지에서 캐릭터/공간 프롬프트를 먼저 작성해주세요.')
+                return
+              }
+              const block = selectedSeeds.map(s => `[${s.cat === 'character' ? '인물' : s.cat === 'space' ? '공간' : s.cat === 'object' ? '오브제' : '기타'}: ${s.name}] ${s.desc}`).join('\n')
+              const current = promptDraft.trim()
+              const merged = current ? `${current}\n\n${block}` : block
+              onPromptChange(merged)
+            }}
+            style={{
+              padding: '3px 8px', borderRadius: 'var(--r-sm)',
+              fontSize: 10, fontWeight: 600,
+              background: 'var(--violet-soft, var(--accent-soft))',
+              color: 'var(--violet, var(--accent))',
+              border: '1px solid var(--violet, var(--accent-line))',
+              display: 'inline-flex', alignItems: 'center', gap: 3,
+            }}
+          >
+            <Plus size={10} /> 루트 프롬프트 합치기
+          </button>
           <span style={{ flex: 1 }} />
           {/* 프롬프트 히스토리 툴바 */}
           <div
