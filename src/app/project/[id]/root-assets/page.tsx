@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useParams } from 'next/navigation'
 import {
   Upload, Loader2, User2, MapPin, Package, MoreHorizontal, Plus, X, Trash2, Edit2, Library,
-  Check, Film, Sparkles, Wand2,
+  Check, Film, Sparkles, Wand2, ChevronDown, ChevronRight,
 } from 'lucide-react'
 import { toast } from '@/components/ui/Toast'
 import { sortScenesByNumber } from '@/lib/sceneSort'
@@ -424,6 +424,12 @@ function SceneAssignModal({
 export default function RootAssetsPage() {
   const { id: projectId } = useParams<{ id: string }>()
   const [activeTab, setActiveTab] = useState<RootAssetCategory | 'all'>('all')
+  const [collapsed, setCollapsed] = useState<Record<RootAssetCategory, boolean>>({
+    character: false, space: false, object: false, misc: false,
+  })
+  function toggleCategory(k: RootAssetCategory) {
+    setCollapsed(p => ({ ...p, [k]: !p[k] }))
+  }
   const [seeds, setSeeds] = useState<RootAssetSeed[]>([])
   const [scenes, setScenes] = useState<Scene[]>([])
   const [loading, setLoading] = useState(true)
@@ -664,10 +670,78 @@ export default function RootAssetsPage() {
             </button>
           </div>
         ) : (
-          <div className="max-w-7xl mx-auto" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-            {filtered.map(seed => (
-              <RootAssetCard key={seed.id} seed={seed} scenes={scenes} onDelete={deleteSeed} onUpdate={updateSeed} projectId={projectId} />
-            ))}
+          <div className="max-w-7xl mx-auto" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {(() => {
+              const cats: RootAssetCategory[] =
+                activeTab === 'all'
+                  ? (['character', 'space', 'object', 'misc'] as RootAssetCategory[])
+                  : [activeTab as RootAssetCategory]
+              return cats.map(catKey => {
+                const meta = CATEGORIES.find(c => c.key === catKey)!
+                const items = filtered.filter(s => s.category === catKey)
+                if (activeTab === 'all' && items.length === 0) return null
+                const Icon = meta.icon
+                const isCollapsed = collapsed[catKey]
+                return (
+                  <section
+                    key={catKey}
+                    style={{
+                      border: '1px solid var(--line)',
+                      borderRadius: 'var(--r-lg)',
+                      background: 'var(--bg-2)',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <button
+                      onClick={() => toggleCategory(catKey)}
+                      className="w-full flex items-center"
+                      style={{
+                        padding: '10px 14px', gap: 10,
+                        background: 'var(--bg-1)',
+                        borderBottom: isCollapsed ? 'none' : '1px solid var(--line)',
+                        textAlign: 'left',
+                      }}
+                    >
+                      {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                      <Icon size={14} style={{ color: meta.color }} />
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{meta.label}</span>
+                      <span style={{ fontSize: 11, color: 'var(--ink-4)', fontWeight: 400 }}>· {items.length}개</span>
+                      <span style={{ flex: 1 }} />
+                      <button
+                        onClick={(e) => { e.stopPropagation(); addSeed(catKey) }}
+                        className="flex items-center"
+                        style={{
+                          padding: '4px 10px', gap: 4, fontSize: 11, fontWeight: 500,
+                          background: 'transparent', color: meta.color,
+                          border: `1px solid ${meta.color}`,
+                          borderRadius: 'var(--r-sm)',
+                        }}
+                      >
+                        <Plus size={11} /> 추가
+                      </button>
+                    </button>
+                    {!isCollapsed && (
+                      <div
+                        style={{
+                          padding: 14,
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+                          gap: 14,
+                        }}
+                      >
+                        {items.length === 0 ? (
+                          <div style={{ gridColumn: '1/-1', textAlign: 'center', fontSize: 12, color: 'var(--ink-4)', padding: '20px 0' }}>
+                            아직 {meta.label} 에셋이 없어요. 우상단 + 추가 버튼으로 만들어 보세요.
+                          </div>
+                        ) : items.map(seed => (
+                          <RootAssetCard key={seed.id} seed={seed} scenes={scenes} onDelete={deleteSeed} onUpdate={updateSeed} projectId={projectId} />
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                )
+              })
+            })()}
           </div>
         )}
       </div>

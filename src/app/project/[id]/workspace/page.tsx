@@ -62,6 +62,7 @@ interface OutputItem {
   attempt_id: string
   scene_id?: string                       // placeholder가 속한 씬을 추적 (씬 전환 시 분리)
   url: string | null
+  sourceImageUrl?: string | null         // I2V — 어떤 이미지가 소스였는지 (메타데이터)
   archived: boolean
   satisfaction_score: SatisfactionScore | null
   feedback: string
@@ -274,7 +275,7 @@ export default function WorkspacePage() {
     // attempts + outputs
     const { data: attemptsData } = await supabase
       .from('prompt_attempts')
-      .select('id, type, engine, prompt, status, created_at, outputs:attempt_outputs(*, asset:assets(url))')
+      .select('id, type, engine, prompt, status, created_at, outputs:attempt_outputs(*, asset:assets(url, metadata))')
       .eq('scene_id', sceneId)
       .order('created_at', { ascending: false })
 
@@ -297,10 +298,13 @@ export default function WorkspacePage() {
         prompt: a.prompt ?? '', created_at: a.created_at,
       })
       for (const o of (a.outputs ?? [])) {
+        const meta: any = o.asset?.metadata ?? {}
         flat.push({
           id: o.id,
           attempt_id: a.id,
           url: o.url ?? o.asset?.url ?? null,
+          sourceImageUrl: typeof meta.source_image === 'string' ? meta.source_image
+                       : typeof meta.source_image_url === 'string' ? meta.source_image_url : null,
           archived: o.archived ?? false,
           satisfaction_score: o.satisfaction_score,
           feedback: o.feedback ?? '',
@@ -2487,9 +2491,36 @@ function InlineResultCard({
       onClick={() => { if (!isPlaceholder) onSelect() }}
     >
       {item.url ? (
-        item.type === 't2i'
-          ? <img src={item.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          : <video src={item.url} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        <>
+          {item.type === 't2i'
+            ? <img src={item.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : <video src={item.url} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+          {/* I2V 결과: 좌하단 source 이미지 미니 썸네일 (분리 시각화) */}
+          {item.type !== 't2i' && item.sourceImageUrl && (
+            <div
+              style={{
+                position: 'absolute', left: 6, bottom: 6,
+                width: 48, height: 28,
+                borderRadius: 4,
+                overflow: 'hidden',
+                border: '2px solid white',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                background: '#000',
+              }}
+              title="이 영상의 소스 이미지"
+            >
+              <img src={item.sourceImageUrl} alt="source" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <div
+                style={{
+                  position: 'absolute', top: 0, left: 0,
+                  fontSize: 7, color: '#fff', fontWeight: 700,
+                  background: 'rgba(0,0,0,0.7)',
+                  padding: '0 3px', borderRadius: '0 0 3px 0',
+                }}
+              >SRC</div>
+            </div>
+          )}
+        </>
       ) : (
         <div
           style={{
