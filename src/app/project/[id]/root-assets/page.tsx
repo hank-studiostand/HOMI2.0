@@ -192,23 +192,47 @@ function RootAssetCard({
             </div>
           ) : (
             <div style={{ marginBottom: 10 }}>
-              <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginBottom: 2 }}>{seed.name || '(이름 없음)'}</p>
-              {seed.description ? (
-                <p
-                  style={{ fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
-                  title={seed.description}
+              <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginBottom: 6 }}>{seed.name || '(이름 없음)'}</p>
+              <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                title="클릭해서 프롬프트 편집"
+                style={{
+                  width: '100%', textAlign: 'left',
+                  padding: '8px 10px',
+                  borderRadius: 'var(--r-sm)',
+                  background: seed.description ? 'var(--bg-3)' : 'transparent',
+                  border: `1px dashed ${seed.description ? 'transparent' : 'var(--line-strong)'}`,
+                  cursor: 'pointer',
+                  display: 'block',
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em',
+                    color: catMeta.color, marginBottom: 4,
+                    display: 'flex', alignItems: 'center', gap: 4,
+                  }}
                 >
-                  {seed.description}
-                </p>
-              ) : (
-                <p
-                  style={{ fontSize: 10, color: 'var(--ink-5)', fontStyle: 'italic', cursor: 'pointer' }}
-                  onClick={() => setIsEditing(true)}
-                  title="편집 모드로 전환"
-                >
-                  + 프롬프트 추가 (편집 아이콘 클릭)
-                </p>
-              )}
+                  <Edit2 size={9} />
+                  {seed.category === 'character' ? '캐릭터 프롬프트' : seed.category === 'space' ? '공간 프롬프트' : seed.category === 'object' ? '오브제 프롬프트' : '설명'}
+                </div>
+                {seed.description ? (
+                  <p
+                    style={{ fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', margin: 0 }}
+                    title={seed.description}
+                  >
+                    {seed.description}
+                  </p>
+                ) : (
+                  <p style={{ fontSize: 10, color: 'var(--ink-5)', fontStyle: 'italic', margin: 0, lineHeight: 1.4 }}>
+                    {seed.category === 'character' ? '예: 40대 한국 남성, 다부진 체격, 키 176cm, 강인한 인상...'
+                     : seed.category === 'space'    ? '예: 1980년대 한국 분식집, 형광등 조명...'
+                     : seed.category === 'object'   ? '예: 빈티지 카메라, 검은 가죽 케이스...'
+                     : '클릭해서 추가 설명 입력'}
+                  </p>
+                )}
+              </button>
             </div>
           )}
 
