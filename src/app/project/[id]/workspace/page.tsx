@@ -2021,14 +2021,35 @@ function GeneratePanel({
             title='우측 패널의 "루트 에셋" 박스에서 체크된 시드의 프롬프트를 합칩니다. 선택 없으면 씬 매칭 → 프로젝트 전체 순으로 자동 사용'
             onClick={() => {
               type Pick = { id: string; name: string; desc: string; cat: string }
-              const collect = (idsByCat: Record<string, Set<string> | string[] | undefined>): Pick[] => {
+              const collect = (urlsByCat: Record<string, Set<string> | string[] | undefined>, label: string): Pick[] => {
                 const out: Pick[] = []
+                const seenSeed = new Set<string>()
                 for (const cat of ['character', 'space', 'object', 'misc'] as const) {
-                  const v = idsByCat[cat]
-                  const idArr: string[] = Array.isArray(v) ? v : (v instanceof Set ? Array.from(v) : [])
-                  for (const id of idArr) {
-                    const seed = rootAssets.find(s => s.id === id)
-                    if (!seed) continue
+                  const v = urlsByCat[cat]
+                  const urlArr: string[] = Array.isArray(v) ? v : (v instanceof Set ? Array.from(v) : [])
+                  if (urlArr.length > 0) {
+                    console.log(`[루트프롬프트][${label}] cat=${cat} urls=${urlArr.length}`,
+                      urlArr.slice(0, 3).map(u => u.slice(0, 60)))
+                  }
+                  for (const url of urlArr) {
+                    const seed = rootAssets.find(s => Array.isArray(s.reference_image_urls) && s.reference_image_urls.includes(url))
+                    if (!seed) {
+                      console.log(`[루트프롬프트][${label}] URL→시드 매칭 실패`, url.slice(0, 80))
+                      // URL의 파일명 부분으로 fuzzy 매칭 시도
+                      const tail = url.split('/').pop()?.split('?')[0] ?? ''
+                      const fuzzy = tail ? rootAssets.find(s =>
+                        Array.isArray(s.reference_image_urls) &&
+                        s.reference_image_urls.some(u => u.includes(tail))
+                      ) : undefined
+                      if (fuzzy && !seenSeed.has(fuzzy.id)) {
+                        seenSeed.add(fuzzy.id)
+                        out.push({ id: fuzzy.id, name: fuzzy.name, desc: (fuzzy.description ?? '').trim(), cat })
+                        console.log(`[루트프롬프트][${label}] fuzzy 매칭 성공: ${fuzzy.name}`)
+                      }
+                      continue
+                    }
+                    if (seenSeed.has(seed.id)) continue
+                    seenSeed.add(seed.id)
                     out.push({ id: seed.id, name: seed.name, desc: (seed.description ?? '').trim(), cat })
                   }
                 }
@@ -2036,12 +2057,12 @@ function GeneratePanel({
               }
 
               // 1차: 명시 선택
-              let picks = collect(rootSel as any)
+              let picks = collect(rootSel as any, 'rootSel')
               let usedFallback: 'none' | 'scene' | 'project' = 'none'
 
               // 2차 fallback: 선택이 비었으면 씬에 매칭된 기본 시드(sceneDefaultRootIds)
               if (picks.length === 0) {
-                picks = collect(sceneDefaultRootIds as any)
+                picks = collect(sceneDefaultRootIds as any, 'sceneDefault')
                 if (picks.length > 0) usedFallback = 'scene'
               }
 
