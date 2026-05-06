@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
     let modelName = ''
 
     if (engine === 'seedance-2' || engine === 'seedance') {
-      modelName = process.env.SEEDANCE_MODEL_T2V || 'doubao-seedance-1-0-pro-250528'
+      modelName = process.env.SEEDANCE_MODEL_T2V || 'dreamina-seedance-2-0-260128'
       videoUrl = await generateSeedanceT2V({
         prompt: fullPrompt, duration, aspectRatio, resolution: '720p',
       })

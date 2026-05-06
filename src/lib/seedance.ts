@@ -6,12 +6,12 @@
 //   SEEDANCE_API_KEY        — Bearer 토큰
 //   SEEDANCE_BASE_URL       — 'https://ark.ap-southeast.bytepluses.com/api/v3' (BytePlus 국제) 또는
 //                             'https://ark.cn-beijing.volces.com/api/v3' (Volcengine 중국)
-//   SEEDANCE_MODEL_T2V      — 텍스트→비디오 모델 ID (기본 doubao-seedance-1-0-pro-250528)
+//   SEEDANCE_MODEL_T2V      — 텍스트→비디오 모델 ID (기본 dreamina-seedance-2-0-260128)
 //   SEEDANCE_MODEL_I2V      — 이미지→비디오 모델 ID
 
 const DEFAULT_BASE_URL = 'https://ark.ap-southeast.bytepluses.com/api/v3'
-const DEFAULT_MODEL_T2V = 'doubao-seedance-1-0-pro-250528'
-const DEFAULT_MODEL_I2V = 'doubao-seedance-1-0-pro-250528'
+const DEFAULT_MODEL_T2V = 'dreamina-seedance-2-0-260128'
+const DEFAULT_MODEL_I2V = 'dreamina-seedance-2-0-260128'
 
 interface SeedanceParams {
   prompt: string
