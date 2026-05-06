@@ -134,6 +134,7 @@ export default function WorkspacePage() {
     })
   }, [genType, outputs])
   const [genRatio, setGenRatio] = useState<string>('16:9')
+  const [genDuration, setGenDuration] = useState<number>(5)   // I2V 영상 길이
   const [generating, setGenerating] = useState(false)
   const [referenceAssets, setReferenceAssets] = useState<Asset[]>([])
 
@@ -938,6 +939,8 @@ export default function WorkspacePage() {
             onEngineChange={setGenEngine}
             ratio={genRatio}
             onRatioChange={setGenRatio}
+            duration={genDuration}
+            onDurationChange={setGenDuration}
             generating={generating}
             referenceAssets={referenceAssets}
             camera={genCamera}
@@ -1143,7 +1146,7 @@ export default function WorkspacePage() {
                   const url = genType === 't2i' ? '/api/t2i/generate' : '/api/i2v/generate'
                   const body = genType === 't2i'
                     ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, projectId, sceneId: active.id, aspectRatio: genRatio, referenceImageUrls: refUrls.length > 0 ? refUrls : undefined }
-                    : { attemptId: attempt.id, prompt: fullPrompt, sourceImageUrl: sourceUrlForI2V, projectId, sceneId: active.id, duration: 5, aspectRatio: genRatio }
+                    : { attemptId: attempt.id, prompt: fullPrompt, sourceImageUrl: sourceUrlForI2V, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio }
                   const r = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1870,7 +1873,7 @@ function GeneratePanel({
   currentPrompt, promptDraft, onPromptChange,
   type, onTypeChange,
   engine, onEngineChange,
-  ratio, onRatioChange,
+  ratio, onRatioChange, duration, onDurationChange,
   generating, onGenerate,
   referenceAssets, camera, onCameraSelect, onCameraDeselect,
   refSel, onRefSelChange, scene,
@@ -1890,6 +1893,8 @@ function GeneratePanel({
   onEngineChange: (v: string) => void
   ratio: string
   onRatioChange: (v: string) => void
+  duration?: number
+  onDurationChange?: (v: number) => void
   generating: boolean
   onGenerate: () => Promise<void> | void
   referenceAssets: Asset[]
@@ -2175,6 +2180,31 @@ function GeneratePanel({
             </button>
           ))}
         </div>
+
+        {type === 'i2v' && onDurationChange && (
+          <>
+            <div className="field-label">영상 길이</div>
+            <div className="flex" style={{ gap: 6, marginBottom: 18 }}>
+              {[5, 10, 15].map(d => (
+                <button
+                  key={d}
+                  onClick={() => onDurationChange(d)}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 'var(--r-md)',
+                    fontSize: 11, fontWeight: 500,
+                    background: duration === d ? 'var(--accent-soft)' : 'var(--bg-3)',
+                    color: duration === d ? 'var(--accent)' : 'var(--ink-2)',
+                    border: `1px solid ${duration === d ? 'var(--accent-line)' : 'var(--line)'}`,
+                    minWidth: 56,
+                  }}
+                >
+                  {d}초
+                </button>
+              ))}
+            </div>
+          </>
+        )}
 
         <div className="field-label">화면비</div>
         <div className="flex" style={{ gap: 6, marginBottom: 18 }}>
@@ -3087,7 +3117,8 @@ function T2IEditModal({
 }) {
   const [editPrompt, setEditPrompt] = useState('')
   const [running, setRunning] = useState(false)
-  const [resultUrl, setResultUrl] = useState<string | null>(null)
+  const [resultUrls, setResultUrls] = useState<string[]>([])
+  const [count, setCount] = useState(1)
   const [error, setError] = useState<string | null>(null)
 
   // ESC로 닫기
@@ -3103,7 +3134,7 @@ function T2IEditModal({
     if (!editPrompt.trim() || running) return
     setRunning(true)
     setError(null)
-    setResultUrl(null)
+    setResultUrls([])
     try {
       const r = await fetch('/api/t2i/edit', {
         method: 'POST',
@@ -3113,6 +3144,7 @@ function T2IEditModal({
           editPrompt: editPrompt.trim(),
           projectId,
           sceneId,
+          count,
         }),
       })
       const j = await r.json()
@@ -3120,22 +3152,14 @@ function T2IEditModal({
         setError(j.error ?? '편집 실패')
         return
       }
-      setResultUrl(j.asset?.url ?? null)
+      const urls = (j.assets ?? []).map((a: any) => a.url).filter(Boolean) as string[]
+      setResultUrls(urls)
     } catch (e: any) {
       setError(e?.message ?? String(e))
     } finally {
       setRunning(false)
     }
   }
-
-  const PRESET_HINTS = [
-    '배경을 밤하늘로 바꿔줘',
-    '인물 표정을 미소로',
-    '안개를 더 짙게',
-    '의상을 검정 코트로',
-    '카메라 각도를 로우앵글로',
-    '조명을 골든아워로',
-  ]
 
   return (
     <div
@@ -3176,26 +3200,40 @@ function T2IEditModal({
                 <img src={target.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               </div>
             </div>
-            {/* 결과 */}
+            {/* 결과 (1~N장 그리드) */}
             <div>
               <div className="field-label">편집 결과</div>
-              <div style={{
-                aspectRatio: '16/9', borderRadius: 'var(--r-md)', overflow: 'hidden',
-                background: 'var(--bg-3)',
-                border: resultUrl ? '2px solid var(--accent)' : '1px dashed var(--line-strong)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                {resultUrl ? (
-                  <img src={resultUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : running ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                    <Loader2 size={20} className="animate-spin" style={{ color: 'var(--accent)' }} />
-                    <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>편집 중…</span>
-                  </div>
-                ) : (
-                  <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>편집을 실행하면 여기에 표시</span>
-                )}
-              </div>
+              {resultUrls.length > 0 ? (
+                <div className="grid" style={{
+                  gridTemplateColumns: `repeat(${Math.min(resultUrls.length, 2)}, 1fr)`,
+                  gap: 6,
+                }}>
+                  {resultUrls.map((u, i) => (
+                    <div key={i} style={{
+                      aspectRatio: '16/9', borderRadius: 'var(--r-sm)', overflow: 'hidden',
+                      background: 'var(--bg-3)', border: '2px solid var(--accent)',
+                    }}>
+                      <img src={u} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{
+                  aspectRatio: '16/9', borderRadius: 'var(--r-md)', overflow: 'hidden',
+                  background: 'var(--bg-3)',
+                  border: '1px dashed var(--line-strong)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {running ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                      <Loader2 size={20} className="animate-spin" style={{ color: 'var(--accent)' }} />
+                      <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>편집 중…</span>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>편집을 실행하면 여기에 표시</span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -3212,19 +3250,26 @@ function T2IEditModal({
               outline: 'none', resize: 'vertical', lineHeight: 1.6,
             }}
           />
-          <div className="flex flex-wrap" style={{ gap: 5, marginTop: 8 }}>
-            {PRESET_HINTS.map(h => (
+          <div className="flex items-center" style={{ gap: 6, marginTop: 10 }}>
+            <span className="field-label" style={{ margin: 0 }}>매수</span>
+            {[1, 2, 4].map(n => (
               <button
-                key={h}
-                onClick={() => setEditPrompt(p => p ? `${p}, ${h}` : h)}
+                key={n}
+                type="button"
+                onClick={() => setCount(n)}
                 className="btn"
-                style={{ fontSize: 10, padding: '3px 8px' }}
+                style={{
+                  padding: '4px 10px', fontSize: 11, fontWeight: 500,
+                  background: count === n ? 'var(--accent-soft)' : 'var(--bg-3)',
+                  color: count === n ? 'var(--accent)' : 'var(--ink-2)',
+                  border: `1px solid ${count === n ? 'var(--accent-line)' : 'var(--line)'}`,
+                  minWidth: 38,
+                }}
               >
-                + {h}
+                {n}장
               </button>
             ))}
           </div>
-
           {error && (
             <div style={{
               marginTop: 12, padding: '8px 10px',
@@ -3239,22 +3284,31 @@ function T2IEditModal({
 
         <div style={{ padding: '12px 18px', borderTop: '1px solid var(--line)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onClose} className="btn">닫기</button>
-          {resultUrl && (
-            <button
-              onClick={async () => { await onDone(); }}
-              className="btn primary"
-            >
-              <Check size={13} /> 갤러리 새로고침
-            </button>
+          {resultUrls.length > 0 && (
+            <>
+              <button
+                onClick={() => setResultUrls([])}
+                className="btn"
+                title="다시 편집"
+              >
+                재편집
+              </button>
+              <button
+                onClick={async () => { await onDone(); }}
+                className="btn primary"
+              >
+                <Check size={13} /> 갤러리 새로고침
+              </button>
+            </>
           )}
-          {!resultUrl && (
+          {resultUrls.length === 0 && (
             <button
               onClick={handleEdit}
               disabled={running || !editPrompt.trim()}
               className="btn primary"
               style={{ opacity: running || !editPrompt.trim() ? 0.6 : 1 }}
             >
-              {running ? <><Loader2 size={13} className="animate-spin" /> 편집 중…</> : <><Sparkles size={13} /> 편집 실행</>}
+              {running ? <><Loader2 size={13} className="animate-spin" /> 편집 중…</> : <><Sparkles size={13} /> {count}장 편집</>}
             </button>
           )}
         </div>
