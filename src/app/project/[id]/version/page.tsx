@@ -94,7 +94,7 @@ export default function VersionPage() {
       }
       const [pvRes, attsRes, decRes] = await Promise.all([
         supabase.from('prompt_versions').select('id, version_label, content, is_current, created_at').in('scene_id', sceneIds).order('created_at', { ascending: true }),
-        supabase.from('prompt_attempts').select('id, scene_id, type, engine, prompt, status, created_at, outputs:attempt_outputs(id, url, archived, satisfaction_score, asset:assets(url))').in('scene_id', sceneIds).order('created_at', { ascending: true }),
+        supabase.from('prompt_attempts').select('id, scene_id, type, engine, prompt, status, created_at, outputs:attempt_outputs(id, archived, satisfaction_score, asset:assets(url))').in('scene_id', sceneIds).order('created_at', { ascending: true }),
         supabase.from('shot_decisions').select('output_id, decision_type, created_at').in('scene_id', sceneIds).order('created_at', { ascending: false }),
       ])
       const errs: string[] = []
@@ -127,7 +127,7 @@ export default function VersionPage() {
           prompt: a.prompt ?? '', status: a.status, created_at: a.created_at,
           versionId: matched?.id ?? null,
           outputs: ((a.outputs ?? []) as any[]).map(o => ({
-            id: o.id, url: o.url ?? o.asset?.url ?? null,
+            id: o.id, url: o.asset?.url ?? null,
             archived: o.archived ?? false, satisfaction_score: o.satisfaction_score ?? null,
             decision: decisionByOutput.get(o.id) ?? null,
           })),
