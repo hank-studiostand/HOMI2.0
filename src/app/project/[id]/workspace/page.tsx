@@ -124,6 +124,32 @@ export default function WorkspacePage() {
   const [genType, setGenType] = useState<'t2i' | 'i2v'>('t2i')
   const [genEngine, setGenEngine] = useState<string>('nanobanana')
 
+  // 엔진별 프롬프트 프리셋 — localStorage에 보관 (key: engine_preset_<engine>)
+  const [enginePresetOpen, setEnginePresetOpen] = useState(false)
+  const [enginePresets, setEnginePresets] = useState<Record<string, string>>({})
+  useEffect(() => {
+    try {
+      const map: Record<string, string> = {}
+      for (const e of ['nanobanana', 'gpt-image', 'kling3', 'kling3-omni', 'seedance-2']) {
+        const v = localStorage.getItem(`engine_preset_${e}`)
+        if (v) map[e] = v
+      }
+      setEnginePresets(map)
+    } catch {}
+  }, [])
+  function saveEnginePreset(engine: string, value: string) {
+    try {
+      if (value.trim()) localStorage.setItem(`engine_preset_${engine}`, value)
+      else localStorage.removeItem(`engine_preset_${engine}`)
+    } catch {}
+    setEnginePresets(prev => {
+      const next = { ...prev }
+      if (value.trim()) next[engine] = value
+      else delete next[engine]
+      return next
+    })
+  }
+
   // I2V 모드 진입 시 — 명시적으로 첫 T2I 결과를 소스로 자동 선택 (visible)
   // 사용자가 다른 카드 클릭하면 selectedIds가 변경되어 즉시 source가 바뀜.
   useEffect(() => {
@@ -941,6 +967,8 @@ export default function WorkspacePage() {
             onTypeChange={setGenType}
             engine={genEngine}
             onEngineChange={setGenEngine}
+            enginePresetActive={!!(enginePresets[genEngine] && enginePresets[genEngine].trim())}
+            onOpenEnginePreset={() => setEnginePresetOpen(true)}
             ratio={genRatio}
             onRatioChange={setGenRatio}
             duration={genDuration}
@@ -1035,6 +1063,8 @@ export default function WorkspacePage() {
                     cameraTokens: camTokens,
                     referenceLabels: refLabels,
                     type: genType,
+                    engine: genEngine,
+                    customEngineGuide: enginePresets[genEngine] ?? '',
                   }),
                 })
                 const j = await r.json()
@@ -1502,6 +1532,16 @@ export default function WorkspacePage() {
         />
       )}
 
+      {/* 엔진별 프롬프트 최적화 프리셋 모달 */}
+      {enginePresetOpen && (
+        <EnginePresetModal
+          activeEngine={genEngine}
+          presets={enginePresets}
+          onSave={saveEnginePreset}
+          onClose={() => setEnginePresetOpen(false)}
+        />
+      )}
+
     </div>
   )
 }
@@ -1877,6 +1917,7 @@ function GeneratePanel({
   currentPrompt, promptDraft, onPromptChange,
   type, onTypeChange,
   engine, onEngineChange,
+  enginePresetActive, onOpenEnginePreset,
   ratio, onRatioChange, duration, onDurationChange,
   generating, onGenerate,
   referenceAssets, camera, onCameraSelect, onCameraDeselect,
@@ -1895,6 +1936,8 @@ function GeneratePanel({
   onTypeChange: (v: 't2i' | 'i2v') => void
   engine: string
   onEngineChange: (v: string) => void
+  enginePresetActive?: boolean
+  onOpenEnginePreset?: () => void
   ratio: string
   onRatioChange: (v: string) => void
   duration?: number
@@ -2268,7 +2311,27 @@ function GeneratePanel({
           ))}
         </div>
 
-        <div className="field-label">엔진</div>
+        <div className="flex items-center" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
+          <div className="field-label" style={{ margin: 0 }}>엔진</div>
+          {onOpenEnginePreset && (
+            <button
+              type="button"
+              onClick={onOpenEnginePreset}
+              title="엔진별 프롬프트 최적화 프리셋 편집"
+              style={{
+                padding: '2px 8px',
+                fontSize: 10, fontWeight: 500,
+                borderRadius: 'var(--r-sm)',
+                background: enginePresetActive ? 'var(--accent-soft)' : 'var(--bg-3)',
+                color: enginePresetActive ? 'var(--accent)' : 'var(--ink-3)',
+                border: `1px solid ${enginePresetActive ? 'var(--accent-line)' : 'var(--line)'}`,
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+              }}
+            >
+              <Sparkles size={10} /> 프리셋{enginePresetActive ? ' ●' : ''}
+            </button>
+          )}
+        </div>
         <div className="flex flex-wrap" style={{ gap: 6, marginBottom: 14 }}>
           {engineOptions.map(opt => (
             <button
@@ -3445,6 +3508,140 @@ function T2IEditModal({
               {running ? <><Loader2 size={13} className="animate-spin" /> 편집 중…</> : <><Sparkles size={13} /> {count}장 편집</>}
             </button>
           )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+// ─── EnginePresetModal — 엔진별 프롬프트 최적화 규칙 편집 ──────────────
+const PRESET_ENGINES: Array<{ value: string; label: string; placeholder: string }> = [
+  { value: 'nanobanana', label: 'Nano Banana (Gemini 2.5 Flash Image)', placeholder: '예) 항상 35mm 렌즈, soft window light, 한 단락 80단어 이내…' },
+  { value: 'gpt-image', label: 'GPT Image (gpt-image-1)', placeholder: '예) 명도 대비 강조, 색상 팔레트 명시, 메타포 금지…' },
+  { value: 'kling3', label: 'Kling 3.0', placeholder: '예) Subject + action 우선, 카메라 무브 명시, 짧고 압축된 영문…' },
+  { value: 'kling3-omni', label: 'Kling 3.0 Omni', placeholder: '예) 멀티샷 마커, BGM 큐 추가…' },
+  { value: 'seedance-2', label: 'Seedance 2.0', placeholder: '예) Shot 1 / Shot 2 구조, 카메라 언어 사용, 추상 동사 금지…' },
+]
+
+function EnginePresetModal({
+  activeEngine, presets, onSave, onClose,
+}: {
+  activeEngine: string
+  presets: Record<string, string>
+  onSave: (engine: string, value: string) => void
+  onClose: () => void
+}) {
+  const [tab, setTab] = useState<string>(activeEngine)
+  const [draft, setDraft] = useState<string>(presets[activeEngine] ?? '')
+
+  useEffect(() => {
+    setDraft(presets[tab] ?? '')
+  }, [tab, presets])
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  function handleSave() {
+    onSave(tab, draft)
+    onClose()
+  }
+  function handleReset() {
+    setDraft('')
+    onSave(tab, '')
+  }
+
+  const current = PRESET_ENGINES.find(e => e.value === tab) ?? PRESET_ENGINES[0]
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 200,
+        background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 24,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="card"
+        style={{
+          width: 'min(820px, 100%)', maxHeight: '88vh',
+          padding: 0, overflow: 'hidden',
+          display: 'flex', flexDirection: 'column',
+        }}
+      >
+        <div className="flex items-center" style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)', gap: 10 }}>
+          <Sparkles size={16} style={{ color: 'var(--accent)' }} />
+          <div style={{ flex: 1 }}>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>엔진별 프롬프트 최적화 프리셋</h3>
+            <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--ink-3)' }}>
+              엔진별로 따로 저장됩니다. 비어있으면 내장 가이드가 사용돼요.
+            </p>
+          </div>
+          <button onClick={onClose} className="btn" style={{ padding: 6 }}><X size={14} /></button>
+        </div>
+
+        <div className="flex" style={{ borderBottom: '1px solid var(--line)', overflowX: 'auto' }}>
+          {PRESET_ENGINES.map(e => {
+            const has = !!(presets[e.value] && presets[e.value].trim())
+            const isActive = tab === e.value
+            return (
+              <button
+                key={e.value}
+                onClick={() => setTab(e.value)}
+                style={{
+                  padding: '10px 14px',
+                  fontSize: 12, fontWeight: 500,
+                  background: isActive ? 'var(--bg-2)' : 'transparent',
+                  color: isActive ? 'var(--ink)' : 'var(--ink-3)',
+                  borderBottom: isActive ? '2px solid var(--accent)' : '2px solid transparent',
+                  whiteSpace: 'nowrap',
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                {e.label}
+                {has && <span style={{ width: 6, height: 6, borderRadius: 3, background: 'var(--accent)' }} />}
+              </button>
+            )
+          })}
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: 18 }}>
+          <div className="field-label">규칙 (자유 입력 — 영문/한글 모두 OK)</div>
+          <textarea
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            placeholder={current.placeholder}
+            rows={14}
+            style={{
+              width: '100%', padding: 12,
+              background: 'var(--bg-2)', border: '1px solid var(--line)',
+              borderRadius: 'var(--r-md)', fontSize: 13, color: 'var(--ink)',
+              outline: 'none', resize: 'vertical', lineHeight: 1.6,
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            }}
+          />
+          <p style={{ marginTop: 8, fontSize: 11, color: 'var(--ink-4)' }}>
+            저장하면 이 엔진을 선택했을 때 프롬프트 최적화 호출에 자동으로 적용됩니다.
+            (브라우저 localStorage에 보관)
+          </p>
+        </div>
+
+        <div style={{ padding: '12px 18px', borderTop: '1px solid var(--line)', display: 'flex', gap: 8, justifyContent: 'space-between' }}>
+          <button onClick={handleReset} className="btn" title="이 엔진 프리셋 비우기">
+            초기화
+          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={onClose} className="btn">취소</button>
+            <button onClick={handleSave} className="btn primary">
+              <Check size={13} /> 저장
+            </button>
+          </div>
         </div>
       </div>
     </div>
