@@ -65,15 +65,14 @@ async function generateViaNanobanana(
   const fullPrompt  = `${prompt}\n\n${ratioSuffix}`
 
   // parts 구성: 레퍼런스 이미지가 있으면 앞에 삽입
+  // Gemini 2.5 Flash Image는 다중 입력 이미지를 character/space identity 참조로 사용 가능.
   const parts: any[] = []
   if (referenceImages && referenceImages.length > 0) {
     for (const img of referenceImages) {
       parts.push({ inlineData: { mimeType: img.mimeType, data: img.b64 } })
     }
-    // 레퍼런스 이미지가 있을 때 프롬프트 텍스트에 참고 문구 추가
-    parts.push({
-      text: `Use the above reference image(s) as a visual style and composition guide. Generate a new image based on the following description:\n\n${fullPrompt}`,
-    })
+    const refInstruction = `IMPORTANT: The ${referenceImages.length} image(s) above are REFERENCE images showing specific characters, spaces, or objects whose identity must be preserved. Treat people in the references as the same characters (same face, body, clothing). Treat spaces as the same locations (same architecture, lighting, props). Treat objects as the same items.\n\nNow generate a NEW image with the following scene description, while keeping the identity of any subject from the reference images consistent:\n\n${fullPrompt}`
+    parts.push({ text: refInstruction })
   } else {
     parts.push({ text: fullPrompt })
   }
@@ -140,16 +139,23 @@ export async function POST(req: NextRequest) {
       const apiKey = process.env.GEMINI_API_KEY
       if (!apiKey) throw new Error('GEMINI_API_KEY가 설정되지 않았습니다. 서버를 재시작했는지 확인하세요.')
 
-      // 레퍼런스 이미지 base64 변환 (있는 경우)
+      // 레퍼런스 이미지 base64 변환 (있는 경우) — Gemini 2.5 Flash Image는 다중 이미지 지원
       let referenceImages: Array<{ b64: string; mimeType: string }> | undefined
       if (Array.isArray(referenceImageUrls) && referenceImageUrls.length > 0) {
+        const targetUrls = referenceImageUrls.slice(0, 8) // 최대 8장
+        console.log(`[T2I] 레퍼런스 ${referenceImageUrls.length}장 요청 → ${targetUrls.length}장 fetch 시도`)
         const fetched = await Promise.allSettled(
-          referenceImageUrls.slice(0, 3).map((url: string) => fetchImageAsBase64(url))  // 최대 3장
+          targetUrls.map((url: string) => fetchImageAsBase64(url))
         )
         referenceImages = fetched
           .filter((r): r is PromiseFulfilledResult<{ b64: string; mimeType: string }> => r.status === 'fulfilled')
           .map(r => r.value)
-        console.log(`[T2I] 레퍼런스 이미지 ${referenceImages.length}장 첨부`)
+        fetched.forEach((r, i) => {
+          if (r.status === 'rejected') {
+            console.warn(`[T2I] 레퍼런스 fetch 실패: ${targetUrls[i]} —`, r.reason instanceof Error ? r.reason.message : r.reason)
+          }
+        })
+        console.log(`[T2I] 레퍼런스 이미지 ${referenceImages.length}/${targetUrls.length}장 base64 첨부 완료`)
       }
 
       const images = await generateViaNanobanana(apiKey, prompt, aspectRatio ?? '16:9', 4, referenceImages)

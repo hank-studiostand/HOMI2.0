@@ -4,6 +4,9 @@
 // - 응답은 항상 base64 (gpt-image-1 기본)
 
 const OPENAI_BASE = 'https://api.openai.com/v1'
+// 품질: gpt-image-1은 'low' / 'medium' / 'high' / 'auto' 지원. 기본은 medium 수준.
+// 'high'로 명시하면 디테일/선명도 크게 향상 (토큰 비용 ~2배).
+const OPENAI_QUALITY = (process.env.OPENAI_IMAGE_QUALITY ?? 'high') as 'low' | 'medium' | 'high' | 'auto'
 
 // 화면비 → OpenAI 지원 사이즈
 export function aspectRatioToOpenAISize(ratio: string): '1024x1024' | '1024x1536' | '1536x1024' {
@@ -39,6 +42,8 @@ async function callGenerations(
       prompt,
       n,
       size,
+      quality: OPENAI_QUALITY,
+      output_format: 'png',
       // gpt-image-1은 항상 b64_json 반환 — response_format 파라미터 없음
     }),
   })
@@ -66,6 +71,8 @@ async function callEdits(
   form.append('prompt', prompt)
   form.append('n', String(n))
   form.append('size', size)
+  form.append('quality', OPENAI_QUALITY)
+  form.append('output_format', 'png')
 
   // 레퍼런스 이미지 — 최대 ~10장까지 image[] 으로 첨부
   for (let i = 0; i < referenceImages.length; i++) {
