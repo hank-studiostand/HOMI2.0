@@ -1997,10 +1997,34 @@ function GeneratePanel({
 }) {
   const engineOptions = type === 't2i' ? T2I_ENGINES : I2V_ENGINES
 
-  // ─── 최근 결과 페이지네이션 (씬 전환 시 리셋) ──
+  // ─── 최근 결과 페이지네이션 (씬별 — sessionStorage로 GeneratePanel 리마운트 후에도 유지) ──
   const RECENT_PAGE_STEP = 8
-  const [recentDisplayLimit, setRecentDisplayLimit] = useState<number>(RECENT_PAGE_STEP)
-  useEffect(() => { setRecentDisplayLimit(RECENT_PAGE_STEP) }, [sceneId])
+  const limitKey = `workspace:recentLimit:${projectId}:${sceneId}`
+  const [recentDisplayLimit, setRecentDisplayLimit] = useState<number>(() => {
+    if (typeof window === 'undefined') return RECENT_PAGE_STEP
+    try {
+      const raw = window.sessionStorage.getItem(limitKey)
+      const n = raw ? parseInt(raw, 10) : RECENT_PAGE_STEP
+      return Number.isFinite(n) && n >= RECENT_PAGE_STEP ? n : RECENT_PAGE_STEP
+    } catch { return RECENT_PAGE_STEP }
+  })
+  // 씬 전환 시 sessionStorage에서 다시 읽어오기
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const raw = window.sessionStorage.getItem(limitKey)
+      const n = raw ? parseInt(raw, 10) : RECENT_PAGE_STEP
+      setRecentDisplayLimit(Number.isFinite(n) && n >= RECENT_PAGE_STEP ? n : RECENT_PAGE_STEP)
+    } catch { setRecentDisplayLimit(RECENT_PAGE_STEP) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sceneId, projectId])
+  function bumpRecentLimit() {
+    setRecentDisplayLimit(n => {
+      const next = n + RECENT_PAGE_STEP
+      try { window.sessionStorage.setItem(limitKey, String(next)) } catch {}
+      return next
+    })
+  }
 
   // ─── 베이스 이미지 박스 (씬별, localStorage 순서 보존) ──
   const baseImagesKey = `workspace:baseImagesOrder:${projectId}:${sceneId}`
@@ -2018,6 +2042,9 @@ function GeneratePanel({
     setBaseImageOrder(next)
     try { window.localStorage.setItem(baseImagesKey, JSON.stringify(next)) } catch {}
   }
+  // 드래그 중인 인덱스 / 드롭 타겟 인덱스
+  const [draggingBaseIdx, setDraggingBaseIdx] = useState<number | null>(null)
+  const [dragOverBaseIdx, setDragOverBaseIdx] = useState<number | null>(null)
   // 자동수집 — t2i + (approved || score>=5) — 기존 순서 유지하고 누락된 신규만 끝에 append
   // T2I + I2V 둘 다 포함. 승인 시 archived가 true로 들어가지만 베이스 이미지로는 노출.
   const baseEligible = recentOutputs.filter(o =>
@@ -2044,13 +2071,6 @@ function GeneratePanel({
   const baseImages = orderedBaseIds
     .map(id => baseEligible.find(o => o.id === id))
     .filter((o): o is NonNullable<typeof o> => !!o)
-  function moveBase(idx: number, dir: -1 | 1) {
-    const next = [...orderedBaseIds]
-    const j = idx + dir
-    if (j < 0 || j >= next.length) return
-    ;[next[idx], next[j]] = [next[j], next[idx]]
-    persistBaseOrder(next)
-  }
 
   // ─── Prompt history (T2I/I2V 분리, 최대 30개, localStorage 영속) ───
   const [history, setHistory] = useState<string[]>([])
@@ -2368,100 +2388,139 @@ function GeneratePanel({
         </p>
 
         {/* ── 인라인 결과 strip (Generate 탭에서도 결과 즉시 확인) ── */}
-        {/* 베이스 이미지 (씬별 — approved/5★ T2I만, 가로 스크롤, 순서 변경) */}
+        {/* 베이스 이미지 (씬별 — approved/5★ T2I만, 박스, 가로 스크롤, 드래그 정렬, 삭제) */}
         <div style={{ marginTop: 18 }}>
           <div className="flex items-center" style={{ gap: 8, marginBottom: 8 }}>
             <span className="field-label" style={{ margin: 0 }}>베이스 이미지</span>
             <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>
-              {baseImages.length > 0 ? `${baseImages.length}장 · 화살표로 순서 변경` : '승인 또는 ★5 이상 T2I 자동 수집'}
+              {baseImages.length > 0 ? `${baseImages.length}장 · 드래그로 정렬, ✕로 컬렉션에서 제거` : '승인 또는 ★5 이상 결과 자동 수집'}
             </span>
             <span style={{ flex: 1 }} />
           </div>
-          {baseImages.length === 0 ? (
-            <div className="empty" style={{ padding: 12, fontSize: 11, color: 'var(--ink-5)' }}>
-              아직 모인 베이스 이미지가 없어요. T2I 결과에 OK를 누르거나 ★5를 매기면 여기로 모입니다.
-            </div>
-          ) : (
-            <div
-              style={{
-                display: 'flex', gap: 6,
-                overflowX: 'auto', overflowY: 'hidden',
-                padding: '4px 2px',
-                scrollbarWidth: 'thin',
-              }}
-            >
-              {baseImages.map((b, i) => {
-                const isSelected = selectedOutputId === b.id
-                return (
-                  <div
-                    key={b.id}
-                    style={{
-                      position: 'relative',
-                      flexShrink: 0,
-                      width: 132,
-                      aspectRatio: '16/9',
-                      borderRadius: 'var(--r-sm)',
-                      overflow: 'hidden',
-                      background: 'var(--bg-3)',
-                      border: `2px solid ${isSelected ? 'var(--accent)' : 'var(--line)'}`,
-                      boxShadow: isSelected ? '0 0 0 2px var(--accent-soft)' : 'none',
-                      cursor: 'pointer',
-                    }}
-                    onClick={() => onSelectOutput(b.id)}
-                    title={`#${i + 1} 베이스 이미지${b.decision === 'approved' ? ' (승인)' : ''}${(b.satisfaction_score ?? 0) >= 5 ? ' ★' + b.satisfaction_score : ''}`}
-                  >
-                    {b.url && (b.type === 'i2v'
-                      ? <video src={b.url} muted style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />
-                      : <img src={b.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />
-                    )}
-                    {/* 인덱스 배지 */}
+          <div
+            style={{
+              padding: 8,
+              border: '1px solid var(--line)',
+              borderRadius: 'var(--r-md)',
+              background: 'var(--bg-2)',
+              minHeight: 120,
+            }}
+          >
+            {baseImages.length === 0 ? (
+              <div style={{ padding: '24px 12px', fontSize: 11, color: 'var(--ink-5)', textAlign: 'center', fontStyle: 'italic' }}>
+                아직 모인 베이스 이미지가 없어요. 결과에 OK를 누르거나 ★5를 매기면 여기로 모입니다.
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: 'flex', gap: 8,
+                  overflowX: 'auto', overflowY: 'hidden',
+                  padding: '2px',
+                  scrollbarWidth: 'thin',
+                }}
+              >
+                {baseImages.map((b, i) => {
+                  const isSelected = selectedOutputId === b.id
+                  const showI2VBadge = type === 'i2v' && isSelected && b.type === 't2i'
+                  const isDragging = draggingBaseIdx === i
+                  const isDragOver = dragOverBaseIdx === i && draggingBaseIdx !== null && draggingBaseIdx !== i
+                  return (
                     <div
-                      style={{
-                        position: 'absolute', top: 3, left: 3,
-                        background: 'rgba(0,0,0,0.65)', color: '#fff',
-                        fontSize: 9, fontWeight: 700,
-                        padding: '1px 5px', borderRadius: 3,
+                      key={b.id}
+                      draggable
+                      onDragStart={(e) => {
+                        setDraggingBaseIdx(i)
+                        e.dataTransfer.effectAllowed = 'move'
+                        try { e.dataTransfer.setData('text/plain', String(i)) } catch {}
                       }}
-                    >#{i + 1}</div>
-                    {/* 좌우 화살표 */}
-                    <div
-                      style={{
-                        position: 'absolute', bottom: 3, right: 3,
-                        display: 'flex', gap: 2,
+                      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverBaseIdx(i) }}
+                      onDragLeave={() => { if (dragOverBaseIdx === i) setDragOverBaseIdx(null) }}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        const from = draggingBaseIdx
+                        const to = i
+                        setDraggingBaseIdx(null)
+                        setDragOverBaseIdx(null)
+                        if (from === null || from === to) return
+                        const next = [...orderedBaseIds]
+                        const [moved] = next.splice(from, 1)
+                        next.splice(to, 0, moved)
+                        persistBaseOrder(next)
                       }}
+                      onDragEnd={() => { setDraggingBaseIdx(null); setDragOverBaseIdx(null) }}
+                      style={{
+                        position: 'relative',
+                        flexShrink: 0,
+                        width: 180,
+                        aspectRatio: '16/9',
+                        borderRadius: 'var(--r-md)',
+                        overflow: 'hidden',
+                        background: 'var(--bg-3)',
+                        border: `${isSelected ? '3px' : '2px'} solid ${isSelected ? 'var(--accent)' : (isDragOver ? 'var(--violet, var(--accent))' : 'var(--line)')}`,
+                        boxShadow: isSelected ? '0 0 0 3px var(--accent-soft)' : 'none',
+                        cursor: 'grab',
+                        opacity: isDragging ? 0.4 : 1,
+                        transition: 'opacity 0.15s, border-color 0.15s',
+                      }}
+                      onClick={() => onSelectOutput(b.id)}
+                      title={`#${i + 1} 베이스 이미지${b.decision === 'approved' ? ' (승인)' : ''}${(b.satisfaction_score ?? 0) >= 5 ? ' ★' + b.satisfaction_score : ''} — 드래그로 정렬`}
                     >
-                      <button
-                        onClick={(e) => { e.stopPropagation(); moveBase(i, -1) }}
-                        disabled={i === 0}
-                        title="앞으로"
+                      {b.url && (b.type === 'i2v'
+                        ? <video src={b.url} muted style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />
+                        : <img src={b.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />
+                      )}
+                      {/* 인덱스 배지 */}
+                      <div
                         style={{
-                          width: 18, height: 18, padding: 0,
-                          borderRadius: 3,
-                          background: 'rgba(0,0,0,0.55)', color: '#fff',
-                          border: 'none',
-                          opacity: i === 0 ? 0.3 : 1,
-                          fontSize: 10, lineHeight: 1,
+                          position: 'absolute', top: 4, left: 4,
+                          background: 'rgba(0,0,0,0.65)', color: '#fff',
+                          fontSize: 10, fontWeight: 700,
+                          padding: '1px 6px', borderRadius: 3,
+                          pointerEvents: 'none',
                         }}
-                      >‹</button>
+                      >#{i + 1}</div>
+                      {/* I2V 소스 배지 — 최근 결과와 동기화 */}
+                      {showI2VBadge && (
+                        <div style={{ position: 'absolute', top: 4, right: 4 }}>
+                          <span
+                            className="flex items-center"
+                            style={{
+                              padding: '2px 7px', borderRadius: 'var(--r-sm)',
+                              fontSize: 10, fontWeight: 600, gap: 3,
+                              background: 'var(--accent)', color: '#fff',
+                              boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
+                            }}
+                          >
+                            <Film size={9} />
+                            I2V 소스
+                          </span>
+                        </div>
+                      )}
+                      {/* 삭제 (X) — 우하단, 호버 시에만 노출 */}
                       <button
-                        onClick={(e) => { e.stopPropagation(); moveBase(i, 1) }}
-                        disabled={i === baseImages.length - 1}
-                        title="뒤로"
-                        style={{
-                          width: 18, height: 18, padding: 0,
-                          borderRadius: 3,
-                          background: 'rgba(0,0,0,0.55)', color: '#fff',
-                          border: 'none',
-                          opacity: i === baseImages.length - 1 ? 0.3 : 1,
-                          fontSize: 10, lineHeight: 1,
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (!onQuickReset) return
+                          void onQuickReset(b.id)
                         }}
-                      >›</button>
+                        title="베이스 이미지에서 제거 (평가 초기화)"
+                        style={{
+                          position: 'absolute', bottom: 4, right: 4,
+                          width: 22, height: 22, padding: 0,
+                          borderRadius: 4,
+                          background: 'rgba(0,0,0,0.65)', color: '#fff',
+                          border: '1px solid rgba(255,255,255,0.2)',
+                          fontSize: 12, lineHeight: 1,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          cursor: 'pointer',
+                        }}
+                      >✕</button>
                     </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+                  )
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* 최근 결과 (페이지네이션) */}
@@ -2503,7 +2562,7 @@ function GeneratePanel({
               {recentDisplayLimit < recentOutputs.length && (
                 <div className="flex justify-center" style={{ marginTop: 10 }}>
                   <button
-                    onClick={() => setRecentDisplayLimit(n => n + RECENT_PAGE_STEP)}
+                    onClick={() => bumpRecentLimit()}
                     style={{
                       padding: '6px 18px',
                       fontSize: 11, fontWeight: 500,
