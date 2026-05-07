@@ -2054,7 +2054,7 @@ function GeneratePanel({
       {/* 좌측 — 씬 컨텍스트 + 프롬프트 */}
       <div>
         {/* 씬 컨텍스트 (씬 경계 편집 텍스트 + 4요소 마크) */}
-        <SceneContextPanel scene={scene} />
+        <SceneContextPanel scene={scene} rootAssets={rootAssets} />
 
         <div className="flex items-center" style={{ marginBottom: 6, gap: 6 }}>
           <span className="field-label" style={{ margin: 0 }}>프롬프트</span>
@@ -2136,9 +2136,13 @@ function GeneratePanel({
                 return
               }
 
+              // 씬의 캐릭터 변동사항 (character_variations: {seed_id: '의상/상태 텍스트'})
+              const variationsMap = ((active as any).character_variations ?? {}) as Record<string, string>
               const block = withDesc.map(p => {
                 const label = p.cat === 'character' ? '인물' : p.cat === 'space' ? '공간' : p.cat === 'object' ? '오브제' : '기타'
-                return `[${label}: ${p.name}] ${p.desc}`
+                const v = (variationsMap[p.id] ?? '').trim()
+                const variationSuffix = (p.cat === 'character' && v) ? `\n  변동: ${v}` : ''
+                return `[${label}: ${p.name}] ${p.desc}${variationSuffix}`
               }).join('\n')
               const current = promptDraft.trim()
               const merged = current ? `${current}\n\n${block}` : block
@@ -3079,7 +3083,7 @@ function RootAssetBox({
 
 
 // ─── 씬 컨텍스트 패널 (씬 경계 편집 텍스트 + 4요소 마크 인라인 편집) ───
-function SceneContextPanel({ scene }: { scene: Scene }) {
+function SceneContextPanel({ scene, rootAssets }: { scene: Scene; rootAssets: any[] }) {
   const supabase = createClient()
   const [textOpen, setTextOpen] = useState(true)
   const initialMarks = (scene as any).root_asset_marks ?? {}
@@ -3119,6 +3123,64 @@ function SceneContextPanel({ scene }: { scene: Scene }) {
       setSaving(false)
     }
   }
+
+  // ── 캐릭터 변동사항 (의상/헤어/상태 등) ─────────────────────
+  const initialVariations = ((scene as any).character_variations ?? {}) as Record<string, string>
+  const [variations, setVariations] = useState<Record<string, string>>(initialVariations)
+  const [variationsOpen, setVariationsOpen] = useState(false)
+  const [editingCharId, setEditingCharId] = useState<string | null>(null)
+  const [variationDraft, setVariationDraft] = useState('')
+  const [variationsSaving, setVariationsSaving] = useState(false)
+
+  useEffect(() => {
+    setVariations(((scene as any).character_variations ?? {}) as Record<string, string>)
+    setEditingCharId(null)
+  }, [scene.id])
+
+  async function persistVariations(next: Record<string, string>) {
+    setVariationsSaving(true)
+    try {
+      const { error } = await supabase
+        .from('scenes')
+        .update({ character_variations: next })
+        .eq('id', scene.id)
+      if (error) throw error
+    } catch (e) {
+      console.error('[scene-context] character_variations 저장 실패:', e)
+    } finally {
+      setVariationsSaving(false)
+    }
+  }
+
+  function startVariationEdit(charId: string) {
+    setEditingCharId(charId)
+    setVariationDraft(variations[charId] ?? '')
+  }
+
+  async function commitVariationEdit() {
+    if (!editingCharId) return
+    const trimmed = variationDraft.trim()
+    const next = { ...variations }
+    if (trimmed) next[editingCharId] = trimmed
+    else delete next[editingCharId]
+    setVariations(next)
+    setEditingCharId(null)
+    await persistVariations(next)
+  }
+
+  async function clearVariation(charId: string) {
+    const next = { ...variations }
+    delete next[charId]
+    setVariations(next)
+    await persistVariations(next)
+  }
+
+  // 프로젝트의 캐릭터 시드 — 씬에 할당된 시드 우선, 없으면 전체
+  const charSeeds = (rootAssets || []).filter((s: any) => s.category === 'character')
+  const assignedIds: string[] = ((scene as any).selected_root_asset_ids?.character ?? []) as string[]
+  const visibleChars = assignedIds.length > 0
+    ? charSeeds.filter((s: any) => assignedIds.includes(s.id))
+    : charSeeds
 
   function startEdit(key: 'character' | 'space' | 'object' | 'misc') {
     setEditingKey(key)
@@ -3297,6 +3359,141 @@ function SceneContextPanel({ scene }: { scene: Scene }) {
           })}
         </div>
       </div>
+
+      {/* 캐릭터 변동사항 (collapsible) — 의상/헤어/상태 등 씬별 변화 */}
+      <button
+        onClick={() => setVariationsOpen(o => !o)}
+        className="w-full flex items-center"
+        style={{
+          padding: '8px 12px', gap: 6,
+          fontSize: 11, fontWeight: 600,
+          color: 'var(--ink-2)',
+          background: 'var(--bg-3)',
+          borderTop: '1px solid var(--line)',
+          borderBottom: variationsOpen ? '1px solid var(--line)' : 'none',
+          textAlign: 'left',
+        }}
+      >
+        {variationsOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        <Sparkles size={12} style={{ color: 'var(--violet, var(--accent))' }} />
+        <span>캐릭터 변동</span>
+        {variationsSaving && <Loader2 size={10} className="animate-spin" style={{ color: 'var(--ink-4)' }} />}
+        <span style={{ flex: 1 }} />
+        <span style={{ fontSize: 10, color: 'var(--ink-5)', fontWeight: 400 }}>
+          {Object.keys(variations).filter(k => (variations[k] ?? '').trim()).length > 0
+            ? `${Object.keys(variations).filter(k => (variations[k] ?? '').trim()).length}개 활성`
+            : '의상/헤어/상태 메모'}
+        </span>
+      </button>
+      {variationsOpen && (
+        <div style={{ padding: '8px 10px' }}>
+          {visibleChars.length === 0 ? (
+            <div style={{ fontSize: 11, color: 'var(--ink-5)', fontStyle: 'italic', padding: '6px 4px' }}>
+              할당된 캐릭터 시드가 없어요. 루트 에셋 페이지에서 캐릭터를 추가하거나, 씬에 할당해주세요.
+            </div>
+          ) : (
+            <div className="flex flex-col" style={{ gap: 6 }}>
+              {visibleChars.map((c: any) => {
+                const value = variations[c.id] ?? ''
+                const isEditing = editingCharId === c.id
+                return (
+                  <div
+                    key={c.id}
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 6,
+                      padding: '6px 8px',
+                      background: 'var(--bg)',
+                      border: `1px solid ${isEditing ? 'var(--violet, var(--accent))' : 'var(--line)'}`,
+                      borderRadius: 'var(--r-sm)',
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 11, fontWeight: 700,
+                        color: 'var(--violet, var(--accent))',
+                        minWidth: 60, flexShrink: 0,
+                        paddingTop: 2,
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      }}
+                      title={c.name}
+                    >
+                      {c.name}
+                    </span>
+                    {isEditing ? (
+                      <>
+                        <textarea
+                          autoFocus
+                          value={variationDraft}
+                          onChange={e => setVariationDraft(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Escape') { e.preventDefault(); setEditingCharId(null) }
+                            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                              e.preventDefault(); void commitVariationEdit()
+                            }
+                          }}
+                          placeholder="예: 검정 코트, 면도 안한 상태, 머리 헝클어짐"
+                          rows={2}
+                          style={{
+                            flex: 1, minWidth: 0,
+                            background: 'transparent', border: 'none', outline: 'none',
+                            fontSize: 12, color: 'var(--ink)', resize: 'vertical',
+                            lineHeight: 1.5,
+                          }}
+                        />
+                        <button
+                          onClick={() => void commitVariationEdit()}
+                          title="저장 (Cmd/Ctrl+Enter)"
+                          style={{ padding: 2, color: 'var(--violet, var(--accent))', flexShrink: 0 }}
+                        >
+                          <Save size={11} />
+                        </button>
+                        <button
+                          onClick={() => setEditingCharId(null)}
+                          title="취소 (Esc)"
+                          style={{ padding: 2, color: 'var(--ink-4)', flexShrink: 0 }}
+                        >
+                          <X size={11} />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span
+                          style={{
+                            flex: 1, minWidth: 0,
+                            fontSize: 12,
+                            color: value ? 'var(--ink)' : 'var(--ink-5)',
+                            fontStyle: value ? 'normal' : 'italic',
+                            lineHeight: 1.5,
+                            whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                          }}
+                        >
+                          {value || '(변동사항 없음)'}
+                        </span>
+                        <button
+                          onClick={() => startVariationEdit(c.id)}
+                          title="편집"
+                          style={{ padding: 2, color: 'var(--ink-4)', flexShrink: 0 }}
+                        >
+                          <Edit2 size={10} />
+                        </button>
+                        {value && (
+                          <button
+                            onClick={() => void clearVariation(c.id)}
+                            title="삭제"
+                            style={{ padding: 2, color: 'var(--danger)', flexShrink: 0 }}
+                          >
+                            <Trash2 size={10} />
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
