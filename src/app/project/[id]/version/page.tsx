@@ -41,6 +41,9 @@ export default function VersionPage() {
 
   // 씬별 attempt 카운트 — 사이드바에 점 표시하기 위함
   const [attemptCountByScene, setAttemptCountByScene] = useState<Record<string, number>>({})
+  // 진단 정보 — 데이터가 안 나오는 경우 원인 파악용
+  const [diag, setDiag] = useState<{ totalAttempts: number; totalScenes: number; queryError?: string }>({ totalAttempts: 0, totalScenes: 0 })
+  const [sceneLoadError, setSceneLoadError] = useState<string | null>(null)
 
   useEffect(() => {
     void (async () => {
@@ -51,13 +54,20 @@ export default function VersionPage() {
       const sceneIds = list.map(s => s.id)
       let firstWithData: string | null = null
       const counts: Record<string, number> = {}
+      let totalAttempts = 0
+      let queryError: string | undefined
       if (sceneIds.length > 0) {
-        const { data: counts0 } = await supabase
+        const { data: counts0, error: cntErr } = await supabase
           .from('prompt_attempts')
           .select('scene_id')
           .in('scene_id', sceneIds)
+        if (cntErr) {
+          queryError = `prompt_attempts 조회 실패: ${cntErr.message}`
+          console.error('[version] count query error:', cntErr)
+        }
         for (const row of (counts0 ?? []) as any[]) {
           counts[row.scene_id] = (counts[row.scene_id] ?? 0) + 1
+          totalAttempts++
         }
         // 자연 정렬 순서로 첫 데이터 있는 씬
         for (const s of list) {
@@ -65,21 +75,42 @@ export default function VersionPage() {
         }
       }
       setAttemptCountByScene(counts)
+      setDiag({ totalAttempts, totalScenes: list.length, queryError })
       if (firstWithData) setActiveSceneId(firstWithData)
       else if (list.length > 0) setActiveSceneId(list[0].id)
       setLoading(false)
     })()
   }, [projectId, supabase])
 
-  // 데이터 로드 — realtime 변경에서도 재호출
+  // 데이터 로드 — realtime 변경에서도 재호출. sceneId === '__ALL__'이면 프로젝트 전체.
   const reloadScene = async (sceneId: string) => {
     setLoadingScene(true)
     try {
-      const [{ data: pv }, { data: atts }, { data: decRows }] = await Promise.all([
-        supabase.from('prompt_versions').select('id, version_label, content, is_current, created_at').eq('scene_id', sceneId).order('created_at', { ascending: true }),
-        supabase.from('prompt_attempts').select('id, scene_id, type, engine, prompt, status, created_at, outputs:attempt_outputs(id, url, archived, satisfaction_score, asset:assets(url))').eq('scene_id', sceneId).order('created_at', { ascending: true }),
-        supabase.from('shot_decisions').select('output_id, decision_type, created_at').eq('scene_id', sceneId).order('created_at', { ascending: false }),
+      const isAll = sceneId === '__ALL__'
+      const sceneIds = isAll ? scenes.map(s => s.id) : [sceneId]
+      if (sceneIds.length === 0) {
+        setVersions([]); setAttempts([])
+        return
+      }
+      const [pvRes, attsRes, decRes] = await Promise.all([
+        supabase.from('prompt_versions').select('id, version_label, content, is_current, created_at').in('scene_id', sceneIds).order('created_at', { ascending: true }),
+        supabase.from('prompt_attempts').select('id, scene_id, type, engine, prompt, status, created_at, outputs:attempt_outputs(id, url, archived, satisfaction_score, asset:assets(url))').in('scene_id', sceneIds).order('created_at', { ascending: true }),
+        supabase.from('shot_decisions').select('output_id, decision_type, created_at').in('scene_id', sceneIds).order('created_at', { ascending: false }),
       ])
+      const errs: string[] = []
+      if (pvRes.error) errs.push(`prompt_versions: ${pvRes.error.message}`)
+      if (attsRes.error) errs.push(`prompt_attempts: ${attsRes.error.message}`)
+      if (decRes.error) errs.push(`shot_decisions: ${decRes.error.message}`)
+      if (errs.length > 0) {
+        setSceneLoadError(errs.join(' | '))
+        console.error('[version] reloadScene errors:', errs)
+      } else {
+        setSceneLoadError(null)
+      }
+      const pv = pvRes.data
+      const atts = attsRes.data
+      const decRows = decRes.data
+      console.log('[version] reloadScene', { sceneId, isAll, sceneIds: sceneIds.length, attemptsRaw: atts?.length ?? 0, versionsRaw: pv?.length ?? 0 })
       const versionsList = (pv ?? []) as VersionRow[]
       setVersions(versionsList)
       const decisionByOutput = new Map<string, 'approved' | 'revise_requested' | 'removed'>()
@@ -186,8 +217,31 @@ export default function VersionPage() {
             <h1 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>Provenance</h1>
           </div>
           <p style={{ fontSize: 11, color: 'var(--ink-4)', lineHeight: 1.45 }}>
-            씬을 선택해 프롬프트 버전 → 시도 → 결과 계보를 봅니다.
+            씬별 또는 프로젝트 전체로 작업 계보를 봅니다.
           </p>
+          {/* 전체 보기 토글 */}
+          <button
+            onClick={() => setActiveSceneId('__ALL__')}
+            className="flex items-center w-full"
+            style={{
+              marginTop: 8,
+              padding: '6px 10px',
+              borderRadius: 'var(--r-sm)',
+              fontSize: 12, fontWeight: 500,
+              background: activeSceneId === '__ALL__' ? 'var(--accent)' : 'var(--bg-2)',
+              color: activeSceneId === '__ALL__' ? '#fff' : 'var(--ink-2)',
+              border: `1px solid ${activeSceneId === '__ALL__' ? 'var(--accent)' : 'var(--line)'}`,
+              gap: 6,
+            }}
+          >
+            <GitBranch size={11} />
+            전체 보기
+            {Object.values(attemptCountByScene).reduce((a, b) => a + b, 0) > 0 && (
+              <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700 }}>
+                {Object.values(attemptCountByScene).reduce((a, b) => a + b, 0)}
+              </span>
+            )}
+          </button>
         </div>
         {loading ? (
           <div style={{ padding: 16 }}><Loader2 size={14} className="animate-spin" /></div>
@@ -238,17 +292,19 @@ export default function VersionPage() {
         <div className="flex items-end justify-between" style={{ padding: '16px 24px 12px', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, zIndex: 5, background: 'var(--bg)' }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, letterSpacing: '-0.01em', color: 'var(--ink)' }}>
-              {activeScene
+              {activeSceneId === '__ALL__'
+                ? <><GitBranch size={16} style={{ display: 'inline', verticalAlign: 'middle', color: 'var(--accent)', marginRight: 6 }} />프로젝트 전체</>
+                : activeScene
                 ? <>씬 <span className="mono" style={{ color: 'var(--accent)' }}>{activeScene.scene_number}</span> {activeScene.title}</>
                 : '씬을 선택하세요'}
             </h2>
-            {activeScene && (
+            {(activeScene || activeSceneId === '__ALL__') && (
               <p style={{ marginTop: 4, fontSize: 12, color: 'var(--ink-3)' }}>
                 {versions.length}개 버전 · {attempts.length}개 시도 · {attempts.reduce((n, a) => n + a.outputs.length, 0)}개 결과물
               </p>
             )}
           </div>
-          {activeScene && (
+          {activeScene && activeSceneId !== '__ALL__' && (
             <button
               onClick={() => router.push(`/project/${projectId}/workspace?scene=${activeScene.id}`)}
               className="flex items-center gap-1"
@@ -264,6 +320,38 @@ export default function VersionPage() {
           )}
         </div>
 
+        {/* 진단 패널 — 데이터가 0이거나 쿼리 에러가 발생한 경우 */}
+        {(diag.queryError || diag.totalAttempts === 0) && (
+          <div
+            style={{
+              margin: '12px 24px 0',
+              padding: '10px 14px',
+              borderRadius: 'var(--r-md)',
+              background: diag.queryError ? 'var(--danger-soft)' : 'var(--bg-2)',
+              border: `1px solid ${diag.queryError ? 'var(--danger)' : 'var(--line)'}`,
+              fontSize: 12,
+              color: diag.queryError ? 'var(--danger)' : 'var(--ink-3)',
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>
+              {diag.queryError ? '⚠️ 데이터 조회 실패' : '진단: 작업 로그가 비어있어요'}
+            </div>
+            {diag.queryError ? (
+              <div>{diag.queryError}</div>
+            ) : (
+              <div style={{ lineHeight: 1.55 }}>
+                · 프로젝트 씬 수: {diag.totalScenes}개<br/>
+                · 전체 attempts: 0개<br/>
+                <br/>
+                작업 로그가 표시되려면 워크스페이스에서 한 번 이상 <strong>"Que"</strong>를 눌러 생성을 시도해야 합니다.
+                생성을 했는데도 0이면 RLS(권한) 정책 문제일 수 있어요 — Supabase Dashboard → Authentication → Policies에서
+                <code style={{ background: 'var(--bg-3)', padding: '1px 5px', borderRadius: 3, margin: '0 3px' }}>prompt_attempts</code>
+                테이블에 SELECT 정책이 있는지 확인해주세요.
+              </div>
+            )}
+          </div>
+        )}
+
         <div style={{ padding: 24, position: 'relative' }}>
           {loadingScene ? (
             <div className="empty" style={{ padding: 64, textAlign: 'center' }}>
@@ -278,6 +366,26 @@ export default function VersionPage() {
               <p style={{ marginTop: 4, fontSize: 11, color: 'var(--ink-4)' }}>
                 워크스페이스에서 생성을 시작하면 여기에 노드 그래프가 그려져요.
               </p>
+              {sceneLoadError && (
+                <div
+                  style={{
+                    marginTop: 16, padding: '8px 12px',
+                    background: 'var(--danger-soft)',
+                    color: 'var(--danger)',
+                    border: '1px solid var(--danger)',
+                    borderRadius: 'var(--r-md)',
+                    fontSize: 11,
+                    maxWidth: 520,
+                    margin: '16px auto 0',
+                    textAlign: 'left',
+                  }}
+                >
+                  ⚠️ 쿼리 에러: {sceneLoadError}
+                  <div style={{ marginTop: 6, color: 'var(--ink-3)' }}>
+                    Supabase RLS(권한) 정책이 SELECT를 막고 있을 가능성이 높아요. 이전 안내했던 4개 정책 SQL을 실행해주세요.
+                  </div>
+                </div>
+              )}
               {Object.values(attemptCountByScene).some(n => n > 0) && (
                 <div style={{ marginTop: 16, fontSize: 11, color: 'var(--ink-3)' }}>
                   데이터가 있는 다른 씬:{' '}
