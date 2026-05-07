@@ -24,6 +24,7 @@ async function generateKlingI2V(params: {
   prompt: string
   duration: number
   aspectRatio: string
+  modelName?: string
 }): Promise<string> {
   const apiKey    = process.env.KLING_API_KEY    ?? ''
   const apiSecret = process.env.KLING_API_SECRET ?? ''
@@ -33,9 +34,9 @@ async function generateKlingI2V(params: {
 
   const jwt = generateKlingJWT(apiKey, apiSecret)
 
-  // 1) 생성 요청
+  // 1) 생성 요청 — 엔진 별 모델 매핑
   const body = {
-    model_name:   'kling-v1-6',
+    model_name:   params.modelName ?? 'kling-v2',
     image:        params.sourceImageUrl,
     prompt:       params.prompt,
     duration:     params.duration,
@@ -126,8 +127,11 @@ export async function POST(req: NextRequest) {
         prompt, imageUrl: sourceImageUrl, duration, aspectRatio,
         resolution: '720p',
       })
+    } else if (engine === 'kling3') {
+      videoUrl = await generateKlingI2V({ sourceImageUrl, prompt, duration, aspectRatio, modelName: 'kling-v2' })
     } else {
-      videoUrl = await generateKlingI2V({ sourceImageUrl, prompt, duration, aspectRatio })
+      // 기본 Kling (kling, kling-1.6 등)
+      videoUrl = await generateKlingI2V({ sourceImageUrl, prompt, duration, aspectRatio, modelName: 'kling-v1-6' })
     }
 
     if (!videoUrl) throw new Error('No video URL returned')
@@ -168,3 +172,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'I2V 생성 실패: ' + msg }, { status: 500 })
   }
 }
+

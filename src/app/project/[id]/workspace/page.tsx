@@ -126,7 +126,7 @@ export default function WorkspacePage() {
 
   // 타입 전환 시 엔진이 해당 타입 목록에 없으면 기본값으로 자동 변경
   useEffect(() => {
-    const t2iValues = ['nanobanana', 'gpt-image', 'midjourney', 'stable-diffusion', 'dalle']
+    const t2iValues = ['nanobanana', 'gpt-image', 'midjourney']
     const i2vValues = ['seedance-2', 'kling3']
     if (genType === 't2i' && !t2iValues.includes(genEngine)) setGenEngine('nanobanana')
     if (genType === 'i2v' && !i2vValues.includes(genEngine)) setGenEngine('seedance-2')
@@ -1934,11 +1934,9 @@ function DecisionModal({
 
 // ─── Generate 패널 — 프롬프트 + 엔진 + 화면비 + 생성 ─────────
 const T2I_ENGINES = [
-  { value: 'nanobanana',       label: '나노바나나' },
-  { value: 'gpt-image',        label: 'GPT Image' },
-  { value: 'midjourney',       label: 'Midjourney' },
-  { value: 'stable-diffusion', label: 'Stable Diffusion' },
-  { value: 'dalle',            label: 'DALL-E 3' },
+  { value: 'nanobanana', label: '나노바나나' },
+  { value: 'gpt-image',  label: 'GPT Image' },
+  { value: 'midjourney', label: 'Midjourney' },
 ]
 const I2V_ENGINES = [
   { value: 'seedance-2',label: 'Seedance 2.0' },
