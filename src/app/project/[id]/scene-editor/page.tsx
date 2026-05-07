@@ -12,6 +12,36 @@ import {
 // Detects: #1, #1-1, #1-1-1, 씬1, Scene 1, INT., EXT.
 const SCENE_HEADER_RE = /^#\d[\d\-]*|^(?:씬|scene|s)[\s\-.]?\d+|^(?:INT|EXT|내부|외부)[.\s]/i
 
+// 대본이 HTML로 저장된 경우 plain text로 변환 (씬 경계 편집은 plain text 기반)
+function htmlToPlain(html: string): string {
+  if (!html) return ''
+  if (!html.includes('<')) return html  // 이미 plain text면 그대로
+  if (typeof document === 'undefined') {
+    // SSR 폴백 — 단순 태그 제거
+    return html
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(?:p|div|h[1-6]|li)>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  }
+  const tmp = document.createElement('div')
+  tmp.innerHTML = html
+  ;(['p', 'div', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li'] as const).forEach(tag => {
+    Array.from(tmp.getElementsByTagName(tag)).forEach((el: any) => {
+      if (tag === 'br') el.replaceWith('\n')
+      else el.appendChild(document.createTextNode('\n'))
+    })
+  })
+  return (tmp.textContent ?? '').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+
+
 // ── 씬 번호 자동 추출 (대본 파싱) ─────────────────────────────
 function extractSceneNumber(content: string): string | undefined {
   const firstLine = content.split('\n')[0]?.trim() ?? ''
@@ -702,7 +732,8 @@ export default function SceneEditorPage() {
           return
         }
         setScriptId(data.id)
-        const lines = data.content.split('\n')
+        const plainContent = htmlToPlain(String(data.content ?? ''))
+        const lines = plainContent.split('\n')
         const breakAt = [0]
         lines.forEach((line: string, i: number) => {
           if (i > 0 && SCENE_HEADER_RE.test(line.trim())) breakAt.push(i)
@@ -711,7 +742,7 @@ export default function SceneEditorPage() {
           const content = lines.slice(start, breakAt[i + 1] ?? lines.length).join('\n').trimEnd()
           return { id: uid(), content, sceneNumber: extractSceneNumber(content) }
         })
-        const result = initial.length ? initial : [{ id: uid(), content: data.content }]
+        const result = initial.length ? initial : [{ id: uid(), content: plainContent }]
         setScenes(result)
         saveToLocal(projectId, result)
         setLoading(false)
@@ -865,7 +896,8 @@ export default function SceneEditorPage() {
     const { data } = await supabase.from('scripts').select('id, content').eq('project_id', projectId).single()
     if (!data?.content) { setLoading(false); return }
     setScriptId(data.id)
-    const lines = data.content.split('\n')
+    const plainContent = htmlToPlain(String(data.content ?? ''))
+    const lines = plainContent.split('\n')
     const breakAt = [0]
     lines.forEach((line: string, i: number) => {
       if (i > 0 && SCENE_HEADER_RE.test(line.trim())) breakAt.push(i)
@@ -874,7 +906,7 @@ export default function SceneEditorPage() {
       const content = lines.slice(start, breakAt[i + 1] ?? lines.length).join('\n').trimEnd()
       return { id: uid(), content, sceneNumber: extractSceneNumber(content) }
     })
-    const result = initial.length ? initial : [{ id: uid(), content: data.content }]
+    const result = initial.length ? initial : [{ id: uid(), content: plainContent }]
     setScenes(result)
     saveToLocal(projectId, result)
     setLoading(false)
