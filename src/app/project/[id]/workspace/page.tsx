@@ -1043,6 +1043,22 @@ export default function WorkspacePage() {
               if (error) { alert('별점 저장 실패: ' + error.message); return }
               if (activeId) await loadSceneData(activeId)
             }}
+            onQuickReset={async (id) => {
+              if (id.startsWith('temp_')) return
+              if (!activeId) return
+              const ok = confirm('이 결과의 평가(별점/승인/수정요청)를 모두 초기화할까요?')
+              if (!ok) return
+              try {
+                await supabase.from('shot_decisions').delete().eq('output_id', id)
+                await supabase.from('attempt_outputs')
+                  .update({ satisfaction_score: null, archived: false })
+                  .eq('id', id)
+              } catch (e) {
+                alert('초기화 실패: ' + (e instanceof Error ? e.message : String(e)))
+                return
+              }
+              await loadSceneData(activeId)
+            }}
             optimizing={optimizing}
             onOptimize={async () => {
               if (!active) return
@@ -1935,7 +1951,7 @@ function GeneratePanel({
   refSel, onRefSelChange, scene,
   rootAssets, rootSel, onRootSelChange, sceneDefaultRootIds,
   recentOutputs, recentAttempts, selectedOutputId, onJumpToResults,
-  onSelectOutput, onZoomOutput, onEditOutput, onQuickDecide, onQuickRate,
+  onSelectOutput, onZoomOutput, onEditOutput, onQuickDecide, onQuickRate, onQuickReset,
   optimizing, onOptimize,
 }: {
   sceneId: string
@@ -1975,6 +1991,7 @@ function GeneratePanel({
   onEditOutput?: (id: string) => void
   onQuickDecide: (id: string, decision: 'approved' | 'revise_requested' | 'removed') => Promise<void> | void
   onQuickRate: (id: string, score: number) => Promise<void> | void
+  onQuickReset?: (id: string) => Promise<void> | void
   optimizing: boolean
   onOptimize: () => Promise<void> | void
 }) {
@@ -2002,8 +2019,9 @@ function GeneratePanel({
     try { window.localStorage.setItem(baseImagesKey, JSON.stringify(next)) } catch {}
   }
   // 자동수집 — t2i + (approved || score>=5) — 기존 순서 유지하고 누락된 신규만 끝에 append
+  // T2I + I2V 둘 다 포함. 승인 시 archived가 true로 들어가지만 베이스 이미지로는 노출.
   const baseEligible = recentOutputs.filter(o =>
-    o.type === 't2i' && !!o.url && !o.archived &&
+    (o.type === 't2i' || o.type === 'i2v') && !!o.url &&
     (o.decision === 'approved' || ((o.satisfaction_score ?? 0) >= 5))
   )
   const eligibleIds = baseEligible.map(o => o.id)
@@ -2392,7 +2410,10 @@ function GeneratePanel({
                     onClick={() => onSelectOutput(b.id)}
                     title={`#${i + 1} 베이스 이미지${b.decision === 'approved' ? ' (승인)' : ''}${(b.satisfaction_score ?? 0) >= 5 ? ' ★' + b.satisfaction_score : ''}`}
                   >
-                    {b.url && <img src={b.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />}
+                    {b.url && (b.type === 'i2v'
+                      ? <video src={b.url} muted style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />
+                      : <img src={b.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />
+                    )}
                     {/* 인덱스 배지 */}
                     <div
                       style={{
@@ -2477,6 +2498,7 @@ function GeneratePanel({
                 onEdit={onEditOutput}
                 onQuickDecide={onQuickDecide}
                 onQuickRate={onQuickRate}
+                onQuickReset={onQuickReset}
               />
               {recentDisplayLimit < recentOutputs.length && (
                 <div className="flex justify-center" style={{ marginTop: 10 }}>
@@ -2673,50 +2695,6 @@ function GeneratePanel({
           projectId={projectId}
         />
 
-        {/* I2V 소스 표시 (i2v 모드일 때만) */}
-        {type === 'i2v' && (
-          <div
-            style={{
-              marginTop: 10, padding: 10,
-              borderRadius: 'var(--r-md)',
-              background: selectedOutputId
-                ? (recentOutputs.find(o => o.id === selectedOutputId)?.url ? 'var(--accent-soft)' : 'var(--bg-2)')
-                : 'var(--warn-soft)',
-              border: `1px solid ${selectedOutputId && recentOutputs.find(o => o.id === selectedOutputId)?.url ? 'var(--accent-line)' : 'var(--warn)'}`,
-            }}
-          >
-            <div className="field-label" style={{ marginBottom: 6 }}>영상 변환 소스 (I2V)</div>
-            {(() => {
-              const sel = recentOutputs.find(o => o.id === selectedOutputId)
-              const valid = sel && sel.url && sel.type === 't2i'
-              if (valid) {
-                return (
-                  <div className="flex items-center" style={{ gap: 10 }}>
-                    <img
-                      src={sel.url ?? ''}
-                      alt=""
-                      style={{
-                        width: 80, height: 45, objectFit: 'cover',
-                        borderRadius: 'var(--r-sm)',
-                        border: '2px solid var(--accent)',
-                      }}
-                    />
-                    <div style={{ flex: 1, fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.5 }}>
-                      이 이미지를 영상으로 변환합니다.<br/>
-                      <span style={{ color: 'var(--ink-4)' }}>아래 결과에서 다른 컷을 클릭하면 변경돼요.</span>
-                    </div>
-                  </div>
-                )
-              }
-              return (
-                <div style={{ fontSize: 11, color: 'var(--warn)', lineHeight: 1.5 }}>
-                  ⚠️ 아직 소스 이미지를 선택하지 않았어요.<br/>
-                  <span style={{ color: 'var(--ink-3)' }}>아래 "최근 결과"에서 변환할 이미지를 클릭해주세요.</span>
-                </div>
-              )
-            })()}
-          </div>
-        )}
 
         {/* 액션 묶음 — 최적화 + 생성 */}
         <div className="flex flex-col" style={{ gap: 8, marginTop: 18 }}>
@@ -2769,7 +2747,7 @@ function GeneratePanel({
 // ─── Generate 탭 인라인 결과 strip — 반응형 + 호버 퀵액션 ──────
 function InlineResultStrip({
   outputs, attempts, selectedOutputId, isI2VMode,
-  onSelect, onZoom, onEdit, onQuickDecide, onQuickRate,
+  onSelect, onZoom, onEdit, onQuickDecide, onQuickRate, onQuickReset,
 }: {
   outputs: OutputItem[]
   attempts: AttemptMeta[]
@@ -2780,6 +2758,7 @@ function InlineResultStrip({
   onEdit?: (id: string) => void
   onQuickDecide: (id: string, d: 'approved' | 'revise_requested' | 'removed') => Promise<void> | void
   onQuickRate: (id: string, score: number) => Promise<void> | void
+  onQuickReset?: (id: string) => Promise<void> | void
 }) {
   // attempt별 그룹핑
   const groups: { attemptId: string; items: OutputItem[] }[] = []
@@ -2822,6 +2801,7 @@ function InlineResultStrip({
                   onEdit={onEdit && r.type === 't2i' && !!r.url ? () => onEdit(r.id) : undefined}
                   onQuickDecide={(d) => onQuickDecide(r.id, d)}
                   onQuickRate={(score) => onQuickRate(r.id, score)}
+                  onQuickReset={onQuickReset ? () => onQuickReset(r.id) : undefined}
                 />
               ))}
             </div>
@@ -2834,7 +2814,7 @@ function InlineResultStrip({
 
 function InlineResultCard({
   item, isI2VSource, selectableAsSource,
-  onSelect, onZoom, onEdit, onQuickDecide, onQuickRate,
+  onSelect, onZoom, onEdit, onQuickDecide, onQuickRate, onQuickReset,
 }: {
   item: OutputItem
   isI2VSource: boolean
@@ -2844,6 +2824,7 @@ function InlineResultCard({
   onEdit?: () => void
   onQuickDecide: (d: 'approved' | 'revise_requested' | 'removed') => Promise<void> | void
   onQuickRate: (score: number) => Promise<void> | void
+  onQuickReset?: () => Promise<void> | void
 }) {
   const [hover, setHover] = useState(false)
   const isPlaceholder = !item.url
@@ -2967,8 +2948,22 @@ function InlineResultCard({
           }}
         >
           {/* 확대/편집 버튼 (우상단) */}
-          {(onZoom || onEdit) && (
+          {(onZoom || onEdit || onQuickReset) && (
             <div className="flex justify-end" style={{ gap: 4, pointerEvents: 'auto' }}>
+              {onQuickReset && (item.decision || item.satisfaction_score) && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); void onQuickReset() }}
+                  title="평가 초기화 (별점/결정 모두 제거)"
+                  style={{
+                    padding: '4px 8px', borderRadius: 'var(--r-sm)', fontSize: 10, fontWeight: 600,
+                    background: 'rgba(0,0,0,0.55)', color: '#fff',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    display: 'inline-flex', alignItems: 'center', gap: 3,
+                  }}
+                >
+                  <RotateCcw size={11} /> 초기화
+                </button>
+              )}
               {onEdit && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onEdit() }}
