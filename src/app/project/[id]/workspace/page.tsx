@@ -23,22 +23,22 @@ import ImageLightbox, { type LightboxItem } from '@/components/ui/ImageLightbox'
 const PROMPT_HISTORY_MAX = 30
 const PROMPT_HISTORY_DEBOUNCE_MS = 1500
 
-function promptHistoryKey(projectId: string, type: 't2i' | 'i2v') {
-  return `workspace:promptHistory:${projectId}:${type}`
+function promptHistoryKey(projectId: string, sceneId: string, type: 't2i' | 'i2v') {
+  return `workspace:promptHistory:${projectId}:${sceneId}:${type}`
 }
-function loadPromptHistory(projectId: string, type: 't2i' | 'i2v'): string[] {
+function loadPromptHistory(projectId: string, sceneId: string, type: 't2i' | 'i2v'): string[] {
   if (typeof window === 'undefined') return []
   try {
-    const raw = window.localStorage.getItem(promptHistoryKey(projectId, type))
+    const raw = window.localStorage.getItem(promptHistoryKey(projectId, sceneId, type))
     const arr = raw ? JSON.parse(raw) : []
     if (Array.isArray(arr)) return arr.filter(x => typeof x === 'string').slice(-PROMPT_HISTORY_MAX)
   } catch {}
   return []
 }
-function savePromptHistory(projectId: string, type: 't2i' | 'i2v', list: string[]) {
+function savePromptHistory(projectId: string, sceneId: string, type: 't2i' | 'i2v', list: string[]) {
   if (typeof window === 'undefined') return
   try {
-    window.localStorage.setItem(promptHistoryKey(projectId, type), JSON.stringify(list.slice(-PROMPT_HISTORY_MAX)))
+    window.localStorage.setItem(promptHistoryKey(projectId, sceneId, type), JSON.stringify(list.slice(-PROMPT_HISTORY_MAX)))
   } catch {}
 }
 
@@ -1980,17 +1980,71 @@ function GeneratePanel({
 }) {
   const engineOptions = type === 't2i' ? T2I_ENGINES : I2V_ENGINES
 
+  // ─── 최근 결과 페이지네이션 (씬 전환 시 리셋) ──
+  const RECENT_PAGE_STEP = 8
+  const [recentDisplayLimit, setRecentDisplayLimit] = useState<number>(RECENT_PAGE_STEP)
+  useEffect(() => { setRecentDisplayLimit(RECENT_PAGE_STEP) }, [sceneId])
+
+  // ─── 베이스 이미지 박스 (씬별, localStorage 순서 보존) ──
+  const baseImagesKey = `workspace:baseImagesOrder:${projectId}:${sceneId}`
+  const [baseImageOrder, setBaseImageOrder] = useState<string[]>([])
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(baseImagesKey)
+      const arr = raw ? JSON.parse(raw) : []
+      if (Array.isArray(arr)) setBaseImageOrder(arr.filter(x => typeof x === 'string'))
+      else setBaseImageOrder([])
+    } catch { setBaseImageOrder([]) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, sceneId])
+  function persistBaseOrder(next: string[]) {
+    setBaseImageOrder(next)
+    try { window.localStorage.setItem(baseImagesKey, JSON.stringify(next)) } catch {}
+  }
+  // 자동수집 — t2i + (approved || score>=5) — 기존 순서 유지하고 누락된 신규만 끝에 append
+  const baseEligible = recentOutputs.filter(o =>
+    o.type === 't2i' && !!o.url && !o.archived &&
+    (o.decision === 'approved' || ((o.satisfaction_score ?? 0) >= 5))
+  )
+  const eligibleIds = baseEligible.map(o => o.id)
+  const orderedBaseIds = (() => {
+    const known = baseImageOrder.filter(id => eligibleIds.includes(id))
+    const newcomers = eligibleIds.filter(id => !known.includes(id))
+    return [...known, ...newcomers]
+  })()
+  // 순서 캐시가 신규를 누락하면 정렬해서 다시 저장
+  useEffect(() => {
+    const stored = baseImageOrder.filter(id => eligibleIds.includes(id))
+    const merged = [...stored, ...eligibleIds.filter(id => !stored.includes(id))]
+    if (merged.length !== baseImageOrder.length || merged.some((id, i) => id !== baseImageOrder[i])) {
+      // 변경이 있을 때만 persist
+      try { window.localStorage.setItem(baseImagesKey, JSON.stringify(merged)) } catch {}
+      setBaseImageOrder(merged)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eligibleIds.join(',')])
+  const baseImages = orderedBaseIds
+    .map(id => baseEligible.find(o => o.id === id))
+    .filter((o): o is NonNullable<typeof o> => !!o)
+  function moveBase(idx: number, dir: -1 | 1) {
+    const next = [...orderedBaseIds]
+    const j = idx + dir
+    if (j < 0 || j >= next.length) return
+    ;[next[idx], next[j]] = [next[j], next[idx]]
+    persistBaseOrder(next)
+  }
+
   // ─── Prompt history (T2I/I2V 분리, 최대 30개, localStorage 영속) ───
   const [history, setHistory] = useState<string[]>([])
   const [cursor, setCursor]   = useState<number>(-1)   // -1 = 라이브 (히스토리 진입 안 함)
   const navigatingRef         = useRef(false)           // 네비게이션으로 인한 setDraft인지 표시
 
-  // 프로젝트/타입 전환 시 히스토리 재로드
+  // 프로젝트/씬/타입 전환 시 히스토리 재로드 (씬별 분리)
   useEffect(() => {
-    const list = loadPromptHistory(projectId, type)
+    const list = loadPromptHistory(projectId, sceneId, type)
     setHistory(list)
     setCursor(-1)
-  }, [projectId, type])
+  }, [projectId, sceneId, type])
 
   // 디바운스 자동 저장 (1.5초 멈추면 저장) — 단, 네비게이션 직후엔 skip
   useEffect(() => {
@@ -2005,13 +2059,13 @@ function GeneratePanel({
         const last = prev[prev.length - 1]
         if (draft === last) return prev
         const next = [...prev, draft].slice(-PROMPT_HISTORY_MAX)
-        savePromptHistory(projectId, type, next)
+        savePromptHistory(projectId, sceneId, type, next)
         return next
       })
       setCursor(-1)
     }, PROMPT_HISTORY_DEBOUNCE_MS)
     return () => clearTimeout(t)
-  }, [promptDraft, projectId, type])
+  }, [promptDraft, projectId, sceneId, type])
 
   function pushHistoryNow() {
     const draft = promptDraft.trim()
@@ -2020,7 +2074,7 @@ function GeneratePanel({
       const last = prev[prev.length - 1]
       if (draft === last) return prev
       const next = [...prev, draft].slice(-PROMPT_HISTORY_MAX)
-      savePromptHistory(projectId, type, next)
+      savePromptHistory(projectId, sceneId, type, next)
       return next
     })
     setCursor(-1)
@@ -2037,7 +2091,7 @@ function GeneratePanel({
       if (live && live !== history[history.length - 1]) {
         const merged = [...history, live].slice(-PROMPT_HISTORY_MAX)
         setHistory(merged)
-        savePromptHistory(projectId, type, merged)
+        savePromptHistory(projectId, sceneId, type, merged)
         nextCursor = merged.length - 2     // 새로 추가된 라이브 바로 직전 항목
         navigatingRef.current = true
         onPromptChange(merged[nextCursor])
@@ -2296,6 +2350,100 @@ function GeneratePanel({
         </p>
 
         {/* ── 인라인 결과 strip (Generate 탭에서도 결과 즉시 확인) ── */}
+        {/* 베이스 이미지 (씬별 — approved/5★ T2I만, 가로 스크롤, 순서 변경) */}
+        <div style={{ marginTop: 18 }}>
+          <div className="flex items-center" style={{ gap: 8, marginBottom: 8 }}>
+            <span className="field-label" style={{ margin: 0 }}>베이스 이미지</span>
+            <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>
+              {baseImages.length > 0 ? `${baseImages.length}장 · 화살표로 순서 변경` : '승인 또는 ★5 이상 T2I 자동 수집'}
+            </span>
+            <span style={{ flex: 1 }} />
+          </div>
+          {baseImages.length === 0 ? (
+            <div className="empty" style={{ padding: 12, fontSize: 11, color: 'var(--ink-5)' }}>
+              아직 모인 베이스 이미지가 없어요. T2I 결과에 OK를 누르거나 ★5를 매기면 여기로 모입니다.
+            </div>
+          ) : (
+            <div
+              style={{
+                display: 'flex', gap: 6,
+                overflowX: 'auto', overflowY: 'hidden',
+                padding: '4px 2px',
+                scrollbarWidth: 'thin',
+              }}
+            >
+              {baseImages.map((b, i) => {
+                const isSelected = selectedOutputId === b.id
+                return (
+                  <div
+                    key={b.id}
+                    style={{
+                      position: 'relative',
+                      flexShrink: 0,
+                      width: 132,
+                      aspectRatio: '16/9',
+                      borderRadius: 'var(--r-sm)',
+                      overflow: 'hidden',
+                      background: 'var(--bg-3)',
+                      border: `2px solid ${isSelected ? 'var(--accent)' : 'var(--line)'}`,
+                      boxShadow: isSelected ? '0 0 0 2px var(--accent-soft)' : 'none',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => onSelectOutput(b.id)}
+                    title={`#${i + 1} 베이스 이미지${b.decision === 'approved' ? ' (승인)' : ''}${(b.satisfaction_score ?? 0) >= 5 ? ' ★' + b.satisfaction_score : ''}`}
+                  >
+                    {b.url && <img src={b.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />}
+                    {/* 인덱스 배지 */}
+                    <div
+                      style={{
+                        position: 'absolute', top: 3, left: 3,
+                        background: 'rgba(0,0,0,0.65)', color: '#fff',
+                        fontSize: 9, fontWeight: 700,
+                        padding: '1px 5px', borderRadius: 3,
+                      }}
+                    >#{i + 1}</div>
+                    {/* 좌우 화살표 */}
+                    <div
+                      style={{
+                        position: 'absolute', bottom: 3, right: 3,
+                        display: 'flex', gap: 2,
+                      }}
+                    >
+                      <button
+                        onClick={(e) => { e.stopPropagation(); moveBase(i, -1) }}
+                        disabled={i === 0}
+                        title="앞으로"
+                        style={{
+                          width: 18, height: 18, padding: 0,
+                          borderRadius: 3,
+                          background: 'rgba(0,0,0,0.55)', color: '#fff',
+                          border: 'none',
+                          opacity: i === 0 ? 0.3 : 1,
+                          fontSize: 10, lineHeight: 1,
+                        }}
+                      >‹</button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); moveBase(i, 1) }}
+                        disabled={i === baseImages.length - 1}
+                        title="뒤로"
+                        style={{
+                          width: 18, height: 18, padding: 0,
+                          borderRadius: 3,
+                          background: 'rgba(0,0,0,0.55)', color: '#fff',
+                          border: 'none',
+                          opacity: i === baseImages.length - 1 ? 0.3 : 1,
+                          fontSize: 10, lineHeight: 1,
+                        }}
+                      >›</button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 최근 결과 (페이지네이션) */}
         <div style={{ marginTop: 18 }}>
           <div className="flex items-center" style={{ gap: 8, marginBottom: 8 }}>
             <span className="field-label" style={{ margin: 0 }}>최근 결과</span>
@@ -2318,17 +2466,38 @@ function GeneratePanel({
               아직 결과가 없어요. 위에서 프롬프트를 다듬고 Que를 눌러보세요.
             </div>
           ) : (
-            <InlineResultStrip
-              outputs={recentOutputs.slice(0, 8)}
-              attempts={recentAttempts}
-              selectedOutputId={selectedOutputId}
-              isI2VMode={type === 'i2v'}
-              onSelect={onSelectOutput}
-              onZoom={onZoomOutput}
-              onEdit={onEditOutput}
-              onQuickDecide={onQuickDecide}
-              onQuickRate={onQuickRate}
-            />
+            <>
+              <InlineResultStrip
+                outputs={recentOutputs.slice(0, recentDisplayLimit)}
+                attempts={recentAttempts}
+                selectedOutputId={selectedOutputId}
+                isI2VMode={type === 'i2v'}
+                onSelect={onSelectOutput}
+                onZoom={onZoomOutput}
+                onEdit={onEditOutput}
+                onQuickDecide={onQuickDecide}
+                onQuickRate={onQuickRate}
+              />
+              {recentDisplayLimit < recentOutputs.length && (
+                <div className="flex justify-center" style={{ marginTop: 10 }}>
+                  <button
+                    onClick={() => setRecentDisplayLimit(n => n + RECENT_PAGE_STEP)}
+                    style={{
+                      padding: '6px 18px',
+                      fontSize: 11, fontWeight: 500,
+                      borderRadius: 'var(--r-md)',
+                      background: 'var(--bg-2)',
+                      color: 'var(--ink-2)',
+                      border: '1px solid var(--line)',
+                      display: 'inline-flex', alignItems: 'center', gap: 5,
+                    }}
+                  >
+                    <ChevronDown size={12} />
+                    더 불러오기 ({Math.min(RECENT_PAGE_STEP, recentOutputs.length - recentDisplayLimit)}개 더 · 총 {recentOutputs.length}개)
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
