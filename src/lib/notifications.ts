@@ -2,16 +2,21 @@
  * 생성 완료 알림 유틸리티
  * - 브라우저 알림 (Notification API)
  * - Slack 웹훅 전송
+ *
+ * Slack 메시지 포맷 (사용자 요청):
+ *   프로젝트명 - 씬넘버 - 씬이름 - N차 시도 - 성공/실패
  */
 
-export type NotifType = 't2i' | 'i2v' | 't2v'
+export type NotifType = 't2i' | 'i2v' | 't2v' | 'lipsync'
 
 interface NotifOptions {
   type: NotifType
-  sceneName?: string
   status: 'done' | 'failed'
   message?: string
   projectName?: string
+  sceneNumber?: string
+  sceneName?: string
+  attemptNumber?: number
   slackWebhookUrl?: string
 }
 
@@ -19,9 +24,19 @@ const TYPE_LABEL: Record<NotifType, string> = {
   t2i: '이미지 생성',
   i2v: '영상 생성',
   t2v: 'T2V 생성',
+  lipsync: '립싱크',
 }
 
-/** 브라우저 알림 권한 요청 */
+function buildFormattedLine(o: NotifOptions): string {
+  const parts: string[] = []
+  if (o.projectName)  parts.push(o.projectName)
+  if (o.sceneNumber)  parts.push(`#${o.sceneNumber}`)
+  if (o.sceneName)    parts.push(o.sceneName)
+  if (o.attemptNumber && o.attemptNumber > 0) parts.push(`${o.attemptNumber}차 시도`)
+  parts.push(o.status === 'done' ? '성공' : '실패')
+  return parts.join(' - ')
+}
+
 export async function requestNotificationPermission(): Promise<boolean> {
   if (typeof window === 'undefined' || !('Notification' in window)) return false
   if (Notification.permission === 'granted') return true
@@ -29,44 +44,33 @@ export async function requestNotificationPermission(): Promise<boolean> {
   return result === 'granted'
 }
 
-/** 브라우저 알림 발송 */
 function sendBrowserNotification(options: NotifOptions) {
   if (typeof window === 'undefined' || !('Notification' in window)) return
   if (Notification.permission !== 'granted') return
 
-  const label   = TYPE_LABEL[options.type]
-  const scene   = options.sceneName ? ` — ${options.sceneName}` : ''
-  const project = options.projectName ? `[${options.projectName}] ` : ''
-
-  const title = options.status === 'done'
-    ? `${project}${label} 완료${scene}`
-    : `${project}${label} 실패${scene}`
-
+  const label = TYPE_LABEL[options.type]
+  const formatted = buildFormattedLine(options)
+  const title = `${label} ${options.status === 'done' ? '완료' : '실패'}`
   const body = options.status === 'done'
-    ? '결과를 확인해보세요.'
-    : options.message ?? '생성 중 오류가 발생했습니다.'
-
-  const icon = '/favicon.ico'
+    ? formatted
+    : `${formatted}\n${options.message ?? ''}`.trim()
 
   try {
-    const notif = new Notification(title, { body, icon })
+    const notif = new Notification(title, { body, icon: '/favicon.ico' })
     notif.onclick = () => { window.focus(); notif.close() }
   } catch (err) {
     console.warn('[notifications] 브라우저 알림 발송 실패:', err)
   }
 }
 
-/** Slack 웹훅 전송 */
 async function sendSlackNotification(options: NotifOptions) {
   if (!options.slackWebhookUrl) return
-
-  const label   = TYPE_LABEL[options.type]
-  const scene   = options.sceneName ? `*씬:* ${options.sceneName}` : ''
-  const project = options.projectName ? `*프로젝트:* ${options.projectName}\n` : ''
-
+  const label = TYPE_LABEL[options.type]
+  const formatted = buildFormattedLine(options)
+  const emoji = options.status === 'done' ? ':white_check_mark:' : ':x:'
   const text = options.status === 'done'
-    ? `:white_check_mark: *${label} 완료*\n${project}${scene}`
-    : `:x: *${label} 실패*\n${project}${scene}\n${options.message ?? ''}`
+    ? `${emoji} *${label}*  ${formatted}`
+    : `${emoji} *${label}*  ${formatted}${options.message ? `\n> ${options.message}` : ''}`
 
   try {
     const res = await fetch(options.slackWebhookUrl, {
@@ -82,21 +86,18 @@ async function sendSlackNotification(options: NotifOptions) {
   }
 }
 
-/** 통합 알림 발송 (브라우저 + Slack) */
 export async function sendGenerationNotification(options: NotifOptions) {
   sendBrowserNotification(options)
   if (options.slackWebhookUrl) {
-    sendSlackNotification(options)
+    await sendSlackNotification(options)
   }
 }
 
-/** localStorage에서 Slack 웹훅 URL 로드 */
 export function getSlackWebhookUrl(projectId: string): string {
   if (typeof window === 'undefined') return ''
   return localStorage.getItem(`slack-webhook-${projectId}`) ?? ''
 }
 
-/** localStorage에 Slack 웹훅 URL 저장 */
 export function setSlackWebhookUrl(projectId: string, url: string) {
   if (typeof window === 'undefined') return
   if (url) {
@@ -106,13 +107,11 @@ export function setSlackWebhookUrl(projectId: string, url: string) {
   }
 }
 
-/** 알림 활성화 여부 로드 */
 export function getNotificationsEnabled(projectId: string): boolean {
   if (typeof window === 'undefined') return false
   return localStorage.getItem(`notif-enabled-${projectId}`) !== 'false'
 }
 
-/** 알림 활성화 여부 저장 */
 export function setNotificationsEnabled(projectId: string, enabled: boolean) {
   if (typeof window === 'undefined') return
   localStorage.setItem(`notif-enabled-${projectId}`, String(enabled))
