@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useParams } from 'next/navigation'
 import {
   Loader2, Film, ChevronRight, ChevronDown, X, Plus, RotateCcw,
-  Tag, Type, Hash, Layers,
+  Tag, Type, Hash, Layers, History,
 } from 'lucide-react'
 
 // ── 씬 헤더 감지 패턴 ──────────────────────────────────────────
@@ -720,7 +720,7 @@ export default function SceneEditorPage() {
 
   useEffect(() => { refs.current.forEach(fitHeight) }, [scenes])
 
-  // 자동저장
+  // 자동저장 (localStorage)
   useEffect(() => {
     if (loading || !scenes.length) return
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
@@ -731,6 +731,76 @@ export default function SceneEditorPage() {
     }, 300)
     return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current) }
   }, [scenes, loading, projectId])
+
+  // ── DB 버전 스냅샷 자동 저장 (60초 간격, 변경 있을 때만) ──
+  const lastSnapshotJsonRef = useRef<string>('')
+  const [snapshots, setSnapshots] = useState<Array<{ id: string; created_at: string; sceneCount: number; note: string | null }>>([])
+  const [snapshotsLoading, setSnapshotsLoading] = useState(false)
+  const [snapshotsOpen, setSnapshotsOpen] = useState(false)
+  const [savingSnapshot, setSavingSnapshot] = useState(false)
+
+  async function loadSnapshots() {
+    setSnapshotsLoading(true)
+    try {
+      const r = await fetch(`/api/scene-editor/snapshots?projectId=${projectId}&limit=50`)
+      const j = await r.json()
+      if (r.ok) setSnapshots(j.snapshots ?? [])
+    } finally { setSnapshotsLoading(false) }
+  }
+  useEffect(() => { void loadSnapshots() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [projectId])
+
+  async function persistSnapshot(note?: string): Promise<boolean> {
+    if (!scenes.length) return false
+    const json = JSON.stringify(scenes)
+    if (json === lastSnapshotJsonRef.current) return false
+    setSavingSnapshot(true)
+    try {
+      const r = await fetch('/api/scene-editor/snapshots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, scenes, note: note ?? null }),
+      })
+      const j = await r.json()
+      if (!r.ok) { console.warn('[scene-editor] snapshot 실패:', j.error); return false }
+      lastSnapshotJsonRef.current = json
+      await loadSnapshots()
+      return true
+    } finally { setSavingSnapshot(false) }
+  }
+
+  useEffect(() => {
+    if (loading || !scenes.length) return
+    const interval = setInterval(() => { void persistSnapshot() }, 60_000)
+    return () => clearInterval(interval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, scenes, projectId])
+
+  async function restoreSnapshot(snapshotId: string) {
+    if (!confirm('이 버전으로 되돌릴까요? 현재 변경사항은 새 스냅샷으로 보관됩니다.')) return
+    // 먼저 현재 상태를 스냅샷으로 보관 (롤백 전 상태 보존)
+    await persistSnapshot('롤백 직전')
+    try {
+      const r = await fetch(`/api/scene-editor/snapshots/${snapshotId}`)
+      const j = await r.json()
+      if (!r.ok) { alert('복원 실패: ' + (j.error ?? r.statusText)); return }
+      const restored = j.snapshot?.scenes_json
+      if (!Array.isArray(restored)) { alert('스냅샷 형식 오류'); return }
+      setScenes(restored as any)
+      saveToLocal(projectId, restored as any)
+      lastSnapshotJsonRef.current = JSON.stringify(restored)
+      setSnapshotsOpen(false)
+    } catch (e) {
+      alert('복원 실패: ' + (e instanceof Error ? e.message : String(e)))
+    }
+  }
+
+  async function deleteSnapshot(snapshotId: string) {
+    if (!confirm('이 스냅샷을 삭제할까요?')) return
+    try {
+      await fetch(`/api/scene-editor/snapshots/${snapshotId}`, { method: 'DELETE' })
+      await loadSnapshots()
+    } catch {}
+  }
 
   const updateContent = useCallback((id: string, val: string) => {
     setScenes(prev => prev.map(s => s.id === id ? { ...s, content: val } : s))
@@ -1072,6 +1142,106 @@ export default function SceneEditorPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* 버전 (스냅샷 롤백) */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setSnapshotsOpen(o => !o)}
+              className="flex items-center gap-2 transition-all"
+              style={{
+                padding: '7px 12px', borderRadius: 'var(--r-md)',
+                fontSize: 12, fontWeight: 500,
+                background: snapshotsOpen ? 'var(--bg-3)' : 'transparent',
+                color: 'var(--ink-2)',
+                border: '1px solid var(--line-strong)',
+              }}
+              title="버전 히스토리 (60초 자동 스냅샷 + 수동 저장)"
+            >
+              <History size={13} /> 버전 {snapshots.length > 0 && `(${snapshots.length})`}
+              {savingSnapshot && <Loader2 size={11} className="animate-spin" style={{ color: 'var(--accent)' }} />}
+            </button>
+            {snapshotsOpen && (
+              <div
+                style={{
+                  position: 'absolute', top: 'calc(100% + 6px)', right: 0,
+                  width: 320, maxHeight: 420,
+                  background: 'var(--bg)',
+                  border: '1px solid var(--line)',
+                  borderRadius: 'var(--r-md)',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                  overflow: 'hidden',
+                  zIndex: 50,
+                  display: 'flex', flexDirection: 'column',
+                }}
+              >
+                <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>버전 히스토리</span>
+                  <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>· 60초 자동</span>
+                  <span style={{ flex: 1 }} />
+                  <button
+                    onClick={() => { void persistSnapshot('수동 저장') }}
+                    disabled={savingSnapshot}
+                    style={{
+                      padding: '3px 8px', borderRadius: 4, fontSize: 11,
+                      background: 'var(--accent-soft)', color: 'var(--accent)',
+                      border: '1px solid var(--accent-line)',
+                    }}
+                    title="현재 상태를 버전으로 저장"
+                  >+ 저장</button>
+                </div>
+                <div style={{ overflowY: 'auto', flex: 1 }}>
+                  {snapshotsLoading ? (
+                    <div style={{ padding: 16, fontSize: 11, color: 'var(--ink-4)', textAlign: 'center' }}>
+                      <Loader2 size={12} className="animate-spin inline-block" /> 불러오는 중...
+                    </div>
+                  ) : snapshots.length === 0 ? (
+                    <div style={{ padding: 16, fontSize: 11, color: 'var(--ink-5)', textAlign: 'center', fontStyle: 'italic' }}>
+                      아직 저장된 버전이 없어요.
+                    </div>
+                  ) : (
+                    snapshots.map(s => {
+                      const t = new Date(s.created_at)
+                      const ts = `${t.getMonth() + 1}/${t.getDate()} ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`
+                      return (
+                        <div
+                          key={s.id}
+                          className="flex items-center"
+                          style={{
+                            padding: '8px 12px', gap: 8,
+                            borderBottom: '1px solid var(--line)',
+                          }}
+                        >
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="mono" style={{ fontSize: 11, color: 'var(--ink)', fontWeight: 600 }}>{ts}</div>
+                            <div style={{ fontSize: 10, color: 'var(--ink-4)' }}>
+                              {s.sceneCount}개 씬 {s.note ? `· ${s.note}` : ''}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => void restoreSnapshot(s.id)}
+                            style={{
+                              padding: '3px 8px', borderRadius: 4, fontSize: 10, fontWeight: 500,
+                              background: 'var(--accent-soft)', color: 'var(--accent)',
+                              border: '1px solid var(--accent-line)',
+                            }}
+                            title="이 버전으로 롤백"
+                          >복원</button>
+                          <button
+                            onClick={() => void deleteSnapshot(s.id)}
+                            style={{
+                              padding: '3px 6px', borderRadius: 4, fontSize: 10,
+                              background: 'transparent', color: 'var(--danger)',
+                              border: '1px solid transparent',
+                            }}
+                            title="이 버전 삭제"
+                          >✕</button>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
           <button
             onClick={resetFromScript}
             disabled={classifying || loading || extracting}
