@@ -2148,7 +2148,7 @@ function GeneratePanel({
               }
 
               // 씬의 캐릭터 변동사항 (character_variations: {seed_id: '의상/상태 텍스트'})
-              const variationsMap = ((active as any).character_variations ?? {}) as Record<string, string>
+              const variationsMap = ((scene as any).character_variations ?? {}) as Record<string, string>
               const block = withDesc.map(p => {
                 const label = p.cat === 'character' ? '인물' : p.cat === 'space' ? '공간' : p.cat === 'object' ? '오브제' : '기타'
                 const v = (variationsMap[p.id] ?? '').trim()
@@ -2177,10 +2177,10 @@ function GeneratePanel({
             <Plus size={10} /> 루트 프롬프트 합치기
           </button>
           {/* I2V 모드 — 소스 T2I의 베이스 프롬프트 가져오기 */}
-          {genType === 'i2v' && selectedIds[0] && (() => {
-            const src = candidates.find(o => o.id === selectedIds[0])
+          {type === 'i2v' && selectedOutputId && (() => {
+            const src = recentOutputs.find(o => o.id === selectedOutputId)
             if (!src || src.type !== 't2i') return null
-            const meta = attempts.find(a => a.id === src.attempt_id)
+            const meta = recentAttempts.find(a => a.id === src.attempt_id)
             const basePrompt = (meta?.prompt ?? '').trim()
             if (!basePrompt) return null
             return (
@@ -2189,10 +2189,9 @@ function GeneratePanel({
                 title={`소스 T2I의 원본 프롬프트를 textarea에 주입합니다.\n— ${basePrompt.slice(0, 120)}…`}
                 onClick={() => {
                   const block = `[베이스 이미지 프롬프트]\n${basePrompt}`
-                  const cur = genPromptDraft.trim()
+                  const cur = promptDraft.trim()
                   const merged = cur ? `${cur}\n\n${block}` : block
-                  setGenPromptDraft(merged)
-                  setPromptUserEdited(true)
+                  onPromptChange(merged)
                 }}
                 style={{
                   padding: '3px 8px', borderRadius: 'var(--r-sm)',
