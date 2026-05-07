@@ -331,8 +331,8 @@ export default function ReviewPage() {
               {(() => {
                 const all = [...filteredGrouped.approved, ...filteredGrouped.revise, ...filteredGrouped.removed]
                   .sort((a, b) => {
-                    const ta = a.decision?.created_at ?? a.created_at
-                    const tb = b.decision?.created_at ?? b.created_at
+                    const ta = a.decision?.created_at ?? ''
+                    const tb = b.decision?.created_at ?? ''
                     return tb.localeCompare(ta)
                   })
                 if (all.length === 0) {
@@ -362,9 +362,13 @@ export default function ReviewPage() {
                         decision === 'revise_requested' ? '수정요청' :
                         decision === 'removed' ? '제거' : '?'
                       const isVideo = c.type === 'i2v' || c.type === 'lipsync'
-                      const ts = c.decision?.created_at ?? c.created_at
-                      const t = new Date(ts)
-                      const timeStr = `${t.getMonth() + 1}/${t.getDate()} ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`
+                      const ts = c.decision?.created_at ?? ''
+                      const timeStr = ts
+                        ? (() => {
+                            const t = new Date(ts)
+                            return `${t.getMonth() + 1}/${t.getDate()} ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`
+                          })()
+                        : ''
                       return (
                         <div
                           key={c.id}
