@@ -317,59 +317,182 @@ export default function ReviewPage() {
               )}
             </section>
 
-            {/* 이미 결정된 것 — 3열 컴팩트 */}
+            {/* 결정 기록 — 통합 타임라인 (시인성 개선: 한 줄 카드, 색상 좌측 보더) */}
             <section>
               <div className="flex items-center" style={{ gap: 8, marginBottom: 12 }}>
                 <CheckCircle2 size={14} style={{ color: 'var(--ink-3)' }} />
                 <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--ink-2)' }}>결정 기록</h2>
+                <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>
+                  · 승인 {filteredGrouped.approved.length} · 수정 {filteredGrouped.revise.length} · 제거 {filteredGrouped.removed.length}
+                </span>
+                <span style={{ flex: 1 }} />
+                <span style={{ fontSize: 10, color: 'var(--ink-5)' }}>최근순 정렬</span>
               </div>
-              <div
-                className="grid"
-                style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}
-              >
-                {(['revise', 'approved', 'removed'] as const).map(k => {
-                  const col = COLUMNS.find(x => x.key === k)!
-                  const Icon = col.icon
-                  const list = filteredGrouped[k]
-                  const accentColor = k === 'approved' ? 'var(--ok)'
-                                     : k === 'revise' ? 'var(--accent)'
-                                     : 'var(--danger)'
+              {(() => {
+                const all = [...filteredGrouped.approved, ...filteredGrouped.revise, ...filteredGrouped.removed]
+                  .sort((a, b) => {
+                    const ta = a.decision?.created_at ?? a.created_at
+                    const tb = b.decision?.created_at ?? b.created_at
+                    return tb.localeCompare(ta)
+                  })
+                if (all.length === 0) {
                   return (
-                    <div
-                      key={k}
-                      style={{
-                        background: 'var(--bg-2)',
-                        border: '1px solid var(--line)',
-                        borderTop: `3px solid ${accentColor}`,
-                        borderRadius: 'var(--r-md)',
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <div className="flex items-center justify-between" style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
-                        <div className="flex items-center" style={{ gap: 6 }}>
-                          <Icon size={12} style={{ color: accentColor }} />
-                          <span style={{ fontSize: 12, fontWeight: 600 }}>{col.label}</span>
-                        </div>
-                        <Pill variant={col.variant}>{list.length}</Pill>
-                      </div>
-                      <div className="flex flex-col" style={{ padding: 8, gap: 6, maxHeight: 480, overflowY: 'auto' }}>
-                        {list.length === 0 ? (
-                          <div style={{ fontSize: 11, color: 'var(--ink-4)', textAlign: 'center', padding: 16 }}>없음</div>
-                        ) : list.map(c => (
-                          <ReviewCard
-                            key={c.id}
-                            c={c}
-                            busy={busyId === c.id}
-                            compact={true}
-                            onOpen={() => router.push(`/project/${projectId}/workspace?scene=${c.scene_id}`)}
-                            onDecide={(d) => quickDecide(c, d)}
-                          />
-                        ))}
-                      </div>
+                    <div className="empty" style={{ padding: 32, textAlign: 'center', fontSize: 12, color: 'var(--ink-4)' }}>
+                      아직 결정한 항목이 없어요.
                     </div>
                   )
-                })}
-              </div>
+                }
+                return (
+                  <div
+                    style={{
+                      maxHeight: 540, overflowY: 'auto',
+                      border: '1px solid var(--line)',
+                      borderRadius: 'var(--r-md)',
+                      background: 'var(--bg-2)',
+                    }}
+                  >
+                    {all.map((c, idx) => {
+                      const decision = c.decision?.decision_type
+                      const accentColor =
+                        decision === 'approved' ? 'var(--ok)' :
+                        decision === 'revise_requested' ? 'var(--accent)' :
+                        decision === 'removed' ? 'var(--danger)' : 'var(--line)'
+                      const decLabel =
+                        decision === 'approved' ? '승인' :
+                        decision === 'revise_requested' ? '수정요청' :
+                        decision === 'removed' ? '제거' : '?'
+                      const isVideo = c.type === 'i2v' || c.type === 'lipsync'
+                      const ts = c.decision?.created_at ?? c.created_at
+                      const t = new Date(ts)
+                      const timeStr = `${t.getMonth() + 1}/${t.getDate()} ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`
+                      return (
+                        <div
+                          key={c.id}
+                          onClick={() => router.push(`/project/${projectId}/workspace?scene=${c.scene_id}`)}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '4px 72px 1fr auto',
+                            gap: 10,
+                            padding: '8px 10px 8px 0',
+                            borderBottom: idx < all.length - 1 ? '1px solid var(--line)' : 'none',
+                            cursor: 'pointer',
+                            background: 'transparent',
+                            transition: 'background 0.12s',
+                            opacity: decision === 'removed' ? 0.7 : 1,
+                          }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--bg-3)' }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                        >
+                          {/* 색상 좌측 보더 */}
+                          <div style={{ width: 4, background: accentColor }} />
+                          {/* 썸네일 */}
+                          <div
+                            style={{
+                              width: 72, aspectRatio: '16/9',
+                              borderRadius: 'var(--r-sm)',
+                              overflow: 'hidden',
+                              background: 'var(--bg-3)',
+                              flexShrink: 0,
+                            }}
+                          >
+                            {c.url ? (
+                              isVideo
+                                ? <video src={c.url} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                : <img src={c.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : null}
+                          </div>
+                          {/* 정보 */}
+                          <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3, justifyContent: 'center' }}>
+                            <div className="flex items-center" style={{ gap: 6 }}>
+                              <span
+                                className="mono"
+                                style={{
+                                  padding: '1px 6px', borderRadius: 3,
+                                  fontSize: 10, fontWeight: 700,
+                                  background: 'var(--bg-3)', color: 'var(--accent)',
+                                }}
+                              >{c.scene_number}</span>
+                              <span
+                                style={{
+                                  fontSize: 10, fontWeight: 600,
+                                  color: 'var(--ink-3)',
+                                  textTransform: 'uppercase',
+                                }}
+                              >{c.type}</span>
+                              <span style={{ fontSize: 11, color: 'var(--ink-2)', minWidth: 0 }} className="truncate" title={c.scene_title}>
+                                {c.scene_title || '(제목 없음)'}
+                              </span>
+                            </div>
+                            {(c.decision?.comment || c.feedback || (c.decision?.reason_tags && c.decision.reason_tags.length > 0)) && (
+                              <div className="flex items-center flex-wrap" style={{ gap: 4, fontSize: 10, color: 'var(--ink-4)' }}>
+                                {c.decision?.reason_tags?.map(t => (
+                                  <span
+                                    key={t}
+                                    style={{
+                                      padding: '0 5px', borderRadius: 3,
+                                      background: 'var(--bg-3)', color: 'var(--ink-3)',
+                                      fontSize: 9,
+                                    }}
+                                  >{t}</span>
+                                ))}
+                                {(c.decision?.comment || c.feedback) && (
+                                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {c.decision?.comment || c.feedback}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          {/* 우측: 결정 + 시간 + 액션 */}
+                          <div className="flex items-center" style={{ gap: 6, paddingLeft: 6 }}>
+                            <span
+                              style={{
+                                padding: '2px 8px', borderRadius: 999,
+                                fontSize: 10, fontWeight: 700,
+                                background: accentColor, color: '#fff',
+                              }}
+                            >{decLabel}</span>
+                            <span style={{ fontSize: 10, color: 'var(--ink-5)', minWidth: 56, textAlign: 'right' }} className="mono">{timeStr}</span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); quickDecide(c, 'approved') }}
+                              title="승인으로 변경 (A)"
+                              style={{
+                                padding: '3px 6px', borderRadius: 3,
+                                background: decision === 'approved' ? 'var(--ok)' : 'transparent',
+                                color: decision === 'approved' ? '#fff' : 'var(--ok)',
+                                border: `1px solid ${decision === 'approved' ? 'var(--ok)' : 'var(--ok-soft)'}`,
+                                fontSize: 10,
+                              }}
+                            ><CheckCircle2 size={10} /></button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); quickDecide(c, 'revise_requested') }}
+                              title="수정요청으로 변경 (R)"
+                              style={{
+                                padding: '3px 6px', borderRadius: 3,
+                                background: decision === 'revise_requested' ? 'var(--accent)' : 'transparent',
+                                color: decision === 'revise_requested' ? '#fff' : 'var(--accent)',
+                                border: `1px solid ${decision === 'revise_requested' ? 'var(--accent)' : 'var(--accent-line)'}`,
+                                fontSize: 10,
+                              }}
+                            ><RotateCcw size={10} /></button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); quickDecide(c, 'removed') }}
+                              title="제거로 변경 (X)"
+                              style={{
+                                padding: '3px 6px', borderRadius: 3,
+                                background: decision === 'removed' ? 'var(--danger)' : 'transparent',
+                                color: decision === 'removed' ? '#fff' : 'var(--danger)',
+                                border: `1px solid ${decision === 'removed' ? 'var(--danger)' : 'var(--danger-soft)'}`,
+                                fontSize: 10,
+                              }}
+                            ><Trash2 size={10} /></button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
             </section>
           </>
         )}

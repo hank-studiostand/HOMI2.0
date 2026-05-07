@@ -118,7 +118,7 @@ export default function WorkspacePage() {
   const [decisionNote, setDecisionNote] = useState('')
 
   // ── Generate 탭 상태 ──────────────────────────────
-  const [centerTab, setCenterTab] = useState<'results' | 'generate'>('results')
+  const [centerTab, setCenterTab] = useState<'results' | 'generate'>('generate')
   const [genPromptDraft, setGenPromptDraft] = useState('')
 
   const [genType, setGenType] = useState<'t2i' | 'i2v'>('t2i')
@@ -919,18 +919,6 @@ export default function WorkspacePage() {
             {/* Tab 토글 */}
             <div className="flex items-center" style={{ gap: 4 }}>
               <button
-                onClick={() => setCenterTab('results')}
-                style={{
-                  padding: '5px 12px',
-                  borderRadius: 'var(--r-md)',
-                  fontSize: 12, fontWeight: 600,
-                  background: centerTab === 'results' ? 'var(--bg-3)' : 'transparent',
-                  color: centerTab === 'results' ? 'var(--ink)' : 'var(--ink-3)',
-                }}
-              >
-                결과
-              </button>
-              <button
                 onClick={() => setCenterTab('generate')}
                 style={{
                   padding: '5px 12px',
@@ -942,6 +930,18 @@ export default function WorkspacePage() {
               >
                 <Sparkles size={11} style={{ display: 'inline', marginRight: 4 }} />
                 생성
+              </button>
+              <button
+                onClick={() => setCenterTab('results')}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: 'var(--r-md)',
+                  fontSize: 12, fontWeight: 600,
+                  background: centerTab === 'results' ? 'var(--bg-3)' : 'transparent',
+                  color: centerTab === 'results' ? 'var(--ink)' : 'var(--ink-3)',
+                }}
+              >
+                결과
               </button>
             </div>
             <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>

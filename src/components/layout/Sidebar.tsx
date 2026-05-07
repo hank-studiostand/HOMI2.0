@@ -40,7 +40,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'STRUCTURE',
     items: [
-      { href: 'asset-make',  label: '에셋 메이킹',          icon: Sparkles, badge: 'NEW' },
+      { href: 'asset-make',  label: '에셋 메이킹',          icon: Sparkles },
       { href: 'root-assets', label: '루트 에셋',             icon: Package },
       { href: 'scenes',      label: '씬 분류 (Shot Board)', icon: Layers },
       { href: 'assets',      label: '에셋 라이브러리',       icon: FolderOpen },
@@ -49,18 +49,18 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'GENERATION',
     items: [
-      { href: 'workspace', label: 'Shot Workspace',     icon: Frame, badge: 'NEW' },
+      { href: 'workspace', label: 'Shot Workspace',     icon: Frame },
       { href: 't2i',       label: '이미지 라이브러리',   icon: ImageIcon },
       { href: 'i2v',       label: '영상 라이브러리',     icon: Video },
       { href: 'lipsync',   label: '립싱크',             icon: Mic },
-      { href: 't2v',       label: 'T2V',                icon: Clapperboard, badge: '개발중' },
+      { href: 't2v',       label: 'T2V',                icon: Clapperboard },
     ],
   },
   {
     label: 'REVIEW',
     items: [
-      { href: 'review',  label: 'Review & Decision',     icon: CheckCircle2, badge: 'NEW' },
-      { href: 'version', label: 'Version & Provenance',  icon: GitBranch,    badge: 'NEW' },
+      { href: 'review',  label: 'Review & Decision',     icon: CheckCircle2 },
+      { href: 'version', label: 'Version & Provenance',  icon: GitBranch },
     ],
   },
   {

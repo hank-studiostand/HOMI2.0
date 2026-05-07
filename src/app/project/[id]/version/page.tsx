@@ -49,14 +49,14 @@ export default function VersionPage() {
     })()
   }, [projectId, supabase])
 
-  useEffect(() => {
-    if (!activeSceneId) return
+  // 데이터 로드 — realtime 변경에서도 재호출
+  const reloadScene = async (sceneId: string) => {
     setLoadingScene(true)
-    void (async () => {
+    try {
       const [{ data: pv }, { data: atts }, { data: decRows }] = await Promise.all([
-        supabase.from('prompt_versions').select('id, version_label, content, is_current, created_at').eq('scene_id', activeSceneId).order('created_at', { ascending: true }),
-        supabase.from('prompt_attempts').select('id, scene_id, type, engine, prompt, status, created_at, outputs:attempt_outputs(id, url, archived, satisfaction_score, asset:assets(url))').eq('scene_id', activeSceneId).order('created_at', { ascending: true }),
-        supabase.from('shot_decisions').select('output_id, decision_type, created_at').eq('scene_id', activeSceneId).order('created_at', { ascending: false }),
+        supabase.from('prompt_versions').select('id, version_label, content, is_current, created_at').eq('scene_id', sceneId).order('created_at', { ascending: true }),
+        supabase.from('prompt_attempts').select('id, scene_id, type, engine, prompt, status, created_at, outputs:attempt_outputs(id, url, archived, satisfaction_score, asset:assets(url))').eq('scene_id', sceneId).order('created_at', { ascending: true }),
+        supabase.from('shot_decisions').select('output_id, decision_type, created_at').eq('scene_id', sceneId).order('created_at', { ascending: false }),
       ])
       const versionsList = (pv ?? []) as VersionRow[]
       setVersions(versionsList)
@@ -81,9 +81,24 @@ export default function VersionPage() {
         }
       })
       setAttempts(attemptsList)
+    } finally {
       setLoadingScene(false)
-    })()
-  }, [activeSceneId, supabase])
+    }
+  }
+
+  useEffect(() => {
+    if (!activeSceneId) return
+    void reloadScene(activeSceneId)
+    // Realtime — 워크스페이스/리뷰에서 변경되면 자동 새로고침
+    const ch = supabase.channel(`version-page:${activeSceneId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'prompt_attempts', filter: `scene_id=eq.${activeSceneId}` }, () => reloadScene(activeSceneId))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attempt_outputs' }, () => reloadScene(activeSceneId))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shot_decisions', filter: `scene_id=eq.${activeSceneId}` }, () => reloadScene(activeSceneId))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'prompt_versions', filter: `scene_id=eq.${activeSceneId}` }, () => reloadScene(activeSceneId))
+      .subscribe()
+    return () => { void supabase.removeChannel(ch) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSceneId])
 
   const layout = useMemo(() => {
     if (versions.length === 0 && attempts.length === 0) return null
