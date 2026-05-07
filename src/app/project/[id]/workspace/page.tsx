@@ -150,14 +150,25 @@ export default function WorkspacePage() {
     })
   }
 
-  // I2V 모드 진입 시 — 명시적으로 첫 T2I 결과를 소스로 자동 선택 (visible)
-  // 사용자가 다른 카드 클릭하면 selectedIds가 변경되어 즉시 source가 바뀜.
+  // I2V 모드 진입 시 — 첫 T2I 결과를 소스로 자동 선택 (한 번만, 사용자 해제 후 outputs 변동에도 다시 선택하지 않음)
+  const i2vAutoSelDoneRef = useRef(false)
   useEffect(() => {
-    if (genType !== 'i2v') return
+    if (genType !== 'i2v') {
+      i2vAutoSelDoneRef.current = false
+      return
+    }
+    if (i2vAutoSelDoneRef.current) return
     setSelectedIds(prev => {
-      if (prev.length > 0) return prev
+      if (prev.length > 0) {
+        i2vAutoSelDoneRef.current = true
+        return prev
+      }
       const firstT2I = outputs.find(o => o.type === 't2i' && !!o.url && !o.archived)
-      return firstT2I ? [firstT2I.id] : []
+      if (firstT2I) {
+        i2vAutoSelDoneRef.current = true
+        return [firstT2I.id]
+      }
+      return prev
     })
   }, [genType, outputs])
   const [genRatio, setGenRatio] = useState<string>('16:9')
@@ -990,8 +1001,8 @@ export default function WorkspacePage() {
             selectedOutputId={selectedIds[0] ?? null}
             onJumpToResults={() => setCenterTab('results')}
             onSelectOutput={(id) => setSelectedIds(prev =>
-              // I2V 모드에서는 토글 끄지 않고 무조건 swap (소스 항상 1개 유지)
-              genType === 'i2v' ? [id] : (prev[0] === id ? [] : [id])
+              // 같은 컷 다시 클릭하면 해제, 다른 컷 클릭하면 swap (T2I/I2V 동일)
+              prev[0] === id ? [] : [id]
             )}
             onZoomOutput={(id) => {
               const list = candidates.filter(o => o.url) as Array<{ id: string; url: string; engine?: string; type?: string; prompt?: string }>
@@ -2165,6 +2176,37 @@ function GeneratePanel({
           >
             <Plus size={10} /> 루트 프롬프트 합치기
           </button>
+          {/* I2V 모드 — 소스 T2I의 베이스 프롬프트 가져오기 */}
+          {genType === 'i2v' && selectedIds[0] && (() => {
+            const src = candidates.find(o => o.id === selectedIds[0])
+            if (!src || src.type !== 't2i') return null
+            const meta = attempts.find(a => a.id === src.attempt_id)
+            const basePrompt = (meta?.prompt ?? '').trim()
+            if (!basePrompt) return null
+            return (
+              <button
+                type="button"
+                title={`소스 T2I의 원본 프롬프트를 textarea에 주입합니다.\n— ${basePrompt.slice(0, 120)}…`}
+                onClick={() => {
+                  const block = `[베이스 이미지 프롬프트]\n${basePrompt}`
+                  const cur = genPromptDraft.trim()
+                  const merged = cur ? `${cur}\n\n${block}` : block
+                  setGenPromptDraft(merged)
+                  setPromptUserEdited(true)
+                }}
+                style={{
+                  padding: '3px 8px', borderRadius: 'var(--r-sm)',
+                  fontSize: 10, fontWeight: 600,
+                  background: 'var(--info-soft, var(--accent-soft))',
+                  color: 'var(--info, var(--accent))',
+                  border: '1px solid var(--info, var(--accent-line))',
+                  display: 'inline-flex', alignItems: 'center', gap: 3,
+                }}
+              >
+                <ImageIcon size={10} /> 베이스 프롬프트
+              </button>
+            )
+          })()}
           <span style={{ flex: 1 }} />
           {/* 프롬프트 히스토리 툴바 */}
           <div
@@ -2745,20 +2787,20 @@ function InlineResultCard({
         </div>
       )}
 
-      {/* 호버 시 퀵 액션 오버레이 */}
+      {/* 호버 시 퀵 액션 오버레이 — 클릭은 통과시킴 (선택 가능), 내부 버튼만 stopPropagation */}
       {!isPlaceholder && hover && (
         <div
-          onClick={(e) => e.stopPropagation()}
           style={{
             position: 'absolute', inset: 0,
             background: 'linear-gradient(180deg, rgba(0,0,0,0.05) 30%, rgba(0,0,0,0.65) 100%)',
             display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
             padding: 8, gap: 6,
+            pointerEvents: 'none',
           }}
         >
           {/* 확대/편집 버튼 (우상단) */}
           {(onZoom || onEdit) && (
-            <div className="flex justify-end" style={{ gap: 4 }}>
+            <div className="flex justify-end" style={{ gap: 4, pointerEvents: 'auto' }}>
               {onEdit && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onEdit() }}
@@ -2790,7 +2832,7 @@ function InlineResultCard({
             </div>
           )}
           {/* 별점 + OK/Revise/Remove (그룹) */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, pointerEvents: 'auto' }}>
           {/* 별점 */}
           <div className="flex items-center justify-center" style={{ gap: 2 }}>
             {[1, 2, 3, 4, 5].map(n => (
