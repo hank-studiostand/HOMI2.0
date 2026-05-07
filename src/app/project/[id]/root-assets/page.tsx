@@ -162,8 +162,37 @@ function RootAssetCard({
         <div style={{ padding: 12 }}>
           {isEditing ? (
             <div className="flex flex-col" style={{ gap: 6, marginBottom: 8 }}>
+              {/* 카테고리 변경 — 잘못 분류된 시드를 올바른 카테고리로 옮길 수 있음 */}
+              <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: 2 }}>
+                카테고리
+              </label>
+              <div className="flex flex-wrap" style={{ gap: 4 }}>
+                {CATEGORIES.map(c => {
+                  const Icon = c.icon
+                  const active = seed.category === c.key
+                  return (
+                    <button
+                      key={c.key}
+                      type="button"
+                      onClick={() => { void onUpdate(seed.id, { category: c.key }) }}
+                      title={`${c.label}로 이동`}
+                      style={{
+                        padding: '4px 9px', borderRadius: 'var(--r-sm)',
+                        fontSize: 11, fontWeight: 500,
+                        background: active ? c.color : 'var(--bg)',
+                        color: active ? '#fff' : 'var(--ink-2)',
+                        border: `1px solid ${active ? c.color : 'var(--line)'}`,
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                        cursor: active ? 'default' : 'pointer',
+                      }}
+                    >
+                      <Icon size={11} /> {c.label}
+                    </button>
+                  )
+                })}
+              </div>
               <input value={name} onChange={e => setName(e.target.value)} placeholder="이름"
-                style={{ padding: '6px 10px', background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13, color: 'var(--ink)', outline: 'none' }} />
+                style={{ padding: '6px 10px', background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', fontSize: 13, color: 'var(--ink)', outline: 'none', marginTop: 4 }} />
               <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: 2 }}>
                 {seed.category === 'character' ? '캐릭터 프롬프트' : seed.category === 'space' ? '공간 프롬프트' : seed.category === 'object' ? '오브제 프롬프트' : '설명'}
               </label>

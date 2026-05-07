@@ -89,9 +89,14 @@ export default function ProjectMembersModal({ projectId, open, onClose }: Props)
         setInviteOk(`${inviteEmail} — 가입자라 바로 멤버로 추가했어요`)
         fetchMembers()
       } else {
-        setInviteOk(j.emailSent
-          ? `${inviteEmail} 으로 초대 메일을 보냈어요`
-          : `${inviteEmail} — 초대 등록 (메일 발송은 SMTP 설정 필요)`)
+        const via = j.emailVia === 'resend' ? 'Resend' : j.emailVia === 'supabase' ? 'Supabase SMTP' : ''
+        if (j.emailSent) {
+          setInviteOk(`${inviteEmail} 으로 초대 메일을 보냈어요${via ? ` (${via})` : ''}`)
+        } else {
+          const reason = j.emailError ? `\n사유: ${j.emailError}` : ''
+          const linkLine = j.inviteUrl ? `\n수동 공유 링크: ${j.inviteUrl}` : ''
+          setErr(`초대 등록은 됐지만 메일 발송에 실패했어요.${reason}${linkLine}`)
+        }
         fetchPending()
       }
       setInviteEmail('')
