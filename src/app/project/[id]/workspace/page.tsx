@@ -124,6 +124,14 @@ export default function WorkspacePage() {
   const [genType, setGenType] = useState<'t2i' | 'i2v'>('t2i')
   const [genEngine, setGenEngine] = useState<string>('nanobanana')
 
+  // 타입 전환 시 엔진이 해당 타입 목록에 없으면 기본값으로 자동 변경
+  useEffect(() => {
+    const t2iValues = ['nanobanana', 'gpt-image', 'midjourney', 'stable-diffusion', 'dalle']
+    const i2vValues = ['seedance-2', 'kling3']
+    if (genType === 't2i' && !t2iValues.includes(genEngine)) setGenEngine('nanobanana')
+    if (genType === 'i2v' && !i2vValues.includes(genEngine)) setGenEngine('seedance-2')
+  }, [genType, genEngine])
+
   // 엔진별 프롬프트 프리셋 — localStorage에 보관 (key: engine_preset_<engine>)
   const [enginePresetOpen, setEnginePresetOpen] = useState(false)
   const [enginePresets, setEnginePresets] = useState<Record<string, string>>({})
@@ -1207,7 +1215,7 @@ export default function WorkspacePage() {
                   const url = genType === 't2i' ? '/api/t2i/generate' : '/api/i2v/generate'
                   const body = genType === 't2i'
                     ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, projectId, sceneId: active.id, aspectRatio: genRatio, referenceImageUrls: refUrls.length > 0 ? refUrls : undefined }
-                    : { attemptId: attempt.id, prompt: fullPrompt, sourceImageUrl: sourceUrlForI2V, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio }
+                    : { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, sourceImageUrl: sourceUrlForI2V, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio }
                   const r = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1933,9 +1941,8 @@ const T2I_ENGINES = [
   { value: 'dalle',            label: 'DALL-E 3' },
 ]
 const I2V_ENGINES = [
-  { value: 'kling',     label: 'Kling I2V' },
-  { value: 'kling3',    label: 'Kling 3.0' },
   { value: 'seedance-2',label: 'Seedance 2.0' },
+  { value: 'kling3',    label: 'Kling 3.0' },
 ]
 const RATIOS = ['16:9', '9:16', '1:1', '4:3', '21:9']
 
@@ -4094,7 +4101,11 @@ function EnginePresetModal({
         </div>
 
         <div style={{ padding: '12px 18px', borderTop: '1px solid var(--line)', display: 'flex', gap: 8, justifyContent: 'space-between' }}>
-          <button onClick={handleReset} className="btn" title="이 엔진 프리셋 비우기">
+          <button
+            onClick={handleReset}
+            className="btn"
+            title="이 엔진 프리셋 비우기"
+          >
             초기화
           </button>
           <div style={{ display: 'flex', gap: 8 }}>
