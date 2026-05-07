@@ -39,12 +39,34 @@ export default function VersionPage() {
   const [loading, setLoading] = useState(true)
   const [loadingScene, setLoadingScene] = useState(false)
 
+  // 씬별 attempt 카운트 — 사이드바에 점 표시하기 위함
+  const [attemptCountByScene, setAttemptCountByScene] = useState<Record<string, number>>({})
+
   useEffect(() => {
     void (async () => {
       const { data } = await supabase.from('scenes').select('id, scene_number, title').eq('project_id', projectId)
       const list = sortScenesByNumber((data ?? []) as any) as SceneRow[]
       setScenes(list)
-      if (list.length > 0) setActiveSceneId(list[0].id)
+      // attempt 카운트 가져오기 — 데이터 있는 씬을 우선 선택
+      const sceneIds = list.map(s => s.id)
+      let firstWithData: string | null = null
+      const counts: Record<string, number> = {}
+      if (sceneIds.length > 0) {
+        const { data: counts0 } = await supabase
+          .from('prompt_attempts')
+          .select('scene_id')
+          .in('scene_id', sceneIds)
+        for (const row of (counts0 ?? []) as any[]) {
+          counts[row.scene_id] = (counts[row.scene_id] ?? 0) + 1
+        }
+        // 자연 정렬 순서로 첫 데이터 있는 씬
+        for (const s of list) {
+          if ((counts[s.id] ?? 0) > 0) { firstWithData = s.id; break }
+        }
+      }
+      setAttemptCountByScene(counts)
+      if (firstWithData) setActiveSceneId(firstWithData)
+      else if (list.length > 0) setActiveSceneId(list[0].id)
       setLoading(false)
     })()
   }, [projectId, supabase])
@@ -193,6 +215,18 @@ export default function VersionPage() {
                     {s.scene_number}
                   </span>
                   <span className="truncate flex-1">{s.title || '(제목 없음)'}</span>
+                  {(attemptCountByScene[s.id] ?? 0) > 0 && (
+                    <span
+                      style={{
+                        fontSize: 9, fontWeight: 700,
+                        padding: '1px 6px', borderRadius: 999,
+                        background: active ? 'var(--accent)' : 'var(--accent-soft)',
+                        color: active ? '#fff' : 'var(--accent)',
+                      }}
+                    >
+                      {attemptCountByScene[s.id]}
+                    </span>
+                  )}
                 </button>
               )
             })}
@@ -239,11 +273,34 @@ export default function VersionPage() {
             <div className="empty" style={{ padding: 64, textAlign: 'center' }}>
               <GitBranch size={28} style={{ color: 'var(--ink-4)' }} />
               <p style={{ marginTop: 8, fontSize: 13, color: 'var(--ink-3)' }}>
-                아직 프롬프트 버전이나 시도가 없어요
+                이 씬에는 아직 프롬프트 버전이나 시도가 없어요
               </p>
               <p style={{ marginTop: 4, fontSize: 11, color: 'var(--ink-4)' }}>
-                워크스페이스에서 마스터 프롬프트를 만들고 생성을 시작하면 여기에 계보가 그려져요.
+                워크스페이스에서 생성을 시작하면 여기에 노드 그래프가 그려져요.
               </p>
+              {Object.values(attemptCountByScene).some(n => n > 0) && (
+                <div style={{ marginTop: 16, fontSize: 11, color: 'var(--ink-3)' }}>
+                  데이터가 있는 다른 씬:{' '}
+                  {scenes.filter(s => (attemptCountByScene[s.id] ?? 0) > 0).slice(0, 5).map(s => (
+                    <button
+                      key={s.id}
+                      onClick={() => setActiveSceneId(s.id)}
+                      className="mono"
+                      style={{
+                        margin: '0 4px',
+                        padding: '2px 8px',
+                        borderRadius: 'var(--r-sm)',
+                        background: 'var(--accent-soft)',
+                        color: 'var(--accent)',
+                        border: '1px solid var(--accent-line)',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {s.scene_number} ({attemptCountByScene[s.id]})
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           ) : (
             <div style={{ position: 'relative', width: layout.totalWidth, minHeight: layout.totalHeight }}>
