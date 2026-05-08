@@ -2203,7 +2203,7 @@ function GeneratePanel({
   currentPrompt: string
   promptDraft: string
   onPromptChange: (v: string) => void
-  type: 't2i' | 'i2v'
+  type: 't2i' | 'i2v' | 't2v'
   onTypeChange: (v: 't2i' | 'i2v' | 't2v') => void
   engine: string
   onEngineChange: (v: string) => void
