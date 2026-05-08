@@ -1261,13 +1261,15 @@ export default function WorkspacePage() {
                 : null
               const sourceUrlForI2V = explicitSource?.url ?? null
               const ownerSceneId = active.id
+              // t2v 결과는 DB에 'i2v' 타입으로 저장되므로 placeholder/attempt도 동일 매핑
+              const dbType: 't2i' | 'i2v' = genType === 't2i' ? 't2i' : 'i2v'
               const placeholders: OutputItem[] = Array.from({ length: placeholderCount }, (_, i) => ({
                 id: `temp_${Date.now()}_${i}_${Math.random().toString(36).slice(2,7)}`,
                 attempt_id: tempAttempt,
                 scene_id: ownerSceneId,             // 어느 씬의 큐인지 명시
                 url: null, archived: false,
                 satisfaction_score: null, feedback: '',
-                type: genType, engine: genEngine,
+                type: dbType, engine: genEngine,
                 created_at: new Date().toISOString(),
                 decision: null,
               }))
@@ -1277,7 +1279,7 @@ export default function WorkspacePage() {
               const { data: attempt, error } = await supabase
                 .from('prompt_attempts')
                 .insert({
-                  scene_id: active.id, type: genType, engine: genEngine,
+                  scene_id: active.id, type: dbType, engine: genEngine,
                   prompt: fullPrompt, status: 'generating', depth: 0,
                 })
                 .select().single()
