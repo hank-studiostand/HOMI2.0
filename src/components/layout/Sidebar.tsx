@@ -54,9 +54,8 @@ const NAV_GROUPS: NavGroup[] = [
       {
         href: 'workspace', label: 'Shot Workspace', icon: Frame,
         children: [
-          { href: 'workspace', label: 'T2I — 이미지', query: 'type=t2i' },
-          { href: 'workspace', label: 'I2V — 영상',   query: 'type=i2v' },
-          { href: 'workspace', label: 'T2V — 영상',   query: 'type=t2v' },
+          { href: 'workspace', label: '이미지 생성', query: 'type=t2i' },
+          { href: 'workspace', label: '영상 생성',   query: 'type=i2v' },
         ],
       },
       { href: 't2i',     label: '이미지 라이브러리', icon: ImageIcon },

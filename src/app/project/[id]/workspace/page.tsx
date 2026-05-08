@@ -790,7 +790,10 @@ export default function WorkspacePage() {
   }
 
   return (
-    <div className="workspace-grid h-full grid overflow-hidden">
+    <div className="workspace-grid h-full grid overflow-hidden" style={{
+      gridTemplateColumns: `var(--ws-left, 320px) 1fr ${commentsOpen ? 'var(--ws-right, 340px)' : '40px'}`,
+      transition: 'grid-template-columns 0.18s ease',
+    }}>
       {/* LEFT — Shot Brief */}
       <aside style={{ borderRight: '1px solid var(--line)', overflow: 'auto', background: 'var(--bg-1)' }}>
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
@@ -3255,24 +3258,31 @@ function GeneratePanel({
       <div>
         <div className="field-label">유형</div>
         <div className="flex" style={{ gap: 6, marginBottom: 14 }}>
-          {(['t2i', 'i2v', 't2v'] as const).map(t => (
-            <button
-              key={t}
-              onClick={() => onTypeChange(t)}
-              style={{
-                flex: 1,
-                padding: '8px 10px',
-                borderRadius: 'var(--r-md)',
-                fontSize: 12, fontWeight: 500,
-                background: type === t ? 'var(--accent-soft)' : 'var(--bg-2)',
-                color: type === t ? 'var(--accent)' : 'var(--ink-3)',
-                border: `1px solid ${type === t ? 'var(--accent-line)' : 'var(--line)'}`,
-              }}
-              title={t === 't2i' ? '텍스트 → 이미지' : t === 'i2v' ? '이미지(소스) → 영상' : '텍스트(+레퍼런스) → 영상'}
-            >
-              {t === 't2i' ? 'T2I — 이미지' : t === 'i2v' ? 'I2V — 영상' : 'T2V — 영상'}
-            </button>
-          ))}
+          {(['t2i', 'video'] as const).map(t => {
+            const active = (t === 't2i' && type === 't2i') || (t === 'video' && (type === 'i2v' || type === 't2v'))
+            return (
+              <button
+                key={t}
+                onClick={() => {
+                  if (t === 't2i') onTypeChange('t2i')
+                  // 영상 생성: 기본 i2v로. 단, 이미 t2v면 유지
+                  else if (type !== 'i2v' && type !== 't2v') onTypeChange('i2v')
+                }}
+                style={{
+                  flex: 1,
+                  padding: '8px 10px',
+                  borderRadius: 'var(--r-md)',
+                  fontSize: 12, fontWeight: 500,
+                  background: active ? 'var(--accent-soft)' : 'var(--bg-2)',
+                  color: active ? 'var(--accent)' : 'var(--ink-3)',
+                  border: `1px solid ${active ? 'var(--accent-line)' : 'var(--line)'}`,
+                }}
+                title={t === 't2i' ? '텍스트 → 이미지' : '이미지(소스) → 영상 또는 텍스트(+레퍼런스) → 영상'}
+              >
+                {t === 't2i' ? '이미지 생성' : '영상 생성'}
+              </button>
+            )
+          })}
         </div>
 
         <div className="flex items-center" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
