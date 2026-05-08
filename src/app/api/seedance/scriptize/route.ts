@@ -19,7 +19,7 @@ interface RootAssetRow {
   name: string
   category: 'character' | 'space' | 'object' | 'misc' | string
   description?: string | null
-  url?: string | null
+  reference_image_urls?: string[] | null
 }
 
 interface SceneRow {
@@ -121,7 +121,7 @@ ${scriptText}
       token: `@image${n}`,
       rootAssetId: a.id,
       name: a.name,
-      url: a.url ?? null,
+      url: (a.reference_image_urls && a.reference_image_urls[0]) ?? null,
       category: a.category,
       description: a.description ?? '',
     })
@@ -199,13 +199,13 @@ export async function POST(req: NextRequest) {
 
     const supabase = createAdminClient()
 
-    // 1) 루트에셋
+    // 1) 루트에셋 (테이블명: root_asset_seeds, 대표 이미지는 reference_image_urls[0])
     const { data: rawAssets, error: aErr } = await supabase
-      .from('root_assets')
-      .select('id, name, category, description, url')
+      .from('root_asset_seeds')
+      .select('id, name, category, description, reference_image_urls')
       .eq('project_id', projectId)
     if (aErr) {
-      return NextResponse.json({ error: 'root_assets 조회 실패: ' + aErr.message }, { status: 500 })
+      return NextResponse.json({ error: 'root_asset_seeds 조회 실패: ' + aErr.message }, { status: 500 })
     }
     const assets: RootAssetRow[] = (rawAssets ?? []) as RootAssetRow[]
 
