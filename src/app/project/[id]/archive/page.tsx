@@ -81,20 +81,14 @@ export default function ArchivePage() {
   }
 
   async function downloadAsset(url: string, name: string) {
-    try {
-      const res = await fetch(url)
-      const blob = await res.blob()
-      const blobUrl = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = blobUrl
-      link.download = name
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(blobUrl)
-    } catch (e) {
-      console.error('다운로드 실패:', e)
-    }
+    // 서버 프록시 — Content-Disposition: attachment 으로 강제 다운로드 (CORS 우회)
+    const proxyUrl = `/api/download?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`
+    const link = document.createElement('a')
+    link.href = proxyUrl
+    link.download = name
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
   }
 
   async function downloadSelected() {

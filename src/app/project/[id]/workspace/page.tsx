@@ -1125,6 +1125,28 @@ export default function WorkspacePage() {
               }
               await loadSceneData(activeId)
             }}
+            onSavePromptToDb={async (content) => {
+              const trimmed = (content ?? '').trim()
+              if (!trimmed || !active?.id) return
+              // 같은 내용이 이미 current로 있으면 스킵
+              const currentContent = (currentPrompt?.content ?? '').trim()
+              if (currentContent === trimmed) return
+              const nextLabel = `V${versions.length + 1}`
+              if (versions.some(v => v.is_current)) {
+                await supabase.from('prompt_versions')
+                  .update({ is_current: false })
+                  .eq('scene_id', active.id).eq('is_current', true)
+              }
+              const { error } = await supabase.from('prompt_versions').insert({
+                scene_id: active.id,
+                version_label: nextLabel,
+                content: trimmed,
+                is_current: true,
+                created_by: meId,
+              })
+              if (error) throw new Error(error.message)
+              await loadSceneData(active.id)
+            }}
             optimizing={optimizing}
             onOptimize={async () => {
               if (!active) return
@@ -2053,9 +2075,9 @@ function SeedanceRefAdder({
           border: '1px dashed var(--accent-line)',
           background: 'transparent',
         }}
-        title={`@imageN 자산 추가 (보유 ${rootAssets.length}개)`}
+        title={`레퍼런스 추가 (보유 ${rootAssets.length}개) — @imageN 토큰 자동 부여`}
       >
-        + @ 자산 추가 ({rootAssets.length})
+        + 레퍼런스 추가 ({rootAssets.length})
       </button>
       {open && (
         <div
@@ -2154,6 +2176,7 @@ function GeneratePanel({
   recentOutputs, recentAttempts, selectedOutputId, onJumpToResults,
   onSelectOutput, onZoomOutput, onEditOutput, onQuickDecide, onQuickRate, onQuickReset,
   optimizing, onOptimize,
+  onSavePromptToDb,
 }: {
   sceneId: string
   projectId: string
@@ -2199,6 +2222,7 @@ function GeneratePanel({
   onQuickReset?: (id: string) => Promise<void> | void
   optimizing: boolean
   onOptimize: () => Promise<void> | void
+  onSavePromptToDb?: (content: string) => Promise<void> | void
 }) {
   const engineOptions = type === 't2i' ? T2I_ENGINES : I2V_ENGINES
 
@@ -2310,9 +2334,12 @@ function GeneratePanel({
     return () => clearTimeout(t)
   }, [promptDraft, projectId, sceneId, type])
 
-  function pushHistoryNow() {
+  const [savingToDb, setSavingToDb] = useState(false)
+  const [saveBlinkOk, setSaveBlinkOk] = useState(false)
+  async function pushHistoryNow() {
     const draft = promptDraft.trim()
     if (!draft) return
+    // 1) 로컬 히스토리 (localStorage)
     setHistory(prev => {
       const last = prev[prev.length - 1]
       if (draft === last) return prev
@@ -2321,6 +2348,20 @@ function GeneratePanel({
       return next
     })
     setCursor(-1)
+    // 2) DB 저장 (prompt_versions)
+    if (onSavePromptToDb) {
+      setSavingToDb(true)
+      try {
+        await onSavePromptToDb(draft)
+        setSaveBlinkOk(true)
+        setTimeout(() => setSaveBlinkOk(false), 1400)
+      } catch (e) {
+        console.error('[prompt save] DB 저장 실패', e)
+        alert('프롬프트 DB 저장 실패: ' + (e instanceof Error ? e.message : String(e)))
+      } finally {
+        setSavingToDb(false)
+      }
+    }
   }
 
   function navHistory(dir: -1 | 1) {
@@ -2554,19 +2595,27 @@ function GeneratePanel({
               <Redo2 size={12} />
             </button>
             <button
-              onClick={pushHistoryNow}
-              title="현재 프롬프트 즉시 저장"
+              onClick={() => void pushHistoryNow()}
+              disabled={savingToDb}
+              title="현재 프롬프트를 히스토리 + DB(prompt_versions)에 즉시 저장"
               style={{
                 padding: '3px 6px', borderRadius: 'var(--r-sm)',
-                color: 'var(--accent)',
-                background: 'var(--accent-soft)',
-                border: '1px solid var(--accent-line)',
+                color: saveBlinkOk ? 'var(--success)' : 'var(--accent)',
+                background: saveBlinkOk ? 'var(--success-soft, var(--accent-soft))' : 'var(--accent-soft)',
+                border: `1px solid ${saveBlinkOk ? 'var(--success)' : 'var(--accent-line)'}`,
                 marginLeft: 2,
                 display: 'flex', alignItems: 'center', gap: 3,
                 fontSize: 10, fontWeight: 600,
+                opacity: savingToDb ? 0.6 : 1,
+                transition: 'all 0.18s',
               }}
             >
-              <Save size={11} /> 저장
+              {savingToDb
+                ? <Loader2 size={11} className="animate-spin" />
+                : saveBlinkOk
+                  ? <Check size={11} />
+                  : <Save size={11} />}
+              {savingToDb ? '저장 중...' : saveBlinkOk ? '저장됨' : '저장'}
             </button>
           </div>
         </div>
@@ -4379,7 +4428,7 @@ function EnginePresetModal({
                   fontSize: 12, fontWeight: 500,
                   background: isActive ? 'var(--bg-2)' : 'transparent',
                   color: isActive ? 'var(--ink)' : 'var(--ink-3)',
-        
+                  borderBottom: isActive ? '2px solid var(--accent)' : '2px solid transparent',
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                 }}
               >

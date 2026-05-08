@@ -39,21 +39,16 @@ export default function ImageLightbox({ items, initialIndex = 0, onClose }: Imag
   const cur = items[idx]
   const hasMany = items.length > 1
 
-  async function handleDownload() {
-    try {
-      const res = await fetch(cur.url)
-      const blob = await res.blob()
-      const objUrl = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = objUrl
-      a.download = cur.name || `image_${idx + 1}.${cur.isVideo ? 'mp4' : 'png'}`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      setTimeout(() => URL.revokeObjectURL(objUrl), 1000)
-    } catch (e) {
-      console.error('[Lightbox] download failed', e)
-    }
+  function handleDownload() {
+    // 서버 프록시로 요청 — Content-Disposition: attachment 으로 강제 다운로드 (CORS 우회)
+    const filename = cur.name || `${cur.isVideo ? 'video' : 'image'}_${idx + 1}.${cur.isVideo ? 'mp4' : 'png'}`
+    const proxyUrl = `/api/download?url=${encodeURIComponent(cur.url)}&name=${encodeURIComponent(filename)}`
+    const a = document.createElement('a')
+    a.href = proxyUrl
+    a.download = filename  // 힌트 (서버가 Content-Disposition으로 우선 결정)
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
   }
 
   return (
