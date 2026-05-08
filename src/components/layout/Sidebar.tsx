@@ -17,6 +17,8 @@ interface NavItem {
   label: string
   icon: IconCmp
   badge?: string
+  // 부모 항목일 때 — 활성 경로일 때 children 자동 노출
+  children?: { href: string; label: string; query?: string }[]
 }
 interface NavGroup {
   label: string
@@ -49,11 +51,17 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'GENERATION',
     items: [
-      { href: 'workspace', label: 'Shot Workspace',     icon: Frame },
-      { href: 't2i',       label: '이미지 라이브러리',   icon: ImageIcon },
-      { href: 'i2v',       label: '영상 라이브러리',     icon: Video },
-      { href: 'lipsync',   label: '립싱크',             icon: Mic },
-      { href: 't2v',       label: 'T2V',                icon: Clapperboard },
+      {
+        href: 'workspace', label: 'Shot Workspace', icon: Frame,
+        children: [
+          { href: 'workspace', label: 'T2I — 이미지', query: 'type=t2i' },
+          { href: 'workspace', label: 'I2V — 영상',   query: 'type=i2v' },
+          { href: 'workspace', label: 'T2V — 영상',   query: 'type=t2v' },
+        ],
+      },
+      { href: 't2i',     label: '이미지 라이브러리', icon: ImageIcon },
+      { href: 'i2v',     label: '영상 라이브러리',   icon: Video },
+      { href: 'lipsync', label: '립싱크',           icon: Mic },
     ],
   },
   {
@@ -132,50 +140,94 @@ export default function Sidebar({ projectId, projectName }: SidebarProps) {
               const active = pathname.includes(`/${item.href}`)
               const Icon = item.icon
               return (
-                <Link
-                  key={item.href}
-                  href={`/project/${projectId}/${item.href}`}
-                  className={cn('relative flex items-center gap-2.5 w-full text-left transition-colors')}
-                  style={{
-                    padding: '7px 10px',
-                    borderRadius: 'var(--r-md)',
-                    color: active ? 'var(--ink)' : 'var(--ink-3)',
-                    background: active ? 'var(--bg-3)' : 'transparent',
-                    fontSize: 13,
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--bg-3)'
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent'
-                  }}
-                >
-                  {active && (
-                    <span
-                      style={{
-                        position: 'absolute', left: -8, top: 8, bottom: 8,
-                        width: 2, background: 'var(--accent)', borderRadius: '0 2px 2px 0',
-                      }}
-                    />
+                <div key={item.href}>
+                  <Link
+                    href={`/project/${projectId}/${item.href}`}
+                    className={cn('relative flex items-center gap-2.5 w-full text-left transition-colors')}
+                    style={{
+                      padding: '7px 10px',
+                      borderRadius: 'var(--r-md)',
+                      color: active ? 'var(--ink)' : 'var(--ink-3)',
+                      background: active ? 'var(--bg-3)' : 'transparent',
+                      fontSize: 13,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--bg-3)'
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent'
+                    }}
+                  >
+                    {active && (
+                      <span
+                        style={{
+                          position: 'absolute', left: -8, top: 8, bottom: 8,
+                          width: 2, background: 'var(--accent)', borderRadius: '0 2px 2px 0',
+                        }}
+                      />
+                    )}
+                    <Icon size={16} style={{ opacity: 0.85, flexShrink: 0 }} />
+                    <span className="flex-1 truncate">{item.label}</span>
+                    {item.badge && (
+                      <span
+                        style={{
+                          marginLeft: 'auto',
+                          padding: '1px 6px',
+                          borderRadius: 999,
+                          fontSize: 10, fontWeight: 600,
+                          background: 'var(--accent-soft)',
+                          color: 'var(--accent-2)',
+                          fontVariantNumeric: 'tabular-nums',
+                        }}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                  </Link>
+
+                  {/* 자식 항목 — 부모가 활성일 때만 노출 */}
+                  {active && item.children && item.children.length > 0 && (
+                    <div style={{ marginLeft: 22, marginTop: 2, marginBottom: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      {item.children.map((child) => {
+                        const childHref = `/project/${projectId}/${child.href}${child.query ? `?${child.query}` : ''}`
+                        // 현재 path + query에서 type= 비교 (간단 매칭)
+                        const typeMatch = (() => {
+                          if (typeof window === 'undefined') return false
+                          if (!child.query) return false
+                          const q = new URLSearchParams(window.location.search)
+                          const want = new URLSearchParams(child.query)
+                          for (const [k, v] of want.entries()) {
+                            if (q.get(k) !== v) return false
+                          }
+                          return true
+                        })()
+                        return (
+                          <Link
+                            key={child.label}
+                            href={childHref}
+                            style={{
+                              padding: '5px 10px',
+                              borderRadius: 'var(--r-sm)',
+                              color: typeMatch ? 'var(--accent)' : 'var(--ink-4)',
+                              background: typeMatch ? 'var(--accent-soft)' : 'transparent',
+                              fontSize: 12,
+                              fontWeight: typeMatch ? 600 : 400,
+                              transition: 'all 0.12s',
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!typeMatch) (e.currentTarget as HTMLElement).style.background = 'var(--bg-3)'
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!typeMatch) (e.currentTarget as HTMLElement).style.background = 'transparent'
+                            }}
+                          >
+                            {child.label}
+                          </Link>
+                        )
+                      })}
+                    </div>
                   )}
-                  <Icon size={16} style={{ opacity: 0.85, flexShrink: 0 }} />
-                  <span className="flex-1 truncate">{item.label}</span>
-                  {item.badge && (
-                    <span
-                      style={{
-                        marginLeft: 'auto',
-                        padding: '1px 6px',
-                        borderRadius: 999,
-                        fontSize: 10, fontWeight: 600,
-                        background: 'var(--accent-soft)',
-                        color: 'var(--accent-2)',
-                        fontVariantNumeric: 'tabular-nums',
-                      }}
-                    >
-                      {item.badge}
-                    </span>
-                  )}
-                </Link>
+                </div>
               )
             })}
           </div>
@@ -212,17 +264,15 @@ export default function Sidebar({ projectId, projectName }: SidebarProps) {
         >
           <Settings size={14} />
         </Link>
-
-        <form action="/api/auth/signout" method="post">
-          <button
-            type="submit"
-            className="rounded"
-            style={{ padding: 6, color: 'var(--ink-3)' }}
-            title="로그아웃"
-          >
-            <LogOut size={14} />
-          </button>
-        </form>
+        <button
+          className="rounded"
+          style={{ padding: 6, color: 'var(--ink-3)' }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-3)')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          title="로그아웃"
+        >
+          <LogOut size={14} />
+        </button>
       </div>
     </aside>
   )

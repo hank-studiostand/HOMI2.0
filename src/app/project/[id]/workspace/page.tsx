@@ -23,10 +23,10 @@ import ImageLightbox, { type LightboxItem } from '@/components/ui/ImageLightbox'
 const PROMPT_HISTORY_MAX = 30
 const PROMPT_HISTORY_DEBOUNCE_MS = 1500
 
-function promptHistoryKey(projectId: string, sceneId: string, type: 't2i' | 'i2v') {
+function promptHistoryKey(projectId: string, sceneId: string, type: 't2i' | 'i2v' | 't2v') {
   return `workspace:promptHistory:${projectId}:${sceneId}:${type}`
 }
-function loadPromptHistory(projectId: string, sceneId: string, type: 't2i' | 'i2v'): string[] {
+function loadPromptHistory(projectId: string, sceneId: string, type: 't2i' | 'i2v' | 't2v'): string[] {
   if (typeof window === 'undefined') return []
   try {
     const raw = window.localStorage.getItem(promptHistoryKey(projectId, sceneId, type))
@@ -35,7 +35,7 @@ function loadPromptHistory(projectId: string, sceneId: string, type: 't2i' | 'i2
   } catch {}
   return []
 }
-function savePromptHistory(projectId: string, sceneId: string, type: 't2i' | 'i2v', list: string[]) {
+function savePromptHistory(projectId: string, sceneId: string, type: 't2i' | 'i2v' | 't2v', list: string[]) {
   if (typeof window === 'undefined') return
   try {
     window.localStorage.setItem(promptHistoryKey(projectId, sceneId, type), JSON.stringify(list.slice(-PROMPT_HISTORY_MAX)))
@@ -121,15 +121,17 @@ export default function WorkspacePage() {
   const [centerTab, setCenterTab] = useState<'results' | 'generate'>('generate')
   const [genPromptDraft, setGenPromptDraft] = useState('')
 
-  const [genType, setGenType] = useState<'t2i' | 'i2v'>('t2i')
+  const [genType, setGenType] = useState<'t2i' | 'i2v' | 't2v'>('t2i')
   const [genEngine, setGenEngine] = useState<string>('nanobanana')
 
   // 타입 전환 시 엔진이 해당 타입 목록에 없으면 기본값으로 자동 변경
   useEffect(() => {
     const t2iValues = ['nanobanana', 'gpt-image', 'midjourney']
     const i2vValues = ['seedance-2', 'kling3']
+    const t2vValues = ['seedance-2', 'kling3', 'kling3-omni']
     if (genType === 't2i' && !t2iValues.includes(genEngine)) setGenEngine('nanobanana')
     if (genType === 'i2v' && !i2vValues.includes(genEngine)) setGenEngine('seedance-2')
+    if (genType === 't2v' && !t2vValues.includes(genEngine)) setGenEngine('seedance-2')
   }, [genType, genEngine])
 
   // 엔진별 프롬프트 프리셋 — localStorage에 보관 (key: engine_preset_<engine>)
@@ -182,6 +184,7 @@ export default function WorkspacePage() {
 
     // 탭/엔진/길이/프롬프트/refs 일괄 적용
     if (tabParam === 'i2v') setGenType('i2v')
+    if (tabParam === 't2v') setGenType('t2v')
     if (engineParam) setGenEngine(engineParam)
     if (typeof payload.prompt === 'string' && payload.prompt) {
       setGenPromptDraft(payload.prompt)
@@ -1233,9 +1236,11 @@ export default function WorkspacePage() {
               }
 
               // I2V는 source image 필수 — 단, R2V 모드(seedance-2 + 참조 자산 1개 이상)는 source 없이도 가능
+              // T2V는 source image 불필요 (텍스트 + 옵션 레퍼런스만)
               const explicitSrcId = selectedIds[0]
               const explicitSrc = explicitSrcId ? filteredCandidates.find(o => o.id === explicitSrcId) : null
               const isR2VMode = genType === 'i2v' && genEngine === 'seedance-2' && seedanceRefs.length > 0
+              const isT2VMode = genType === 't2v'
               if (genType === 'i2v' && explicitSrc && (explicitSrc.type === 'i2v' || explicitSrc.type === 'lipsync')) {
                 alert('I2V 영상 생성의 소스는 이미지(T2I)여야 해요.\n현재 선택은 영상이라 사용할 수 없어요. T2I 결과를 클릭해 소스로 선택해주세요.')
                 return
@@ -1297,16 +1302,26 @@ export default function WorkspacePage() {
 
               void (async () => {
                 try {
-                  const url = genType === 't2i' ? '/api/t2i/generate' : '/api/i2v/generate'
+                  const url = genType === 't2i'
+                    ? '/api/t2i/generate'
+                    : isT2VMode
+                      ? '/api/t2v/generate'
+                      : '/api/i2v/generate'
                   // R2V 모드 (seedance + refs) — sourceImage 불필요, 대신 referenceImageUrls 전달
                   const r2vRefUrls = isR2VMode
                     ? seedanceRefs.map(r => r.url).filter((u): u is string => !!u)
                     : []
+                  // T2V도 seedanceRefs가 있으면 reference로 전달 (R2V 모드 동일 패턴)
+                  const t2vRefUrls = isT2VMode
+                    ? seedanceRefs.map(r => r.url).filter((u): u is string => !!u)
+                    : []
                   const body = genType === 't2i'
                     ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, projectId, sceneId: active.id, aspectRatio: genRatio, referenceImageUrls: refUrls.length > 0 ? refUrls : undefined }
-                    : isR2VMode
-                      ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, mode: 'r2v', referenceImageUrls: r2vRefUrls, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution }
-                      : { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, sourceImageUrl: sourceUrlForI2V, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution }
+                    : isT2VMode
+                      ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution, referenceImageUrls: t2vRefUrls.length > 0 ? t2vRefUrls : undefined }
+                      : isR2VMode
+                        ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, mode: 'r2v', referenceImageUrls: r2vRefUrls, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution }
+                        : { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, sourceImageUrl: sourceUrlForI2V, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution }
                   console.log('[generate] 요청', { url, body: { ...body, prompt: (body as any).prompt?.slice(0, 80) + '...' } })
                   const r = await fetch(url, {
                     method: 'POST',
@@ -2042,6 +2057,11 @@ const I2V_ENGINES = [
   { value: 'seedance-2',label: 'Seedance 2.0' },
   { value: 'kling3',    label: 'Kling 3.0' },
 ]
+const T2V_ENGINES = [
+  { value: 'seedance-2',  label: 'Seedance 2.0' },
+  { value: 'kling3',      label: 'Kling 3.0' },
+  { value: 'kling3-omni', label: 'Kling 3.0 Omni' },
+]
 const RATIOS = ['16:9', '9:16', '1:1', '4:3', '21:9']
 
 // ── @ 자산 추가 드롭다운 (Seedance R2V 전용) ─────────────────────────────────
@@ -2184,7 +2204,7 @@ function GeneratePanel({
   promptDraft: string
   onPromptChange: (v: string) => void
   type: 't2i' | 'i2v'
-  onTypeChange: (v: 't2i' | 'i2v') => void
+  onTypeChange: (v: 't2i' | 'i2v' | 't2v') => void
   engine: string
   onEngineChange: (v: string) => void
   enginePresetActive?: boolean
@@ -2224,7 +2244,7 @@ function GeneratePanel({
   onOptimize: () => Promise<void> | void
   onSavePromptToDb?: (content: string) => Promise<void> | void
 }) {
-  const engineOptions = type === 't2i' ? T2I_ENGINES : I2V_ENGINES
+  const engineOptions = type === 't2i' ? T2I_ENGINES : type === 't2v' ? T2V_ENGINES : I2V_ENGINES
 
   // ─── 최근 결과 페이지네이션 (씬별 — sessionStorage로 GeneratePanel 리마운트 후에도 유지) ──
   const RECENT_PAGE_STEP = 8
@@ -2621,7 +2641,7 @@ function GeneratePanel({
         </div>
 
         {/* ── Seedance R2V 참조 자산 chips (sceneEditor 에서 prefill 받았거나 @로 추가됨) ── */}
-        {type === 'i2v' && (seedanceRefs?.length ?? 0) > 0 && (
+        {(type === 'i2v' || type === 't2v') && (seedanceRefs?.length ?? 0) > 0 && (
           <div style={{
             margin: '10px 0',
             padding: '10px 12px',
@@ -2681,7 +2701,7 @@ function GeneratePanel({
         )}
 
         {/* ── @ 자산 추가 — i2v + seedance에서만 ── */}
-        {type === 'i2v' && engine === 'seedance-2' && (
+        {(type === 'i2v' || type === 't2v') && engine === 'seedance-2' && (
           <SeedanceRefAdder
             currentRefs={seedanceRefs ?? []}
             rootAssets={rootAssets}
@@ -2928,21 +2948,22 @@ function GeneratePanel({
       <div>
         <div className="field-label">유형</div>
         <div className="flex" style={{ gap: 6, marginBottom: 14 }}>
-          {(['t2i', 'i2v'] as const).map(t => (
+          {(['t2i', 'i2v', 't2v'] as const).map(t => (
             <button
               key={t}
               onClick={() => onTypeChange(t)}
               style={{
                 flex: 1,
-                padding: '8px 12px',
+                padding: '8px 10px',
                 borderRadius: 'var(--r-md)',
                 fontSize: 12, fontWeight: 500,
                 background: type === t ? 'var(--accent-soft)' : 'var(--bg-2)',
                 color: type === t ? 'var(--accent)' : 'var(--ink-3)',
                 border: `1px solid ${type === t ? 'var(--accent-line)' : 'var(--line)'}`,
               }}
+              title={t === 't2i' ? '텍스트 → 이미지' : t === 'i2v' ? '이미지(소스) → 영상' : '텍스트(+레퍼런스) → 영상'}
             >
-              {t === 't2i' ? 'T2I — 이미지' : 'I2V — 영상'}
+              {t === 't2i' ? 'T2I — 이미지' : t === 'i2v' ? 'I2V — 영상' : 'T2V — 영상'}
             </button>
           ))}
         </div>
@@ -2987,7 +3008,7 @@ function GeneratePanel({
           ))}
         </div>
 
-        {type === 'i2v' && onDurationChange && (
+        {(type === 'i2v' || type === 't2v') && onDurationChange && (
           <>
             <div className="field-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span>영상 길이</span>
@@ -3034,7 +3055,7 @@ function GeneratePanel({
           ))}
         </div>
 
-        {type === 'i2v' && onResolutionChange && (
+        {(type === 'i2v' || type === 't2v') && onResolutionChange && (
           <>
             <div className="field-label">해상도</div>
             <div className="flex" style={{ gap: 6, marginBottom: 18 }}>
