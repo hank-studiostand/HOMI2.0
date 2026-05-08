@@ -24,6 +24,14 @@ interface SceneLite {
   title: string
 }
 
+interface MemberLite {
+  user_id: string
+  email: string
+  display_name: string
+  avatar_url: string
+  role_label?: string
+}
+
 const AVATAR_COLORS = ['#f97316','#0284c7','#7c3aed','#22c55e','#ec4899','#eab308','#dc2626','#14b8a6']
 function colorFor(id: string) {
   let h = 0
@@ -46,27 +54,60 @@ function formatTime(iso: string) {
   return `${d.getMonth()+1}/${d.getDate()} ${hh}:${mm}`
 }
 
-function renderContent(content: string, sceneMap: Map<string, SceneLite>, projectId: string) {
-  const re = /#(\d+(?:-\d+){0,2})/g
-  const out: Array<{ type: 'text' | 'mention'; value: string; sceneId?: string }> = []
-  let last = 0
+function renderContent(
+  content: string,
+  sceneMap: Map<string, SceneLite>,
+  members: MemberLite[],
+  projectId: string,
+) {
+  // 씬 멘션(#)과 사용자 멘션(@) 동시 처리
+  const sceneRe = /#(\d+(?:-\d+){0,2})/g
+  const userRe = /@([\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|[A-Za-z0-9._\-가-힣]{2,})/g
+  type Tok = { start: number; end: number; type: 'scene' | 'user'; value: string; sceneId?: string }
+  const toks: Tok[] = []
   let m: RegExpExecArray | null
-  while ((m = re.exec(content)) !== null) {
-    if (m.index > last) out.push({ type: 'text', value: content.slice(last, m.index) })
-    const num = m[1]
-    const scene = sceneMap.get(num)
-    out.push({ type: scene ? 'mention' : 'text', value: m[0], sceneId: scene?.id })
-    last = m.index + m[0].length
+  while ((m = sceneRe.exec(content)) !== null) {
+    const sc = sceneMap.get(m[1])
+    if (sc) toks.push({ start: m.index, end: m.index + m[0].length, type: 'scene', value: m[0], sceneId: sc.id })
   }
-  if (last < content.length) out.push({ type: 'text', value: content.slice(last) })
+  while ((m = userRe.exec(content)) !== null) {
+    const key = m[1].toLowerCase()
+    const found = members.find(mm => mm.email.toLowerCase() === key
+      || (mm.display_name ?? '').toLowerCase() === key
+      || (mm.email.split('@')[0] ?? '').toLowerCase() === key)
+    if (found) toks.push({ start: m.index, end: m.index + m[0].length, type: 'user', value: m[0] })
+  }
+  toks.sort((a, b) => a.start - b.start)
+
+  type Seg = { type: 'text' | 'scene' | 'user'; value: string; sceneId?: string }
+  const out: Seg[] = []
+  let cursor = 0
+  for (const t of toks) {
+    if (t.start < cursor) continue
+    if (t.start > cursor) out.push({ type: 'text', value: content.slice(cursor, t.start) })
+    out.push({ type: t.type, value: t.value, sceneId: t.sceneId })
+    cursor = t.end
+  }
+  if (cursor < content.length) out.push({ type: 'text', value: content.slice(cursor) })
+
   return out.map((seg, i) => {
-    if (seg.type === 'mention' && seg.sceneId) {
+    if (seg.type === 'scene' && seg.sceneId) {
       return (
         <Link key={i} href={`/project/${projectId}/scenes#${seg.sceneId}`}
           className="inline-flex items-center px-1.5 rounded font-medium"
-          style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}>
+          style={{ background: 'var(--accent-subtle, var(--accent-soft))', color: 'var(--accent)' }}>
           {seg.value}
         </Link>
+      )
+    }
+    if (seg.type === 'user') {
+      return (
+        <span key={i}
+          className="inline-flex items-center px-1.5 rounded font-medium"
+          style={{ background: 'var(--violet-soft, var(--accent-soft))', color: 'var(--violet, var(--accent))' }}
+          title="사용자 멘션">
+          {seg.value}
+        </span>
       )
     }
     return <span key={i}>{seg.value}</span>
@@ -91,6 +132,9 @@ export default function ChatSidebar({
   const [loaded, setLoaded] = useState(false)
   const [showMentions, setShowMentions] = useState(false)
   const [mentionQuery, setMentionQuery] = useState('')
+  const [members, setMembers] = useState<MemberLite[]>([])
+  const [showUserMentions, setShowUserMentions] = useState(false)
+  const [userMentionQuery, setUserMentionQuery] = useState('')
 
   const listRef = useRef<HTMLDivElement | null>(null)
   const meRef = useRef<MeInfo | null>(null)
@@ -127,6 +171,14 @@ export default function ChatSidebar({
         .from('scenes').select('id, scene_number, title').eq('project_id', projectId).order('order_index')
       if (!mounted) return
       setScenes(sc ?? [])
+      // 멤버 목록 로드 (@멘션 dropdown용)
+      try {
+        const mr = await fetch(`/api/projects/${projectId}/members`)
+        if (mr.ok) {
+          const mj = await mr.json()
+          if (mounted) setMembers((mj.members ?? []) as MemberLite[])
+        }
+      } catch (e) { console.warn('[chat] 멤버 로드 실패', e) }
       await fetchMessages()
     })()
 
@@ -166,12 +218,21 @@ export default function ChatSidebar({
   }, [messages, open])
 
   useEffect(() => {
-    const m = /#(\d*-?\d*-?\d*)$/.exec(draft)
-    if (m && draft.length > 0) {
+    // 씬 멘션 (#) 감지
+    const sceneMatch = /#(\d*-?\d*-?\d*)$/.exec(draft)
+    if (sceneMatch && draft.length > 0) {
       setShowMentions(true)
-      setMentionQuery(m[1])
+      setMentionQuery(sceneMatch[1])
     } else {
       setShowMentions(false)
+    }
+    // 사용자 멘션 (@) 감지 — 공백/시작 직후 @
+    const userMatch = /(?:^|\s)@([\w.+\-가-힣]*)$/.exec(draft)
+    if (userMatch) {
+      setShowUserMentions(true)
+      setUserMentionQuery(userMatch[1] ?? '')
+    } else {
+      setShowUserMentions(false)
     }
   }, [draft])
 
@@ -182,10 +243,30 @@ export default function ChatSidebar({
       .slice(0, 6)
   }, [scenes, mentionQuery, showMentions])
 
+  const userMentionMatches = useMemo(() => {
+    if (!showUserMentions) return []
+    const q = userMentionQuery.toLowerCase()
+    return members
+      .filter(mm => {
+        if (!q) return true
+        return mm.email.toLowerCase().includes(q)
+          || (mm.display_name ?? '').toLowerCase().includes(q)
+          || (mm.role_label ?? '').toLowerCase().includes(q)
+      })
+      .slice(0, 6)
+  }, [members, userMentionQuery, showUserMentions])
+
   function applyMention(s: SceneLite) {
     const re = /#(\d*-?\d*-?\d*)$/
     setDraft(prev => prev.replace(re, `#${s.scene_number} `))
     setShowMentions(false)
+  }
+
+  function applyUserMention(member: MemberLite) {
+    const handle = (member.display_name?.trim() || member.email.split('@')[0] || member.email).replace(/\s+/g, '')
+    const re = /(^|\s)@([\w.+\-가-힣]*)$/
+    setDraft(prev => prev.replace(re, (_full: string, lead: string) => `${lead}@${handle} `))
+    setShowUserMentions(false)
   }
 
   async function send() {
@@ -245,9 +326,13 @@ export default function ChatSidebar({
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey && !showMentions) {
+    if (e.key === 'Enter' && !e.shiftKey && !showMentions && !showUserMentions) {
       e.preventDefault()
       void send()
+    }
+    if (e.key === 'Escape') {
+      if (showMentions) setShowMentions(false)
+      if (showUserMentions) setShowUserMentions(false)
     }
   }
 
@@ -318,7 +403,7 @@ export default function ChatSidebar({
                   </div>
                 )}
                 <div className="text-sm whitespace-pre-wrap break-words" style={{ color: 'var(--text-primary)' }}>
-                  {renderContent(msg.content, sceneMap, projectId)}
+                  {renderContent(msg.content, sceneMap, members, projectId)}
                 </div>
               </div>
             </div>
@@ -343,12 +428,49 @@ export default function ChatSidebar({
           </div>
         )}
 
+        {/* 사용자 멘션 드롭다운 (@) */}
+        {showUserMentions && userMentionMatches.length > 0 && (
+          <div className="absolute bottom-full left-0 right-0 mb-1 max-h-48 overflow-y-auto rounded shadow-md"
+            style={{ background: 'var(--surface, var(--bg))', border: '1px solid var(--border, var(--line))' }}>
+            {userMentionMatches.map(mm => {
+              const display = mm.display_name?.trim() || mm.email.split('@')[0]
+              return (
+                <button key={mm.user_id} onClick={() => applyUserMention(mm)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover-surface">
+                  <span style={{
+                    width: 18, height: 18, borderRadius: 999,
+                    background: 'var(--violet-soft, var(--accent-soft))',
+                    color: 'var(--violet, var(--accent))',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 10, fontWeight: 700,
+                  }}>
+                    {display[0]?.toUpperCase() ?? '?'}
+                  </span>
+                  <span className="font-semibold" style={{ color: 'var(--ink)' }}>
+                    @{display}
+                  </span>
+                  {mm.email && mm.email !== display && (
+                    <span className="truncate" style={{ color: 'var(--ink-4)', fontSize: 10 }}>
+                      {mm.email}
+                    </span>
+                  )}
+                  {mm.role_label && (
+                    <span className="ml-auto" style={{ fontSize: 9, color: 'var(--ink-4)' }}>
+                      {mm.role_label}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         <div className="flex items-end gap-2" style={{ padding: 10 }}>
           <textarea
             value={draft}
             onChange={e => setDraft(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="메시지... (씬 멘션 #1-1-1)"
+            placeholder="메시지... (#1-1-1 씬 / @이름 사람)"
             rows={1}
             className="flex-1 resize-none"
             style={{
