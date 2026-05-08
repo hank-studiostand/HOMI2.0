@@ -158,6 +158,42 @@ export default function WorkspacePage() {
     })
   }
 
+  // ── Seedance scriptize prefill 수신 — 진입 1회 ──────────────────────────
+  // URL: ?tab=i2v&engine=seedance-2&prefill=1&scene=<id>
+  // sessionStorage: 'seedance_prefill' = { sceneId, prompt, refs, durationSec, ... }
+  const prefillAppliedRef = useRef(false)
+  useEffect(() => {
+    if (prefillAppliedRef.current) return
+    if (typeof window === 'undefined') return
+    const tabParam    = search?.get('tab')
+    const engineParam = search?.get('engine')
+    const prefillFlag = search?.get('prefill')
+    const sceneParam  = search?.get('scene')
+    if (prefillFlag !== '1') return
+
+    let payload: any = null
+    try {
+      const raw = sessionStorage.getItem('seedance_prefill')
+      if (raw) payload = JSON.parse(raw)
+    } catch (e) { console.warn('[workspace] seedance_prefill 파싱 실패', e) }
+
+    if (!payload) return
+    prefillAppliedRef.current = true
+
+    // 탭/엔진/길이/프롬프트/refs 일괄 적용
+    if (tabParam === 'i2v') setGenType('i2v')
+    if (engineParam) setGenEngine(engineParam)
+    if (typeof payload.prompt === 'string' && payload.prompt) setGenPromptDraft(payload.prompt)
+    if (Array.isArray(payload.refs)) setSeedanceRefs(payload.refs)
+    if (typeof payload.durationSec === 'number') setGenDuration(payload.durationSec)
+    // 씬 자동 선택 (URL에 있으면 우선, 없으면 payload.sceneId)
+    const targetScene = sceneParam || payload.sceneId
+    if (targetScene) setActiveId(String(targetScene))
+
+    // 1회 소비 후 sessionStorage 비움 (새로고침으로 중복 적용 방지)
+    try { sessionStorage.removeItem('seedance_prefill') } catch {}
+  }, [search])
+
   // I2V 모드 진입 시 — 첫 T2I 결과를 소스로 자동 선택 (한 번만, 사용자 해제 후 outputs 변동에도 다시 선택하지 않음)
   const i2vAutoSelDoneRef = useRef(false)
   useEffect(() => {
@@ -181,6 +217,15 @@ export default function WorkspacePage() {
   }, [genType, outputs])
   const [genRatio, setGenRatio] = useState<string>('16:9')
   const [genDuration, setGenDuration] = useState<number>(5)   // I2V 영상 길이
+  const [genResolution, setGenResolution] = useState<'480p' | '720p' | '1080p'>('720p')
+  // Seedance scriptize prefill 결과 — 워크스페이스 I2V 탭으로 진입할 때 sessionStorage에서 받음
+  const [seedanceRefs, setSeedanceRefs] = useState<Array<{
+    token: string
+    rootAssetId: string
+    name: string
+    url: string | null
+    category: string
+  }>>([])
   const [generating, setGenerating] = useState(false)
   const [referenceAssets, setReferenceAssets] = useState<Asset[]>([])
 
@@ -992,6 +1037,10 @@ export default function WorkspacePage() {
             onRatioChange={setGenRatio}
             duration={genDuration}
             onDurationChange={setGenDuration}
+            resolution={genResolution}
+            onResolutionChange={setGenResolution}
+            seedanceRefs={seedanceRefs}
+            onSeedanceRefsChange={setSeedanceRefs}
             generating={generating}
             referenceAssets={referenceAssets}
             camera={genCamera}
@@ -1152,11 +1201,16 @@ export default function WorkspacePage() {
                 }
               }
 
-              // I2V는 source image 필수 — 없으면 막기
+              // I2V는 source image 필수 — 단, R2V 모드(seedance-2 + 참조 자산 1개 이상)는 source 없이도 가능
               const explicitSrcId = selectedIds[0]
               const explicitSrc = explicitSrcId ? filteredCandidates.find(o => o.id === explicitSrcId) : null
-              if (genType === 'i2v' && !explicitSrc?.url) {
-                alert('I2V 영상 생성에는 소스 이미지가 필요해요.\n좌측 "최근 결과"에서 T2I 이미지를 클릭해 소스로 선택하세요.')
+              const isR2VMode = genType === 'i2v' && genEngine === 'seedance-2' && seedanceRefs.length > 0
+              if (genType === 'i2v' && explicitSrc && (explicitSrc.type === 'i2v' || explicitSrc.type === 'lipsync')) {
+                alert('I2V 영상 생성의 소스는 이미지(T2I)여야 해요.\n현재 선택은 영상이라 사용할 수 없어요. T2I 결과를 클릭해 소스로 선택해주세요.')
+                return
+              }
+              if (genType === 'i2v' && !explicitSrc?.url && !isR2VMode) {
+                alert('I2V 영상 생성에는 소스 이미지가 필요해요.\n좌측 "최근 결과"에서 T2I 이미지를 클릭해 소스로 선택하세요.\n(또는 Seedance + @ 참조 자산을 추가해 R2V 모드로 생성)')
                 return
               }
 
@@ -1213,9 +1267,15 @@ export default function WorkspacePage() {
               void (async () => {
                 try {
                   const url = genType === 't2i' ? '/api/t2i/generate' : '/api/i2v/generate'
+                  // R2V 모드 (seedance + refs) — sourceImage 불필요, 대신 referenceImageUrls 전달
+                  const r2vRefUrls = isR2VMode
+                    ? seedanceRefs.map(r => r.url).filter((u): u is string => !!u)
+                    : []
                   const body = genType === 't2i'
                     ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, projectId, sceneId: active.id, aspectRatio: genRatio, referenceImageUrls: refUrls.length > 0 ? refUrls : undefined }
-                    : { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, sourceImageUrl: sourceUrlForI2V, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio }
+                    : isR2VMode
+                      ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, mode: 'r2v', referenceImageUrls: r2vRefUrls, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution }
+                      : { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, sourceImageUrl: sourceUrlForI2V, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution }
                   const r = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1944,6 +2004,119 @@ const I2V_ENGINES = [
 ]
 const RATIOS = ['16:9', '9:16', '1:1', '4:3', '21:9']
 
+// ── @ 자산 추가 드롭다운 (Seedance R2V 전용) ─────────────────────────────────
+function SeedanceRefAdder({
+  currentRefs,
+  rootAssets,
+  onAdd,
+}: {
+  currentRefs: Array<{ rootAssetId: string }>
+  rootAssets: RootAssetSeed[]
+  onAdd: (asset: { id: string; name: string; url: string | null; category: string }) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [q, setQ] = useState('')
+
+  const usedIds = new Set(currentRefs.map(r => r.rootAssetId))
+  const filtered = rootAssets.filter(a => {
+    if (usedIds.has(a.id)) return false
+    if (!q.trim()) return true
+    return a.name.toLowerCase().includes(q.toLowerCase())
+  }).slice(0, 24)
+
+  return (
+    <div style={{ position: 'relative', margin: '6px 0' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="btn"
+        style={{
+          padding: '4px 10px', fontSize: 11, fontWeight: 600,
+          color: 'var(--accent)',
+          border: '1px dashed var(--accent-line)',
+          background: 'transparent',
+        }}
+        title="@imageN 자산 추가 (자동으로 다음 번호 부여)"
+      >
+        + @ 자산 추가
+      </button>
+      {open && (
+        <div
+          style={{
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0,
+            zIndex: 50,
+            width: 320, maxHeight: 360, overflow: 'hidden',
+            background: 'var(--bg)',
+            border: '1px solid var(--line)',
+            borderRadius: 'var(--r-md)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+            display: 'flex', flexDirection: 'column',
+          }}
+        >
+          <div style={{ padding: 8, borderBottom: '1px solid var(--line)' }}>
+            <input
+              autoFocus
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              placeholder="자산 이름 검색..."
+              style={{
+                width: '100%', padding: '6px 8px',
+                background: 'var(--bg-2)', border: '1px solid var(--line)',
+                borderRadius: 'var(--r-sm)', fontSize: 12, color: 'var(--ink)',
+                outline: 'none',
+              }}
+            />
+          </div>
+          <div style={{ overflowY: 'auto', flex: 1, padding: 4 }}>
+            {filtered.length === 0 ? (
+              <div style={{ padding: 16, fontSize: 11, color: 'var(--ink-4)', textAlign: 'center' }}>
+                {rootAssets.length === 0 ? '루트 자산이 비어있어요.' : '결과 없음'}
+              </div>
+            ) : filtered.map(a => (
+              <button
+                key={a.id}
+                onClick={() => {
+                  onAdd({
+                    id: a.id, name: a.name,
+                    url: (a as any).url ?? null,
+                    category: (a as any).category ?? 'misc',
+                  })
+                  setOpen(false); setQ('')
+                }}
+                className="flex items-center"
+                style={{
+                  width: '100%', gap: 8, padding: '6px 8px',
+                  background: 'transparent', border: 'none',
+                  borderRadius: 'var(--r-sm)',
+                  cursor: 'pointer', textAlign: 'left',
+                }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg-2)'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+              >
+                {(a as any).url ? (
+                  <img src={(a as any).url} alt="" style={{ width: 28, height: 28, borderRadius: 4, objectFit: 'cover' }} />
+                ) : (
+                  <span style={{ width: 28, height: 28, borderRadius: 4, background: 'var(--bg-3)' }} />
+                )}
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: 12, color: 'var(--ink)', fontWeight: 500 }}>{a.name}</span>
+                  <span style={{ display: 'block', fontSize: 10, color: 'var(--ink-4)' }}>
+                    {(a as any).category ?? 'misc'}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+          <div style={{ padding: 6, borderTop: '1px solid var(--line)' }}>
+            <button onClick={() => setOpen(false)} className="btn" style={{ width: '100%', fontSize: 11, padding: 4 }}>
+              닫기
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function GeneratePanel({
   sceneId, projectId,
   currentPrompt, promptDraft, onPromptChange,
@@ -1951,6 +2124,8 @@ function GeneratePanel({
   engine, onEngineChange,
   enginePresetActive, onOpenEnginePreset,
   ratio, onRatioChange, duration, onDurationChange,
+  resolution, onResolutionChange,
+  seedanceRefs, onSeedanceRefsChange,
   generating, onGenerate,
   referenceAssets, camera, onCameraSelect, onCameraDeselect,
   refSel, onRefSelChange, scene,
@@ -1974,6 +2149,10 @@ function GeneratePanel({
   onRatioChange: (v: string) => void
   duration?: number
   onDurationChange?: (v: number) => void
+  resolution?: '480p' | '720p' | '1080p'
+  onResolutionChange?: (v: '480p' | '720p' | '1080p') => void
+  seedanceRefs?: Array<{ token: string; rootAssetId: string; name: string; url: string | null; category: string }>
+  onSeedanceRefsChange?: (next: Array<{ token: string; rootAssetId: string; name: string; url: string | null; category: string }>) => void
   generating: boolean
   onGenerate: () => Promise<void> | void
   referenceAssets: Asset[]
@@ -2370,6 +2549,93 @@ function GeneratePanel({
             </button>
           </div>
         </div>
+
+        {/* ── Seedance R2V 참조 자산 chips (sceneEditor 에서 prefill 받았거나 @로 추가됨) ── */}
+        {type === 'i2v' && (seedanceRefs?.length ?? 0) > 0 && (
+          <div style={{
+            margin: '10px 0',
+            padding: '10px 12px',
+            background: 'var(--accent-soft)',
+            border: '1px solid var(--accent-line)',
+            borderRadius: 'var(--r-md)',
+            display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center',
+          }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', marginRight: 4 }}>
+              R2V 참조
+            </span>
+            {(seedanceRefs ?? []).map(ref => (
+              <span
+                key={ref.token}
+                title={`${ref.token} = ${ref.category}: ${ref.name}`}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '3px 8px 3px 3px',
+                  background: 'var(--bg)',
+                  border: '1px solid var(--line-strong)',
+                  borderRadius: 999,
+                  fontSize: 11, color: 'var(--ink)',
+                }}
+              >
+                {ref.url ? (
+                  <img src={ref.url} alt={ref.name}
+                    style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover' }} />
+                ) : (
+                  <span style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--bg-3)' }} />
+                )}
+                <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontWeight: 600 }}>
+                  {ref.token}
+                </span>
+                <span style={{ color: 'var(--ink-3)' }}>{ref.name}</span>
+                <button
+                  onClick={() => {
+                    if (!onSeedanceRefsChange) return
+                    onSeedanceRefsChange((seedanceRefs ?? []).filter(r => r.token !== ref.token))
+                  }}
+                  title="이 참조 제거 (프롬프트의 토큰은 수동으로 지워주세요)"
+                  style={{
+                    width: 16, height: 16, padding: 0,
+                    border: 'none', background: 'transparent',
+                    color: 'var(--ink-4)', cursor: 'pointer',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  <X size={11} />
+                </button>
+              </span>
+            ))}
+            <span style={{ flex: 1 }} />
+            <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>
+              프롬프트의 @imageN 토큰이 위 자산을 참조해요
+            </span>
+          </div>
+        )}
+
+        {/* ── @ 자산 추가 — i2v + seedance에서만 ── */}
+        {type === 'i2v' && engine === 'seedance-2' && (
+          <SeedanceRefAdder
+            currentRefs={seedanceRefs ?? []}
+            rootAssets={rootAssets}
+            onAdd={(asset) => {
+              if (!onSeedanceRefsChange) return
+              const cur = seedanceRefs ?? []
+              if (cur.some(r => r.rootAssetId === asset.id)) return
+              const usedNums = cur.map(r => parseInt(r.token.replace('@image', ''), 10)).filter(n => !isNaN(n))
+              const nextNum = (usedNums.length ? Math.max(...usedNums) : 0) + 1
+              const nextToken = `@image${nextNum}`
+              onSeedanceRefsChange([...cur, {
+                token: nextToken,
+                rootAssetId: asset.id,
+                name: asset.name,
+                url: asset.url ?? null,
+                category: asset.category,
+              }])
+              // 프롬프트 끝에 토큰 자동 삽입
+              const cur2 = (promptDraft || '').replace(/\s+$/, '')
+              onPromptChange(cur2 ? `${cur2} ${nextToken}` : nextToken)
+            }}
+          />
+        )}
+
         <textarea
           value={promptDraft}
           onChange={(e) => onPromptChange(e.target.value)}
@@ -2653,26 +2919,27 @@ function GeneratePanel({
 
         {type === 'i2v' && onDurationChange && (
           <>
-            <div className="field-label">영상 길이</div>
-            <div className="flex" style={{ gap: 6, marginBottom: 18 }}>
-              {[5, 10, 15].map(d => (
-                <button
-                  key={d}
-                  onClick={() => onDurationChange(d)}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: 'var(--r-md)',
-                    fontSize: 11, fontWeight: 500,
-                    background: duration === d ? 'var(--accent-soft)' : 'var(--bg-3)',
-                    color: duration === d ? 'var(--accent)' : 'var(--ink-2)',
-                    border: `1px solid ${duration === d ? 'var(--accent-line)' : 'var(--line)'}`,
-                    minWidth: 56,
-                  }}
-                >
-                  {d}초
-                </button>
-              ))}
+            <div className="field-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>영상 길이</span>
+              <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontSize: 12, fontWeight: 600 }}>
+                {duration ?? 5}초
+              </span>
             </div>
+            <div style={{ marginBottom: 6 }}>
+              <input
+                type="range"
+                min={5}
+                max={15}
+                step={1}
+                value={duration ?? 5}
+                onChange={e => onDurationChange(Number(e.target.value))}
+                style={{ width: '100%', accentColor: 'var(--accent)' }}
+              />
+              <div className="flex" style={{ justifyContent: 'space-between', fontSize: 10, color: 'var(--ink-4)', marginTop: 2 }}>
+                <span>5s</span><span>10s</span><span>15s</span>
+              </div>
+            </div>
+            <div style={{ height: 12 }} />
           </>
         )}
 
@@ -2696,6 +2963,32 @@ function GeneratePanel({
             </button>
           ))}
         </div>
+
+        {type === 'i2v' && onResolutionChange && (
+          <>
+            <div className="field-label">해상도</div>
+            <div className="flex" style={{ gap: 6, marginBottom: 18 }}>
+              {(['480p', '720p', '1080p'] as const).map(r => (
+                <button
+                  key={r}
+                  onClick={() => onResolutionChange(r)}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 'var(--r-md)',
+                    fontSize: 11, fontWeight: 500,
+                    background: resolution === r ? 'var(--accent-soft)' : 'var(--bg-3)',
+                    color: resolution === r ? 'var(--accent)' : 'var(--ink-2)',
+                    border: `1px solid ${resolution === r ? 'var(--accent-line)' : 'var(--line)'}`,
+                    minWidth: 56,
+                  }}
+                  title={r === '1080p' ? '고화질 (생성 시간↑)' : r === '480p' ? '저화질 (빠름)' : '권장'}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
 
         {/* 샷 구도 */}
         <div className="field-label">샷 구도 (앵글 / 샷사이즈 / 렌즈)</div>
@@ -4065,8 +4358,7 @@ function EnginePresetModal({
                   fontSize: 12, fontWeight: 500,
                   background: isActive ? 'var(--bg-2)' : 'transparent',
                   color: isActive ? 'var(--ink)' : 'var(--ink-3)',
-                  borderBottom: isActive ? '2px solid var(--accent)' : '2px solid transparent',
-                  whiteSpace: 'nowrap',
+        
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                 }}
               >

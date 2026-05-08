@@ -150,13 +150,36 @@ export async function generateSeedanceT2V(
 }
 
 // ── I2V (이미지 → 비디오) ────────────────────────────────────────
+// Seedance가 외부 URL fetch 시 'UnsupportedImageFormat' 에러를 자주 내므로
+// 서버에서 직접 fetch → base64 data URL로 변환해서 전달.
 export async function generateSeedanceI2V(
   params: SeedanceParams & { imageUrl: string },
 ): Promise<string> {
   const model = process.env.SEEDANCE_MODEL_I2V || DEFAULT_MODEL_I2V
+
+  let imageRef = params.imageUrl
+  try {
+    const r = await fetch(params.imageUrl)
+    if (!r.ok) {
+      throw new Error(`소스 이미지 fetch 실패 (${r.status}): ${params.imageUrl.slice(0, 120)}`)
+    }
+    const ct = (r.headers.get('content-type') ?? '').toLowerCase().split(';')[0].trim()
+    if (ct.startsWith('video/') || ct.startsWith('audio/')) {
+      throw new Error(`I2V 소스는 이미지여야 합니다. 받은 형식: ${ct}`)
+    }
+    const buf = Buffer.from(await r.arrayBuffer())
+    const safeMime = (ct === 'image/png' || ct === 'image/jpeg' || ct === 'image/jpg' || ct === 'image/webp')
+      ? ct
+      : 'image/jpeg'
+    imageRef = `data:${safeMime};base64,${buf.toString('base64')}`
+    console.log(`[seedance] I2V source 변환: ${ct || 'unknown'} → ${safeMime}, ${(buf.length / 1024).toFixed(0)}KB`)
+  } catch (e) {
+    console.warn('[seedance] base64 변환 실패, URL 그대로 시도:', e instanceof Error ? e.message : e)
+  }
+
   const content: ContentPart[] = [
     { type: 'text', text: params.prompt },
-    { type: 'image_url', image_url: { url: params.imageUrl }, role: 'first_frame' },
+    { type: 'image_url', image_url: { url: imageRef }, role: 'first_frame' },
   ]
   const taskId = await createTask({
     model,

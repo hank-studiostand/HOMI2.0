@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import crypto from 'crypto'
-import { generateSeedanceI2V } from '@/lib/seedance'
+import { generateSeedanceI2V, generateSeedanceT2V } from '@/lib/seedance'
 
 // ── Kling JWT (HS256) ─────────────────────────────────────────────────────────
 function generateKlingJWT(apiKey: string, apiSecret: string): string {
@@ -104,28 +104,51 @@ export async function POST(req: NextRequest) {
     engine      = 'kling',  // 'kling' | 'kling3' | 'seedance-2'
     duration    = 5,
     aspectRatio = '16:9',
+    mode        = 'i2v',    // 'i2v' | 'r2v' (R2V은 Seedance 전용 — sourceImageUrl 없이 referenceImageUrls 사용)
+    referenceImageUrls,     // R2V 모드에서 사용
+    resolution  = '720p',
   } = await req.json()
 
-  console.log('[I2V] generate called', { attemptId, sceneId, duration, aspectRatio, hasSource: !!sourceImageUrl })
+  console.log('[I2V] generate called', {
+    attemptId, sceneId, mode, engine, duration, aspectRatio, resolution,
+    hasSource: !!sourceImageUrl,
+    refCount: Array.isArray(referenceImageUrls) ? referenceImageUrls.length : 0,
+  })
 
   const supabase = await createClient()
 
   // 기본 검증
-  if (!sourceImageUrl) {
-    await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attemptId)
-    return NextResponse.json({ error: 'sourceImageUrl is required' }, { status: 400 })
-  }
   if (!prompt?.trim()) {
     await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attemptId)
     return NextResponse.json({ error: 'prompt is required' }, { status: 400 })
   }
+  const isR2V = mode === 'r2v'
+  if (!isR2V && !sourceImageUrl) {
+    await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attemptId)
+    return NextResponse.json({ error: 'sourceImageUrl is required (또는 mode=r2v + referenceImageUrls 전달)' }, { status: 400 })
+  }
+  if (isR2V) {
+    if (engine !== 'seedance-2') {
+      await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attemptId)
+      return NextResponse.json({ error: 'R2V mode is only supported on engine=seedance-2' }, { status: 400 })
+    }
+    if (!Array.isArray(referenceImageUrls) || referenceImageUrls.length === 0) {
+      await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attemptId)
+      return NextResponse.json({ error: 'r2v requires referenceImageUrls (1+)' }, { status: 400 })
+    }
+  }
 
   try {
     let videoUrl: string
-    if (engine === 'seedance-2' || engine === 'seedance') {
+    if (isR2V) {
+      // R2V — Seedance T2V + reference_image[] (Seedance가 4장 한도)
+      videoUrl = await generateSeedanceT2V({
+        prompt, duration, aspectRatio, resolution,
+        referenceImageUrls: (referenceImageUrls as string[]).slice(0, 4),
+      })
+    } else if (engine === 'seedance-2' || engine === 'seedance') {
       videoUrl = await generateSeedanceI2V({
-        prompt, imageUrl: sourceImageUrl, duration, aspectRatio,
-        resolution: '720p',
+        prompt, imageUrl: sourceImageUrl, duration, aspectRatio, resolution,
       })
     } else if (engine === 'kling3') {
       videoUrl = await generateKlingI2V({ sourceImageUrl, prompt, duration, aspectRatio, modelName: 'kling-v2' })
@@ -141,10 +164,17 @@ export async function POST(req: NextRequest) {
       project_id: projectId,
       scene_id:   sceneId,
       type:       'i2v',
-      name:       `i2v_${Date.now()}.mp4`,
+      name:       `${isR2V ? 'r2v' : 'i2v'}_${Date.now()}.mp4`,
       url:        videoUrl,
       tags:       [],
-      metadata:   { prompt, source_image: sourceImageUrl, engine, duration, aspect_ratio: aspectRatio },
+      metadata:   {
+        prompt, engine, duration,
+        aspect_ratio: aspectRatio, resolution,
+        mode: isR2V ? 'r2v' : 'i2v',
+        ...(isR2V
+          ? { reference_images: (referenceImageUrls as string[]).slice(0, 4) }
+          : { source_image: sourceImageUrl }),
+      },
       attempt_id: attemptId,
     }).select().single()
 
@@ -172,4 +202,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'I2V 생성 실패: ' + msg }, { status: 500 })
   }
 }
-

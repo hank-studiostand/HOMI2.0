@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import {
   Loader2, Film, ChevronRight, ChevronDown, X, Plus, RotateCcw,
-  Tag, Type, Hash, Layers, History,
+  Tag, Type, Hash, Layers, History, Wand2,
 } from 'lucide-react'
 
 // ── 씬 헤더 감지 패턴 ──────────────────────────────────────────
@@ -668,6 +668,7 @@ function LabelEditor({
 
 export default function SceneEditorPage() {
   const { id: projectId } = useParams<{ id: string }>()
+  const router = useRouter()
   const supabase = createClient()
 
   const [scenes, setScenes]                 = useState<Scene[]>([])
@@ -677,6 +678,8 @@ export default function SceneEditorPage() {
   const [error, setError]                   = useState<string | null>(null)
   const [savedIndicator, setSavedIndicator] = useState(false)
   const [extracting, setExtracting]         = useState(false)
+  const [scriptizingSceneId, setScriptizingSceneId] = useState<string | null>(null)
+  const [scriptizeError, setScriptizeError] = useState<string | null>(null)
 
   // Tree collapse state (persisted to localStorage)
   const [collapsedSeqs, setCollapsedSeqs]     = useState<Set<string>>(new Set())
@@ -711,6 +714,64 @@ export default function SceneEditorPage() {
       next.has(key) ? next.delete(key) : next.add(key)
       return next
     })
+  }
+
+  // ── Seedance 프롬프트화 — 선택구간 또는 씬 전체 → 영문 프롬프트 + 자산 매핑 ──
+  async function runScriptize(scene: Scene) {
+    if (!scene.id || !scene.content?.trim()) {
+      setScriptizeError('빈 씬은 변환할 수 없어요.')
+      return
+    }
+    const sceneId = scene.id
+    setScriptizingSceneId(sceneId)
+    setScriptizeError(null)
+    try {
+      const ta = refs.current.get(sceneId)
+      let scriptText = scene.content
+      if (ta && ta.selectionStart !== ta.selectionEnd) {
+        const s = ta.selectionStart, e = ta.selectionEnd
+        const sel = scene.content.slice(Math.min(s, e), Math.max(s, e)).trim()
+        if (sel.length >= 4) scriptText = sel
+      }
+
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sceneId)
+      const res = await fetch('/api/seedance/scriptize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          sceneId: isUuid ? sceneId : undefined,
+          scriptText,
+          durationSec: 15,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error ?? `scriptize ${res.status}`)
+
+      try {
+        const payload = {
+          projectId,
+          sceneId: isUuid ? sceneId : null,
+          sceneNumber: scene.sceneNumber ?? null,
+          prompt: json.prompt,
+          refs: json.refs ?? [],
+          rawScript: json.rawScript,
+          durationSec: json.durationSec ?? 15,
+          ts: Date.now(),
+        }
+        sessionStorage.setItem('seedance_prefill', JSON.stringify(payload))
+      } catch (e) {
+        console.warn('[scriptize] sessionStorage 저장 실패', e)
+      }
+
+      const sceneParam = isUuid ? `&scene=${encodeURIComponent(sceneId)}` : ''
+      router.push(`/project/${projectId}/workspace?tab=i2v&engine=seedance-2&prefill=1${sceneParam}`)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error('[scriptize] 실패:', msg)
+      setScriptizeError(msg)
+      setScriptizingSceneId(null)
+    }
   }
 
   // ── 초기 로드 ──────────────────────────────────────────────
@@ -1102,6 +1163,24 @@ export default function SceneEditorPage() {
             {/* 라벨 (씬 번호와 별개) */}
             <LabelEditor scene={scene} onUpdate={updateScene} />
 
+            {/* Seedance 프롬프트화 */}
+            <button
+              onClick={() => void runScriptize(scene)}
+              disabled={scriptizingSceneId === scene.id}
+              className="flex items-center gap-1 px-2.5 h-6 rounded-full text-[10px] font-semibold transition-all hover:opacity-80 disabled:opacity-50"
+              style={{
+                background: 'var(--accent-soft)',
+                color: 'var(--accent)',
+                border: '1px solid var(--accent-line)',
+              }}
+              title="이 씬(또는 선택 구간)을 Seedance R2V 프롬프트로 변환하고 워크스페이스 I2V 탭으로 이동"
+            >
+              {scriptizingSceneId === scene.id
+                ? <Loader2 size={10} className="animate-spin" />
+                : <Wand2 size={10} />}
+              Seedance 프롬프트화
+            </button>
+
             {/* 합치기 */}
             {idx > 0 && (
               <button
@@ -1171,6 +1250,15 @@ export default function SceneEditorPage() {
             {scenes.length}개 씬 &nbsp;·&nbsp;
             <span className="opacity-70">Cmd+Enter 나누기 / Backspace 합치기</span>
             {savedIndicator && <span style={{ color: 'var(--success)' }}>✓ 자동저장</span>}
+            {scriptizeError && (
+              <span
+                style={{ color: 'var(--danger, #c43)', cursor: 'pointer' }}
+                onClick={() => setScriptizeError(null)}
+                title="클릭하여 닫기"
+              >
+                Seedance 변환 실패: {scriptizeError.slice(0, 80)}
+              </span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
