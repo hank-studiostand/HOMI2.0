@@ -212,7 +212,8 @@ export async function POST(req: NextRequest) {
     // 2) 씬 컨텍스트 + root_asset_marks (씬에서 사용자가 마킹한 자산 풀)
     let sceneCtx: SceneRow | null = null
     let variationsMap: Record<string, string> = {}
-    let sceneMarks: { character?: string; space?: string; object?: string; misc?: string } | null = null
+    type SceneMarks = { character?: string; space?: string; object?: string; misc?: string }
+    let sceneMarks: SceneMarks | null = null
     if (sceneId) {
       const { data: sc } = await supabase
         .from('scenes')
@@ -230,7 +231,7 @@ export async function POST(req: NextRequest) {
           settings: settings ?? null,
         }
         variationsMap = (sceneCtx.character_variations ?? {}) as Record<string, string>
-        sceneMarks = ((sc as any).root_asset_marks ?? null) as typeof sceneMarks
+        sceneMarks = ((sc as any).root_asset_marks ?? null) as SceneMarks | null
       }
     }
 
