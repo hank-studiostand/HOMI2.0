@@ -112,6 +112,87 @@ export default function WorkspacePage() {
   const [comments, setComments] = useState<CommentRow[]>([])
   const [draft, setDraft] = useState('')
   const [meId, setMeId] = useState<string | null>(null)
+  // 코멘트 패널 collapsible 상태 (localStorage 영속)
+  const [commentsOpen, setCommentsOpen] = useState<boolean>(true)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const v = window.localStorage.getItem(`workspace:commentsOpen:${projectId}`)
+      if (v !== null) setCommentsOpen(v === '1')
+    } catch {}
+  }, [projectId])
+  function toggleComments() {
+    setCommentsOpen(prev => {
+      const next = !prev
+      try { window.localStorage.setItem(`workspace:commentsOpen:${projectId}`, next ? '1' : '0') } catch {}
+      return next
+    })
+  }
+
+  // 멤버 목록 (코멘트 @멘션용)
+  const [projectMembers, setProjectMembers] = useState<Array<{
+    user_id: string; email: string; display_name: string; avatar_url: string; role_label?: string
+  }>>([])
+  useEffect(() => {
+    let mounted = true
+    void (async () => {
+      try {
+        const r = await fetch(`/api/projects/${projectId}/members`)
+        if (!r.ok) return
+        const j = await r.json()
+        if (mounted) setProjectMembers((j.members ?? []) as any)
+      } catch {}
+    })()
+    return () => { mounted = false }
+  }, [projectId])
+
+  const [commentMentionOpen, setCommentMentionOpen] = useState(false)
+  const [commentMentionQuery, setCommentMentionQuery] = useState('')
+  const commentMentionMatches = (() => {
+    if (!commentMentionOpen) return [] as typeof projectMembers
+    const q = commentMentionQuery.toLowerCase()
+    return projectMembers.filter(mm => {
+      if (!q) return true
+      return mm.email.toLowerCase().includes(q)
+        || (mm.display_name ?? '').toLowerCase().includes(q)
+        || (mm.role_label ?? '').toLowerCase().includes(q)
+    }).slice(0, 6)
+  })()
+  function applyCommentMention(member: typeof projectMembers[number]) {
+    const handle = (member.display_name?.trim() || member.email.split('@')[0] || member.email).replace(/\s+/g, '')
+    const re = /(^|\s)@([\w.+\-가-힣]*)$/
+    setDraft(prev => prev.replace(re, (_full: string, lead: string) => `${lead}@${handle} `))
+    setCommentMentionOpen(false)
+  }
+  function renderCommentContent(content: string) {
+    const re = /@([\w.+\-가-힣]+@[\w.\-]+\.[A-Za-z]{2,}|[A-Za-z0-9._\-가-힣]{2,})/g
+    type Tok = { start: number; end: number; value: string }
+    const tokens: Tok[] = []
+    let m: RegExpExecArray | null
+    while ((m = re.exec(content)) !== null) {
+      const key = m[1].toLowerCase()
+      const found = projectMembers.find(mm => mm.email.toLowerCase() === key
+        || (mm.display_name ?? '').toLowerCase() === key
+        || (mm.email.split('@')[0] ?? '').toLowerCase() === key)
+      if (found) tokens.push({ start: m.index, end: m.index + m[0].length, value: m[0] })
+    }
+    if (tokens.length === 0) return <>{content}</>
+    const out: Array<{ kind: 'text' | 'm'; value: string }> = []
+    let cur = 0
+    for (const t of tokens) {
+      if (t.start > cur) out.push({ kind: 'text', value: content.slice(cur, t.start) })
+      out.push({ kind: 'm', value: t.value })
+      cur = t.end
+    }
+    if (cur < content.length) out.push({ kind: 'text', value: content.slice(cur) })
+    return <>{out.map((seg, i) => seg.kind === 'm' ? (
+      <span key={i}
+        className="inline-flex items-center px-1.5 rounded font-medium"
+        style={{ background: 'var(--violet-soft, var(--accent-soft))', color: 'var(--violet, var(--accent))' }}>
+        {seg.value}
+      </span>
+    ) : <span key={i}>{seg.value}</span>)}</>
+  }
   const [decisionFor, setDecisionFor] = useState<string | null>(null)
   const [decisionIntent, setDecisionIntent] = useState<'approved' | 'revise_requested' | 'removed' | null>(null)
   const [decisionReasons, setDecisionReasons] = useState<string[]>([])
@@ -192,6 +273,17 @@ export default function WorkspacePage() {
       setPromptUserEdited(true)
     }
     if (Array.isArray(payload.refs)) setSeedanceRefs(payload.refs)
+    // 검수용 메타 추출
+    setSeedancePrefillMeta({
+      sceneNumber: payload.sceneNumber ?? null,
+      rawScript: payload.rawScript ?? '',
+      durationSec: payload.durationSec ?? null,
+      usedSceneMarks: payload.meta?.usedSceneMarks ?? false,
+      sceneSettings: payload.meta?.sceneSettings ?? null,
+      characterVariations: payload.meta?.characterVariations ?? {},
+      candidatePoolSize: payload.meta?.candidatePoolSize ?? null,
+      totalAssetsInProject: payload.meta?.totalAssetsInProject ?? null,
+    })
     if (typeof payload.durationSec === 'number') setGenDuration(payload.durationSec)
     // 씬 자동 선택 (URL에 있으면 우선, 없으면 payload.sceneId)
     const targetScene = sceneParam || payload.sceneId
@@ -233,6 +325,18 @@ export default function WorkspacePage() {
     url: string | null
     category: string
   }>>([])
+  // scriptize prefill 검수용 메타 — 어떤 컨텍스트가 반영됐는지 표시
+  const [seedancePrefillMeta, setSeedancePrefillMeta] = useState<{
+    sceneNumber?: string | null
+    rawScript?: string
+    durationSec?: number
+    usedSceneMarks?: boolean
+    sceneSettings?: { angle?: string; lens?: string; lighting?: string; mood?: string } | null
+    characterVariations?: Record<string, string>
+    candidatePoolSize?: number
+    totalAssetsInProject?: number
+  } | null>(null)
+  const [reviewPanelOpen, setReviewPanelOpen] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [referenceAssets, setReferenceAssets] = useState<Asset[]>([])
 
@@ -1053,6 +1157,9 @@ export default function WorkspacePage() {
             onResolutionChange={setGenResolution}
             seedanceRefs={seedanceRefs}
             onSeedanceRefsChange={setSeedanceRefs}
+            seedancePrefillMeta={seedancePrefillMeta}
+            reviewPanelOpen={reviewPanelOpen}
+            onReviewPanelToggle={() => setReviewPanelOpen(o => !o)}
             generating={generating}
             referenceAssets={referenceAssets}
             camera={genCamera}
@@ -1583,14 +1690,49 @@ export default function WorkspacePage() {
         )}
       </main>
 
-      {/* RIGHT — Comments */}
-      <aside style={{ borderLeft: '1px solid var(--line)', display: 'flex', flexDirection: 'column', background: 'var(--bg-1)' }}>
-        <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--line)' }} className="flex items-center gap-2">
-          <MessageCircle size={13} style={{ color: 'var(--accent)' }} />
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>코멘트</span>
-          <span style={{ flex: 1 }} />
-          <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>{comments.length}</span>
-        </div>
+      {/* RIGHT — Comments (collapsible) */}
+      <aside style={{
+        borderLeft: '1px solid var(--line)', display: 'flex', flexDirection: 'column',
+        background: 'var(--bg-1)',
+        width: commentsOpen ? undefined : 40,
+        flexShrink: 0,
+        overflow: 'hidden',
+        transition: 'width 0.18s ease',
+        position: 'relative',
+      }}>
+        <button
+          onClick={toggleComments}
+          style={{
+            padding: commentsOpen ? '12px 14px' : '12px 8px',
+            borderBottom: '1px solid var(--line)',
+            background: 'transparent',
+            cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 8,
+            color: 'var(--ink)',
+            justifyContent: commentsOpen ? 'flex-start' : 'center',
+            position: 'relative',
+          }}
+          title={commentsOpen ? '코멘트 패널 접기' : '코멘트 패널 펼치기'}
+        >
+          <MessageCircle size={13} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+          {commentsOpen && (
+            <>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>코멘트</span>
+              <span style={{ flex: 1 }} />
+              <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>{comments.length}</span>
+              <ChevronRight size={12} style={{ color: 'var(--ink-4)' }} />
+            </>
+          )}
+          {!commentsOpen && comments.length > 0 && (
+            <span style={{
+              position: 'absolute', top: 4, right: 4,
+              fontSize: 9, fontWeight: 700,
+              padding: '1px 5px', borderRadius: 999,
+              background: 'var(--accent)', color: '#fff',
+            }}>{comments.length}</span>
+          )}
+        </button>
+        {commentsOpen ? (<>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
           {comments.length === 0 ? (
@@ -1605,7 +1747,7 @@ export default function WorkspacePage() {
                     <span>{new Date(c.created_at).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                    {c.content}
+                    {renderCommentContent(c.content)}
                   </div>
                 </div>
               ))}
@@ -1613,13 +1755,55 @@ export default function WorkspacePage() {
           )}
         </div>
 
-        <div style={{ borderTop: '1px solid var(--line)', padding: 10 }} className="flex items-end gap-2">
+        <div style={{ borderTop: '1px solid var(--line)', padding: 10, position: 'relative' }} className="flex items-end gap-2">
+          {commentMentionOpen && commentMentionMatches.length > 0 && (
+            <div style={{
+              position: 'absolute', bottom: '100%', left: 10, right: 10, marginBottom: 4,
+              maxHeight: 192, overflowY: 'auto',
+              background: 'var(--bg)', border: '1px solid var(--line)',
+              borderRadius: 'var(--r-md)',
+              boxShadow: '0 6px 20px rgba(0,0,0,0.12)',
+              zIndex: 30,
+            }}>
+              {commentMentionMatches.map(mm => {
+                const display = mm.display_name?.trim() || mm.email.split('@')[0]
+                return (
+                  <button key={mm.user_id} onClick={() => applyCommentMention(mm)}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs">
+                    <span style={{
+                      width: 18, height: 18, borderRadius: 999,
+                      background: 'var(--violet-soft, var(--accent-soft))',
+                      color: 'var(--violet, var(--accent))',
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 10, fontWeight: 700,
+                    }}>{display[0]?.toUpperCase() ?? '?'}</span>
+                    <span className="font-semibold" style={{ color: 'var(--ink)' }}>@{display}</span>
+                    {mm.email && mm.email !== display && (
+                      <span style={{ color: 'var(--ink-4)', fontSize: 10 }}>{mm.email}</span>
+                    )}
+                    {mm.role_label && (
+                      <span style={{ marginLeft: 'auto', fontSize: 9, color: 'var(--ink-4)' }}>{mm.role_label}</span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
           <textarea
             value={draft}
-            onChange={e => setDraft(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void postComment() } }}
+            onChange={e => {
+              const v = e.target.value
+              setDraft(v)
+              const um = /(?:^|\s)@([\w.+\-가-힣]*)$/.exec(v)
+              if (um) { setCommentMentionOpen(true); setCommentMentionQuery(um[1] ?? '') }
+              else { setCommentMentionOpen(false) }
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Escape' && commentMentionOpen) { setCommentMentionOpen(false); return }
+              if (e.key === 'Enter' && !e.shiftKey && !commentMentionOpen) { e.preventDefault(); void postComment() }
+            }}
             rows={2}
-            placeholder="이 결과에 코멘트... (Enter로 전송)"
+            placeholder="이 결과에 코멘트... (Enter 전송 / @사람 멘션)"
             style={{
               flex: 1,
               background: 'var(--bg-2)',
@@ -1647,6 +1831,7 @@ export default function WorkspacePage() {
             <Send size={13} />
           </button>
         </div>
+        </>) : null}
       </aside>
 
       {/* Decision modal */}
@@ -2191,6 +2376,7 @@ function GeneratePanel({
   ratio, onRatioChange, duration, onDurationChange,
   resolution, onResolutionChange,
   seedanceRefs, onSeedanceRefsChange,
+  seedancePrefillMeta, reviewPanelOpen, onReviewPanelToggle,
   generating, onGenerate,
   referenceAssets, camera, onCameraSelect, onCameraDeselect,
   refSel, onRefSelChange, scene,
@@ -2219,6 +2405,18 @@ function GeneratePanel({
   onResolutionChange?: (v: '480p' | '720p' | '1080p') => void
   seedanceRefs?: Array<{ token: string; rootAssetId: string; name: string; url: string | null; category: string }>
   onSeedanceRefsChange?: (next: Array<{ token: string; rootAssetId: string; name: string; url: string | null; category: string }>) => void
+  seedancePrefillMeta?: {
+    sceneNumber?: string | null
+    rawScript?: string
+    durationSec?: number | null
+    usedSceneMarks?: boolean
+    sceneSettings?: { angle?: string; lens?: string; lighting?: string; mood?: string } | null
+    characterVariations?: Record<string, string>
+    candidatePoolSize?: number | null
+    totalAssetsInProject?: number | null
+  } | null
+  reviewPanelOpen?: boolean
+  onReviewPanelToggle?: () => void
   generating: boolean
   onGenerate: () => Promise<void> | void
   referenceAssets: Asset[]
@@ -2641,6 +2839,113 @@ function GeneratePanel({
             </button>
           </div>
         </div>
+
+        {/* ── 워크플로우 모드 안내 (Seedance R2V 활성 시) ── */}
+        {(type === 'i2v' || type === 't2v') && engine === 'seedance-2' && (seedanceRefs?.length ?? 0) > 0 && (
+          <div style={{
+            margin: '8px 0 4px',
+            padding: '6px 10px',
+            background: 'var(--violet-soft, var(--accent-soft))',
+            border: '1px solid var(--violet, var(--accent-line))',
+            borderRadius: 'var(--r-sm)',
+            fontSize: 10, color: 'var(--violet, var(--accent))',
+            fontWeight: 600,
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            <span style={{ fontSize: 12 }}>📽</span>
+            <span>{type === 't2v' ? 'T2V R2V' : 'I2V R2V'} 모드 — 영상 생성 시 참조 자산을 직접 사용 (소스 이미지 불필요)</span>
+            <span style={{ flex: 1 }} />
+            <span style={{ opacity: 0.7 }}>{seedanceRefs?.length ?? 0}개 reference</span>
+          </div>
+        )}
+
+        {/* ── prefill 검수 패널 (collapsible) — scriptize에서 어떤 컨텍스트가 반영됐는지 ── */}
+        {(type === 'i2v' || type === 't2v') && seedancePrefillMeta && (
+          <div style={{
+            margin: '8px 0',
+            border: '1px solid var(--line)',
+            borderRadius: 'var(--r-md)',
+            background: 'var(--bg-2)',
+            overflow: 'hidden',
+          }}>
+            <button
+              onClick={onReviewPanelToggle}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 8,
+                fontSize: 11, fontWeight: 600,
+                color: 'var(--ink-2)',
+              }}
+            >
+              {reviewPanelOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              <span>📋 prefill 검수 — 반영된 씬 컨텍스트</span>
+              <span style={{ flex: 1 }} />
+              {seedancePrefillMeta.sceneNumber && (
+                <span className="mono" style={{ fontSize: 10, color: 'var(--accent)' }}>
+                  씬 {seedancePrefillMeta.sceneNumber}
+                </span>
+              )}
+              {seedancePrefillMeta.usedSceneMarks && (
+                <span style={{
+                  fontSize: 9, fontWeight: 700,
+                  padding: '1px 6px', borderRadius: 999,
+                  background: 'var(--ok-soft, var(--accent-soft))',
+                  color: 'var(--ok, var(--accent))',
+                }}>마크 우선</span>
+              )}
+            </button>
+            {reviewPanelOpen && (
+              <div style={{ padding: '0 12px 12px', fontSize: 11, color: 'var(--ink-3)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {seedancePrefillMeta.rawScript && (
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-4)', marginBottom: 3 }}>원본 대본 구간</div>
+                    <div style={{
+                      padding: 8, background: 'var(--bg)', borderRadius: 'var(--r-sm)',
+                      border: '1px solid var(--line)', whiteSpace: 'pre-wrap',
+                      maxHeight: 120, overflowY: 'auto', lineHeight: 1.5,
+                    }}>{seedancePrefillMeta.rawScript}</div>
+                  </div>
+                )}
+                {seedancePrefillMeta.sceneSettings && Object.values(seedancePrefillMeta.sceneSettings).some(v => v) && (
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-4)', marginBottom: 3 }}>씬 비주얼 세팅</div>
+                    <div className="flex" style={{ gap: 6, flexWrap: 'wrap' }}>
+                      {Object.entries(seedancePrefillMeta.sceneSettings).map(([k, v]) => v ? (
+                        <span key={k} style={{
+                          padding: '2px 8px', borderRadius: 999,
+                          background: 'var(--bg-3)', fontSize: 10,
+                          color: 'var(--ink-2)',
+                        }}>{k}: {v}</span>
+                      ) : null)}
+                    </div>
+                  </div>
+                )}
+                {seedancePrefillMeta.characterVariations && Object.keys(seedancePrefillMeta.characterVariations).length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-4)', marginBottom: 3 }}>캐릭터 변동사항</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      {Object.entries(seedancePrefillMeta.characterVariations).map(([id, v]) => (
+                        <div key={id} style={{ fontSize: 10, color: 'var(--ink-3)' }}>
+                          <span className="mono" style={{ color: 'var(--ink-5)' }}>{id.slice(0, 8)}…</span>: {v}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div style={{ fontSize: 10, color: 'var(--ink-5)', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  {seedancePrefillMeta.durationSec != null && <span>⏱ {seedancePrefillMeta.durationSec}초</span>}
+                  {seedancePrefillMeta.candidatePoolSize != null && (
+                    <span>🎯 후보 풀: {seedancePrefillMeta.candidatePoolSize}/{seedancePrefillMeta.totalAssetsInProject ?? '?'} 자산</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── Seedance R2V 참조 자산 chips (sceneEditor 에서 prefill 받았거나 @로 추가됨) ── */}
         {(type === 'i2v' || type === 't2v') && (seedanceRefs?.length ?? 0) > 0 && (

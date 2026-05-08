@@ -209,17 +209,17 @@ export async function POST(req: NextRequest) {
     }
     const assets: RootAssetRow[] = (rawAssets ?? []) as RootAssetRow[]
 
-    // 2) 씬 컨텍스트
+    // 2) 씬 컨텍스트 + root_asset_marks (씬에서 사용자가 마킹한 자산 풀)
     let sceneCtx: SceneRow | null = null
     let variationsMap: Record<string, string> = {}
+    let sceneMarks: { character?: string; space?: string; object?: string; misc?: string } | null = null
     if (sceneId) {
       const { data: sc } = await supabase
         .from('scenes')
-        .select('id, scene_number, content, character_variations, settings:scene_settings(angle, lens, lighting, mood)')
+        .select('id, scene_number, content, character_variations, root_asset_marks, settings:scene_settings(angle, lens, lighting, mood)')
         .eq('id', sceneId)
         .maybeSingle()
       if (sc) {
-        // scene_settings는 1:1 관계지만 join 결과가 객체 또는 배열로 올 수 있음
         const rawSettings: any = (sc as any).settings
         const settings = Array.isArray(rawSettings) ? rawSettings[0] : rawSettings
         sceneCtx = {
@@ -230,11 +230,38 @@ export async function POST(req: NextRequest) {
           settings: settings ?? null,
         }
         variationsMap = (sceneCtx.character_variations ?? {}) as Record<string, string>
+        sceneMarks = ((sc as any).root_asset_marks ?? null) as typeof sceneMarks
       }
     }
 
-    // 3) 대본에서 어떤 자산이 등장하는지 Claude가 선별 → 토큰 부여
-    const refs = await pickReferencedAssets(scriptText.trim(), assets, variationsMap)
+    // 2b) root_asset_marks 우선 — 씬에서 마킹된 자산만 1순위 풀로 사용 (없으면 전체 fallback)
+    let primaryAssets = assets
+    if (sceneMarks) {
+      const markedNames = new Set<string>()
+      for (const v of [sceneMarks.character, sceneMarks.space, sceneMarks.object, sceneMarks.misc]) {
+        if (!v) continue
+        for (const part of String(v).split(/[,，、\n]/)) {
+          const t = part.trim()
+          if (t) markedNames.add(t)
+        }
+      }
+      if (markedNames.size > 0) {
+        // fuzzy match — substring 양쪽 + 소문자 정규화
+        const norm = (s: string) => s.toLowerCase().replace(/\s+/g, '')
+        const wanted = Array.from(markedNames).map(norm)
+        const matched = assets.filter(a => {
+          const an = norm(a.name)
+          return wanted.some(w => an.includes(w) || w.includes(an))
+        })
+        if (matched.length > 0) {
+          primaryAssets = matched
+          console.log(`[scriptize] 씬 마크 우선 적용: ${markedNames.size}개 마킹 → ${matched.length}개 자산 매칭`)
+        }
+      }
+    }
+
+    // 3) 대본에서 어떤 자산이 등장하는지 Claude가 선별 → 토큰 부여 (마크된 자산이 있으면 그쪽 우선)
+    const refs = await pickReferencedAssets(scriptText.trim(), primaryAssets, variationsMap)
 
     // 4) 영문 Seedance 프롬프트 생성
     const prompt = await generateSeedancePrompt(scriptText.trim(), refs, sceneCtx, Number(durationSec) || 15)
@@ -250,6 +277,18 @@ export async function POST(req: NextRequest) {
       })),
       rawScript: scriptText,
       durationSec: Number(durationSec) || 15,
+      // 검수용 메타 — workspace에서 prefill 검수 패널이 표시
+      meta: {
+        sceneId: sceneCtx?.id ?? null,
+        sceneNumber: sceneCtx?.scene_number ?? null,
+        usedSceneMarks: !!sceneMarks && (
+          !!sceneMarks.character || !!sceneMarks.space || !!sceneMarks.object || !!sceneMarks.misc
+        ),
+        candidatePoolSize: primaryAssets.length,
+        totalAssetsInProject: assets.length,
+        characterVariations: variationsMap,
+        sceneSettings: sceneCtx?.settings ?? null,
+      },
     })
   } catch (e) {
     console.error('[scriptize] error:', e)
