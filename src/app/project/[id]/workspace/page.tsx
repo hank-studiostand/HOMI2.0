@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import ImageStudio from '@/components/workspace/ImageStudio'
 import { sortScenesByNumber } from '@/lib/sceneSort'
 import {
   ChevronLeft, Sparkles, Check, RotateCcw, Trash2, X,
@@ -317,6 +318,7 @@ export default function WorkspacePage() {
   const [genRatio, setGenRatio] = useState<string>('16:9')
   const [genDuration, setGenDuration] = useState<number>(5)   // I2V 영상 길이
   const [genResolution, setGenResolution] = useState<'480p' | '720p' | '1080p'>('720p')
+  const [genCount, setGenCount] = useState<number>(4)  // T2I 한 번에 몇 장 (ImageStudio용)
   // Seedance scriptize prefill 결과 — 워크스페이스 I2V 탭으로 진입할 때 sessionStorage에서 받음
   const [seedanceRefs, setSeedanceRefs] = useState<Array<{
     token: string
@@ -789,6 +791,105 @@ export default function WorkspacePage() {
     )
   }
 
+  // ImageStudio용 T2I 전용 생성 함수 (compact, 풀 GeneratePanel onGenerate와 분리)
+  const runImageGenerate = async () => {
+    if (!active) return
+    const basePrompt = (genPromptDraft || currentPrompt?.content || currentMP?.content || '').trim()
+    if (!basePrompt) { alert('프롬프트를 입력해주세요.'); return }
+
+    const cameraStr = buildCameraPrompt(genCamera)
+    const fullPrompt = cameraStr ? `${basePrompt}\n\n${cameraStr}` : basePrompt
+
+    // prompt_versions 자동 저장
+    const draftTrim = genPromptDraft.trim()
+    const currentContentForCompare = (currentPrompt?.content ?? currentMP?.content ?? '').trim()
+    if (draftTrim && draftTrim !== currentContentForCompare) {
+      try {
+        const nextLabel = `V${versions.length + 1}`
+        if (versions.some(v => v.is_current)) {
+          await supabase.from('prompt_versions').update({ is_current: false })
+            .eq('scene_id', active.id).eq('is_current', true)
+        }
+        await supabase.from('prompt_versions').insert({
+          scene_id: active.id, version_label: nextLabel, content: draftTrim,
+          is_current: true, created_by: meId,
+        })
+      } catch (e) { console.warn('[prompt_versions auto-save]', e) }
+    }
+
+    // 레퍼런스 URL
+    const refUrls: string[] = allSelectedUrls(genRefSel, referenceAssets)
+    for (const cat of ['character', 'space', 'object', 'misc'] as const) {
+      for (const url of Array.from(genRootSel[cat])) {
+        if (!refUrls.includes(url) && url.startsWith('http')) refUrls.push(url)
+      }
+    }
+
+    setGenerating(true)
+
+    const placeholderCount = Math.max(1, Math.min(8, genCount))
+    const tempAttempt = `temp_a_${Date.now()}`
+    const ownerSceneId = active.id
+    const placeholders: OutputItem[] = Array.from({ length: placeholderCount }, (_, i) => ({
+      id: `temp_${Date.now()}_${i}_${Math.random().toString(36).slice(2,7)}`,
+      attempt_id: tempAttempt,
+      scene_id: ownerSceneId,
+      url: null, archived: false,
+      satisfaction_score: null, feedback: '',
+      type: 't2i', engine: genEngine,
+      created_at: new Date().toISOString(),
+      decision: null,
+    }))
+    setOutputs(prev => [...prev, ...placeholders])
+
+    const { data: attempt, error } = await supabase
+      .from('prompt_attempts')
+      .insert({
+        scene_id: active.id, type: 't2i', engine: genEngine,
+        prompt: fullPrompt, status: 'generating', depth: 0,
+      })
+      .select().single()
+    if (error || !attempt) {
+      alert('시도 생성 실패: ' + (error?.message ?? ''))
+      setOutputs(prev => prev.filter(o => o.attempt_id !== tempAttempt))
+      setGenerating(false)
+      return
+    }
+    const realAttemptId = attempt.id as string
+    setOutputs(prev => prev.map(o => o.attempt_id === tempAttempt ? { ...o, attempt_id: realAttemptId } : o))
+    setGenerating(false)
+
+    void (async () => {
+      try {
+        const r = await fetch('/api/t2i/generate', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            attemptId: attempt.id, prompt: fullPrompt, engine: genEngine,
+            projectId, sceneId: active.id, aspectRatio: genRatio,
+            referenceImageUrls: refUrls.length > 0 ? refUrls : undefined,
+            count: placeholderCount,
+          }),
+        })
+        if (!r.ok) {
+          const errText = await r.text()
+          let errParsed: any = {}
+          try { errParsed = JSON.parse(errText) } catch {}
+          const errMsg = errParsed?.error ?? errText.slice(0, 600) ?? r.statusText
+          console.error('[ImageStudio generate] 실패', { status: r.status, error: errMsg })
+          alert(`이미지 생성 실패 (${r.status}):\n\n${errMsg}`)
+          await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attempt.id)
+          setOutputs(prev => prev.filter(o => o.attempt_id !== realAttemptId))
+          return
+        }
+        if (active && active.id && activeIdRef.current === active.id) {
+          await loadSceneData(active.id)
+        }
+      } catch (e: any) {
+        console.error('[ImageStudio generate background]', e)
+      }
+    })()
+  }
+
   return (
     <div className="workspace-grid h-full grid overflow-hidden" style={{
       gridTemplateColumns: `var(--ws-left, 320px) 1fr ${commentsOpen ? 'var(--ws-right, 340px)' : '40px'}`,
@@ -1077,8 +1178,50 @@ export default function WorkspacePage() {
         </div>
       </aside>
 
-      {/* CENTER — Results */}
-      <main style={{ overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+      {/* CENTER — Results (T2I면 ImageStudio, 그 외엔 기존 3패널 워크플로우) */}
+      <main style={{
+        overflow: genType === 't2i' ? 'hidden' : 'auto',
+        display: 'flex', flexDirection: 'column',
+      }}>
+        {genType === 't2i' && active ? (
+          <ImageStudio
+            projectId={projectId}
+            sceneId={active.id}
+            promptDraft={genPromptDraft}
+            onPromptChange={(v) => { setGenPromptDraft(v); setPromptUserEdited(true) }}
+            engine={genEngine}
+            onEngineChange={setGenEngine}
+            ratio={genRatio}
+            onRatioChange={setGenRatio}
+            generating={generating}
+            onGenerate={runImageGenerate}
+            count={genCount}
+            onCountChange={setGenCount}
+            recentOutputs={outputs
+              .filter(o => o.scene_id === active.id && o.type === 't2i' && !o.archived)
+              .slice(-30)
+              .reverse()
+              .map(o => ({
+                id: o.id,
+                url: o.url,
+                prompt: attempts.find(a => a.id === o.attempt_id)?.prompt,
+                engine: o.engine,
+                created_at: o.created_at,
+                attempt_id: o.attempt_id,
+              }))}
+            onZoomOutput={(id) => {
+              const list = outputs.filter(o => o.url && o.scene_id === active.id && o.type === 't2i') as Array<any>
+              const items: LightboxItem[] = list.map(o => ({
+                url: o.url!,
+                name: o.engine ?? '',
+                caption: attempts.find(a => a.id === o.attempt_id)?.prompt ?? '',
+                isVideo: false,
+              }))
+              const idx = list.findIndex(o => o.id === id)
+              openLightbox(items, idx >= 0 ? idx : 0)
+            }}
+          />
+        ) : (<>
         {/* Toolbar */}
         <div
           style={{
@@ -1691,6 +1834,7 @@ export default function WorkspacePage() {
             <CandidateStrip items={candidates} attempts={attempts} selected={selectedIds} onToggle={toggleSelect} />
           </div>
         )}
+        </>)}
       </main>
 
       {/* RIGHT — Comments (collapsible) */}
