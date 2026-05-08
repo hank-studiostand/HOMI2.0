@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import ImageStudio from '@/components/workspace/ImageStudio'
 import { sortScenesByNumber } from '@/lib/sceneSort'
 import {
   ChevronLeft, Sparkles, Check, RotateCcw, Trash2, X,
@@ -24,10 +23,10 @@ import ImageLightbox, { type LightboxItem } from '@/components/ui/ImageLightbox'
 const PROMPT_HISTORY_MAX = 30
 const PROMPT_HISTORY_DEBOUNCE_MS = 1500
 
-function promptHistoryKey(projectId: string, sceneId: string, type: 't2i' | 'i2v' | 't2v') {
+function promptHistoryKey(projectId: string, sceneId: string, type: 't2i' | 'i2v') {
   return `workspace:promptHistory:${projectId}:${sceneId}:${type}`
 }
-function loadPromptHistory(projectId: string, sceneId: string, type: 't2i' | 'i2v' | 't2v'): string[] {
+function loadPromptHistory(projectId: string, sceneId: string, type: 't2i' | 'i2v'): string[] {
   if (typeof window === 'undefined') return []
   try {
     const raw = window.localStorage.getItem(promptHistoryKey(projectId, sceneId, type))
@@ -36,7 +35,7 @@ function loadPromptHistory(projectId: string, sceneId: string, type: 't2i' | 'i2
   } catch {}
   return []
 }
-function savePromptHistory(projectId: string, sceneId: string, type: 't2i' | 'i2v' | 't2v', list: string[]) {
+function savePromptHistory(projectId: string, sceneId: string, type: 't2i' | 'i2v', list: string[]) {
   if (typeof window === 'undefined') return
   try {
     window.localStorage.setItem(promptHistoryKey(projectId, sceneId, type), JSON.stringify(list.slice(-PROMPT_HISTORY_MAX)))
@@ -113,87 +112,6 @@ export default function WorkspacePage() {
   const [comments, setComments] = useState<CommentRow[]>([])
   const [draft, setDraft] = useState('')
   const [meId, setMeId] = useState<string | null>(null)
-  // 코멘트 패널 collapsible 상태 (localStorage 영속)
-  const [commentsOpen, setCommentsOpen] = useState<boolean>(true)
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      const v = window.localStorage.getItem(`workspace:commentsOpen:${projectId}`)
-      if (v !== null) setCommentsOpen(v === '1')
-    } catch {}
-  }, [projectId])
-  function toggleComments() {
-    setCommentsOpen(prev => {
-      const next = !prev
-      try { window.localStorage.setItem(`workspace:commentsOpen:${projectId}`, next ? '1' : '0') } catch {}
-      return next
-    })
-  }
-
-  // 멤버 목록 (코멘트 @멘션용)
-  const [projectMembers, setProjectMembers] = useState<Array<{
-    user_id: string; email: string; display_name: string; avatar_url: string; role_label?: string
-  }>>([])
-  useEffect(() => {
-    let mounted = true
-    void (async () => {
-      try {
-        const r = await fetch(`/api/projects/${projectId}/members`)
-        if (!r.ok) return
-        const j = await r.json()
-        if (mounted) setProjectMembers((j.members ?? []) as any)
-      } catch {}
-    })()
-    return () => { mounted = false }
-  }, [projectId])
-
-  const [commentMentionOpen, setCommentMentionOpen] = useState(false)
-  const [commentMentionQuery, setCommentMentionQuery] = useState('')
-  const commentMentionMatches = (() => {
-    if (!commentMentionOpen) return [] as typeof projectMembers
-    const q = commentMentionQuery.toLowerCase()
-    return projectMembers.filter(mm => {
-      if (!q) return true
-      return mm.email.toLowerCase().includes(q)
-        || (mm.display_name ?? '').toLowerCase().includes(q)
-        || (mm.role_label ?? '').toLowerCase().includes(q)
-    }).slice(0, 6)
-  })()
-  function applyCommentMention(member: typeof projectMembers[number]) {
-    const handle = (member.display_name?.trim() || member.email.split('@')[0] || member.email).replace(/\s+/g, '')
-    const re = /(^|\s)@([\w.+\-가-힣]*)$/
-    setDraft(prev => prev.replace(re, (_full: string, lead: string) => `${lead}@${handle} `))
-    setCommentMentionOpen(false)
-  }
-  function renderCommentContent(content: string) {
-    const re = /@([\w.+\-가-힣]+@[\w.\-]+\.[A-Za-z]{2,}|[A-Za-z0-9._\-가-힣]{2,})/g
-    type Tok = { start: number; end: number; value: string }
-    const tokens: Tok[] = []
-    let m: RegExpExecArray | null
-    while ((m = re.exec(content)) !== null) {
-      const key = m[1].toLowerCase()
-      const found = projectMembers.find(mm => mm.email.toLowerCase() === key
-        || (mm.display_name ?? '').toLowerCase() === key
-        || (mm.email.split('@')[0] ?? '').toLowerCase() === key)
-      if (found) tokens.push({ start: m.index, end: m.index + m[0].length, value: m[0] })
-    }
-    if (tokens.length === 0) return <>{content}</>
-    const out: Array<{ kind: 'text' | 'm'; value: string }> = []
-    let cur = 0
-    for (const t of tokens) {
-      if (t.start > cur) out.push({ kind: 'text', value: content.slice(cur, t.start) })
-      out.push({ kind: 'm', value: t.value })
-      cur = t.end
-    }
-    if (cur < content.length) out.push({ kind: 'text', value: content.slice(cur) })
-    return <>{out.map((seg, i) => seg.kind === 'm' ? (
-      <span key={i}
-        className="inline-flex items-center px-1.5 rounded font-medium"
-        style={{ background: 'var(--violet-soft, var(--accent-soft))', color: 'var(--violet, var(--accent))' }}>
-        {seg.value}
-      </span>
-    ) : <span key={i}>{seg.value}</span>)}</>
-  }
   const [decisionFor, setDecisionFor] = useState<string | null>(null)
   const [decisionIntent, setDecisionIntent] = useState<'approved' | 'revise_requested' | 'removed' | null>(null)
   const [decisionReasons, setDecisionReasons] = useState<string[]>([])
@@ -203,17 +121,15 @@ export default function WorkspacePage() {
   const [centerTab, setCenterTab] = useState<'results' | 'generate'>('generate')
   const [genPromptDraft, setGenPromptDraft] = useState('')
 
-  const [genType, setGenType] = useState<'t2i' | 'i2v' | 't2v'>('t2i')
+  const [genType, setGenType] = useState<'t2i' | 'i2v'>('t2i')
   const [genEngine, setGenEngine] = useState<string>('nanobanana')
 
   // 타입 전환 시 엔진이 해당 타입 목록에 없으면 기본값으로 자동 변경
   useEffect(() => {
     const t2iValues = ['nanobanana', 'gpt-image', 'midjourney']
     const i2vValues = ['seedance-2', 'kling3']
-    const t2vValues = ['seedance-2', 'kling3', 'kling3-omni']
     if (genType === 't2i' && !t2iValues.includes(genEngine)) setGenEngine('nanobanana')
     if (genType === 'i2v' && !i2vValues.includes(genEngine)) setGenEngine('seedance-2')
-    if (genType === 't2v' && !t2vValues.includes(genEngine)) setGenEngine('seedance-2')
   }, [genType, genEngine])
 
   // 엔진별 프롬프트 프리셋 — localStorage에 보관 (key: engine_preset_<engine>)
@@ -266,7 +182,6 @@ export default function WorkspacePage() {
 
     // 탭/엔진/길이/프롬프트/refs 일괄 적용
     if (tabParam === 'i2v') setGenType('i2v')
-    if (tabParam === 't2v') setGenType('t2v')
     if (engineParam) setGenEngine(engineParam)
     if (typeof payload.prompt === 'string' && payload.prompt) {
       setGenPromptDraft(payload.prompt)
@@ -274,17 +189,6 @@ export default function WorkspacePage() {
       setPromptUserEdited(true)
     }
     if (Array.isArray(payload.refs)) setSeedanceRefs(payload.refs)
-    // 검수용 메타 추출
-    setSeedancePrefillMeta({
-      sceneNumber: payload.sceneNumber ?? null,
-      rawScript: payload.rawScript ?? '',
-      durationSec: payload.durationSec ?? null,
-      usedSceneMarks: payload.meta?.usedSceneMarks ?? false,
-      sceneSettings: payload.meta?.sceneSettings ?? null,
-      characterVariations: payload.meta?.characterVariations ?? {},
-      candidatePoolSize: payload.meta?.candidatePoolSize ?? null,
-      totalAssetsInProject: payload.meta?.totalAssetsInProject ?? null,
-    })
     if (typeof payload.durationSec === 'number') setGenDuration(payload.durationSec)
     // 씬 자동 선택 (URL에 있으면 우선, 없으면 payload.sceneId)
     const targetScene = sceneParam || payload.sceneId
@@ -318,7 +222,6 @@ export default function WorkspacePage() {
   const [genRatio, setGenRatio] = useState<string>('16:9')
   const [genDuration, setGenDuration] = useState<number>(5)   // I2V 영상 길이
   const [genResolution, setGenResolution] = useState<'480p' | '720p' | '1080p'>('720p')
-  const [genCount, setGenCount] = useState<number>(4)  // T2I 한 번에 몇 장 (ImageStudio용)
   // Seedance scriptize prefill 결과 — 워크스페이스 I2V 탭으로 진입할 때 sessionStorage에서 받음
   const [seedanceRefs, setSeedanceRefs] = useState<Array<{
     token: string
@@ -327,18 +230,6 @@ export default function WorkspacePage() {
     url: string | null
     category: string
   }>>([])
-  // scriptize prefill 검수용 메타 — 어떤 컨텍스트가 반영됐는지 표시
-  const [seedancePrefillMeta, setSeedancePrefillMeta] = useState<{
-    sceneNumber?: string | null
-    rawScript?: string
-    durationSec?: number
-    usedSceneMarks?: boolean
-    sceneSettings?: { angle?: string; lens?: string; lighting?: string; mood?: string } | null
-    characterVariations?: Record<string, string>
-    candidatePoolSize?: number
-    totalAssetsInProject?: number
-  } | null>(null)
-  const [reviewPanelOpen, setReviewPanelOpen] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [referenceAssets, setReferenceAssets] = useState<Asset[]>([])
 
@@ -791,110 +682,8 @@ export default function WorkspacePage() {
     )
   }
 
-  // ImageStudio용 T2I 전용 생성 함수 (compact, 풀 GeneratePanel onGenerate와 분리)
-  const runImageGenerate = async () => {
-    if (!active) return
-    const basePrompt = (genPromptDraft || currentPrompt?.content || currentMP?.content || '').trim()
-    if (!basePrompt) { alert('프롬프트를 입력해주세요.'); return }
-
-    const cameraStr = buildCameraPrompt(genCamera)
-    const fullPrompt = cameraStr ? `${basePrompt}\n\n${cameraStr}` : basePrompt
-
-    // prompt_versions 자동 저장
-    const draftTrim = genPromptDraft.trim()
-    const currentContentForCompare = (currentPrompt?.content ?? currentMP?.content ?? '').trim()
-    if (draftTrim && draftTrim !== currentContentForCompare) {
-      try {
-        const nextLabel = `V${versions.length + 1}`
-        if (versions.some(v => v.is_current)) {
-          await supabase.from('prompt_versions').update({ is_current: false })
-            .eq('scene_id', active.id).eq('is_current', true)
-        }
-        await supabase.from('prompt_versions').insert({
-          scene_id: active.id, version_label: nextLabel, content: draftTrim,
-          is_current: true, created_by: meId,
-        })
-      } catch (e) { console.warn('[prompt_versions auto-save]', e) }
-    }
-
-    // 레퍼런스 URL
-    const refUrls: string[] = allSelectedUrls(genRefSel, referenceAssets)
-    for (const cat of ['character', 'space', 'object', 'misc'] as const) {
-      for (const url of Array.from(genRootSel[cat])) {
-        if (!refUrls.includes(url) && url.startsWith('http')) refUrls.push(url)
-      }
-    }
-
-    setGenerating(true)
-
-    const placeholderCount = Math.max(1, Math.min(8, genCount))
-    const tempAttempt = `temp_a_${Date.now()}`
-    const ownerSceneId = active.id
-    const placeholders: OutputItem[] = Array.from({ length: placeholderCount }, (_, i) => ({
-      id: `temp_${Date.now()}_${i}_${Math.random().toString(36).slice(2,7)}`,
-      attempt_id: tempAttempt,
-      scene_id: ownerSceneId,
-      url: null, archived: false,
-      satisfaction_score: null, feedback: '',
-      type: 't2i', engine: genEngine,
-      created_at: new Date().toISOString(),
-      decision: null,
-    }))
-    setOutputs(prev => [...prev, ...placeholders])
-
-    const { data: attempt, error } = await supabase
-      .from('prompt_attempts')
-      .insert({
-        scene_id: active.id, type: 't2i', engine: genEngine,
-        prompt: fullPrompt, status: 'generating', depth: 0,
-      })
-      .select().single()
-    if (error || !attempt) {
-      alert('시도 생성 실패: ' + (error?.message ?? ''))
-      setOutputs(prev => prev.filter(o => o.attempt_id !== tempAttempt))
-      setGenerating(false)
-      return
-    }
-    const realAttemptId = attempt.id as string
-    setOutputs(prev => prev.map(o => o.attempt_id === tempAttempt ? { ...o, attempt_id: realAttemptId } : o))
-    setGenerating(false)
-
-    void (async () => {
-      try {
-        const r = await fetch('/api/t2i/generate', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            attemptId: attempt.id, prompt: fullPrompt, engine: genEngine,
-            projectId, sceneId: active.id, aspectRatio: genRatio,
-            referenceImageUrls: refUrls.length > 0 ? refUrls : undefined,
-            count: placeholderCount,
-          }),
-        })
-        if (!r.ok) {
-          const errText = await r.text()
-          let errParsed: any = {}
-          try { errParsed = JSON.parse(errText) } catch {}
-          const errMsg = errParsed?.error ?? errText.slice(0, 600) ?? r.statusText
-          console.error('[ImageStudio generate] 실패', { status: r.status, error: errMsg })
-          alert(`이미지 생성 실패 (${r.status}):\n\n${errMsg}`)
-          await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attempt.id)
-          setOutputs(prev => prev.filter(o => o.attempt_id !== realAttemptId))
-          return
-        }
-        if (active && active.id && activeIdRef.current === active.id) {
-          await loadSceneData(active.id)
-        }
-      } catch (e: any) {
-        console.error('[ImageStudio generate background]', e)
-      }
-    })()
-  }
-
   return (
-    <div className="workspace-grid h-full grid overflow-hidden" style={{
-      gridTemplateColumns: `var(--ws-left, 320px) 1fr ${commentsOpen ? 'var(--ws-right, 340px)' : '40px'}`,
-      transition: 'grid-template-columns 0.18s ease',
-    }}>
+    <div className="workspace-grid h-full grid overflow-hidden">
       {/* LEFT — Shot Brief */}
       <aside style={{ borderRight: '1px solid var(--line)', overflow: 'auto', background: 'var(--bg-1)' }}>
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
@@ -1178,50 +967,8 @@ export default function WorkspacePage() {
         </div>
       </aside>
 
-      {/* CENTER — Results (T2I면 ImageStudio, 그 외엔 기존 3패널 워크플로우) */}
-      <main style={{
-        overflow: genType === 't2i' ? 'hidden' : 'auto',
-        display: 'flex', flexDirection: 'column',
-      }}>
-        {genType === 't2i' && active ? (
-          <ImageStudio
-            projectId={projectId}
-            sceneId={active.id}
-            promptDraft={genPromptDraft}
-            onPromptChange={(v) => { setGenPromptDraft(v); setPromptUserEdited(true) }}
-            engine={genEngine}
-            onEngineChange={setGenEngine}
-            ratio={genRatio}
-            onRatioChange={setGenRatio}
-            generating={generating}
-            onGenerate={runImageGenerate}
-            count={genCount}
-            onCountChange={setGenCount}
-            recentOutputs={outputs
-              .filter(o => o.scene_id === active.id && o.type === 't2i' && !o.archived)
-              .slice(-30)
-              .reverse()
-              .map(o => ({
-                id: o.id,
-                url: o.url,
-                prompt: attempts.find(a => a.id === o.attempt_id)?.prompt,
-                engine: o.engine,
-                created_at: o.created_at,
-                attempt_id: o.attempt_id,
-              }))}
-            onZoomOutput={(id) => {
-              const list = outputs.filter(o => o.url && o.scene_id === active.id && o.type === 't2i') as Array<any>
-              const items: LightboxItem[] = list.map(o => ({
-                url: o.url!,
-                name: o.engine ?? '',
-                caption: attempts.find(a => a.id === o.attempt_id)?.prompt ?? '',
-                isVideo: false,
-              }))
-              const idx = list.findIndex(o => o.id === id)
-              openLightbox(items, idx >= 0 ? idx : 0)
-            }}
-          />
-        ) : (<>
+      {/* CENTER — Results */}
+      <main style={{ overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         {/* Toolbar */}
         <div
           style={{
@@ -1303,9 +1050,6 @@ export default function WorkspacePage() {
             onResolutionChange={setGenResolution}
             seedanceRefs={seedanceRefs}
             onSeedanceRefsChange={setSeedanceRefs}
-            seedancePrefillMeta={seedancePrefillMeta}
-            reviewPanelOpen={reviewPanelOpen}
-            onReviewPanelToggle={() => setReviewPanelOpen(o => !o)}
             generating={generating}
             referenceAssets={referenceAssets}
             camera={genCamera}
@@ -1489,11 +1233,9 @@ export default function WorkspacePage() {
               }
 
               // I2V는 source image 필수 — 단, R2V 모드(seedance-2 + 참조 자산 1개 이상)는 source 없이도 가능
-              // T2V는 source image 불필요 (텍스트 + 옵션 레퍼런스만)
               const explicitSrcId = selectedIds[0]
               const explicitSrc = explicitSrcId ? filteredCandidates.find(o => o.id === explicitSrcId) : null
               const isR2VMode = genType === 'i2v' && genEngine === 'seedance-2' && seedanceRefs.length > 0
-              const isT2VMode = genType === 't2v'
               if (genType === 'i2v' && explicitSrc && (explicitSrc.type === 'i2v' || explicitSrc.type === 'lipsync')) {
                 alert('I2V 영상 생성의 소스는 이미지(T2I)여야 해요.\n현재 선택은 영상이라 사용할 수 없어요. T2I 결과를 클릭해 소스로 선택해주세요.')
                 return
@@ -1514,15 +1256,13 @@ export default function WorkspacePage() {
                 : null
               const sourceUrlForI2V = explicitSource?.url ?? null
               const ownerSceneId = active.id
-              // t2v 결과는 DB에 'i2v' 타입으로 저장되므로 placeholder/attempt도 동일 매핑
-              const dbType: 't2i' | 'i2v' = genType === 't2i' ? 't2i' : 'i2v'
               const placeholders: OutputItem[] = Array.from({ length: placeholderCount }, (_, i) => ({
                 id: `temp_${Date.now()}_${i}_${Math.random().toString(36).slice(2,7)}`,
                 attempt_id: tempAttempt,
                 scene_id: ownerSceneId,             // 어느 씬의 큐인지 명시
                 url: null, archived: false,
                 satisfaction_score: null, feedback: '',
-                type: dbType, engine: genEngine,
+                type: genType, engine: genEngine,
                 created_at: new Date().toISOString(),
                 decision: null,
               }))
@@ -1532,7 +1272,7 @@ export default function WorkspacePage() {
               const { data: attempt, error } = await supabase
                 .from('prompt_attempts')
                 .insert({
-                  scene_id: active.id, type: dbType, engine: genEngine,
+                  scene_id: active.id, type: genType, engine: genEngine,
                   prompt: fullPrompt, status: 'generating', depth: 0,
                 })
                 .select().single()
@@ -1557,26 +1297,16 @@ export default function WorkspacePage() {
 
               void (async () => {
                 try {
-                  const url = genType === 't2i'
-                    ? '/api/t2i/generate'
-                    : isT2VMode
-                      ? '/api/t2v/generate'
-                      : '/api/i2v/generate'
+                  const url = genType === 't2i' ? '/api/t2i/generate' : '/api/i2v/generate'
                   // R2V 모드 (seedance + refs) — sourceImage 불필요, 대신 referenceImageUrls 전달
                   const r2vRefUrls = isR2VMode
                     ? seedanceRefs.map(r => r.url).filter((u): u is string => !!u)
                     : []
-                  // T2V도 seedanceRefs가 있으면 reference로 전달 (R2V 모드 동일 패턴)
-                  const t2vRefUrls = isT2VMode
-                    ? seedanceRefs.map(r => r.url).filter((u): u is string => !!u)
-                    : []
                   const body = genType === 't2i'
                     ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, projectId, sceneId: active.id, aspectRatio: genRatio, referenceImageUrls: refUrls.length > 0 ? refUrls : undefined }
-                    : isT2VMode
-                      ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution, referenceImageUrls: t2vRefUrls.length > 0 ? t2vRefUrls : undefined }
-                      : isR2VMode
-                        ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, mode: 'r2v', referenceImageUrls: r2vRefUrls, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution }
-                        : { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, sourceImageUrl: sourceUrlForI2V, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution }
+                    : isR2VMode
+                      ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, mode: 'r2v', referenceImageUrls: r2vRefUrls, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution }
+                      : { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, sourceImageUrl: sourceUrlForI2V, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution }
                   console.log('[generate] 요청', { url, body: { ...body, prompt: (body as any).prompt?.slice(0, 80) + '...' } })
                   const r = await fetch(url, {
                     method: 'POST',
@@ -1834,52 +1564,16 @@ export default function WorkspacePage() {
             <CandidateStrip items={candidates} attempts={attempts} selected={selectedIds} onToggle={toggleSelect} />
           </div>
         )}
-        </>)}
       </main>
 
-      {/* RIGHT — Comments (collapsible) */}
-      <aside style={{
-        borderLeft: '1px solid var(--line)', display: 'flex', flexDirection: 'column',
-        background: 'var(--bg-1)',
-        width: commentsOpen ? undefined : 40,
-        flexShrink: 0,
-        overflow: 'hidden',
-        transition: 'width 0.18s ease',
-        position: 'relative',
-      }}>
-        <button
-          onClick={toggleComments}
-          style={{
-            padding: commentsOpen ? '12px 14px' : '12px 8px',
-            borderBottom: '1px solid var(--line)',
-            background: 'transparent',
-            cursor: 'pointer',
-            display: 'flex', alignItems: 'center', gap: 8,
-            color: 'var(--ink)',
-            justifyContent: commentsOpen ? 'flex-start' : 'center',
-            position: 'relative',
-          }}
-          title={commentsOpen ? '코멘트 패널 접기' : '코멘트 패널 펼치기'}
-        >
-          <MessageCircle size={13} style={{ color: 'var(--accent)', flexShrink: 0 }} />
-          {commentsOpen && (
-            <>
-              <span style={{ fontSize: 13, fontWeight: 600 }}>코멘트</span>
-              <span style={{ flex: 1 }} />
-              <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>{comments.length}</span>
-              <ChevronRight size={12} style={{ color: 'var(--ink-4)' }} />
-            </>
-          )}
-          {!commentsOpen && comments.length > 0 && (
-            <span style={{
-              position: 'absolute', top: 4, right: 4,
-              fontSize: 9, fontWeight: 700,
-              padding: '1px 5px', borderRadius: 999,
-              background: 'var(--accent)', color: '#fff',
-            }}>{comments.length}</span>
-          )}
-        </button>
-        {commentsOpen ? (<>
+      {/* RIGHT — Comments */}
+      <aside style={{ borderLeft: '1px solid var(--line)', display: 'flex', flexDirection: 'column', background: 'var(--bg-1)' }}>
+        <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--line)' }} className="flex items-center gap-2">
+          <MessageCircle size={13} style={{ color: 'var(--accent)' }} />
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>코멘트</span>
+          <span style={{ flex: 1 }} />
+          <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>{comments.length}</span>
+        </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
           {comments.length === 0 ? (
@@ -1894,7 +1588,7 @@ export default function WorkspacePage() {
                     <span>{new Date(c.created_at).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                    {renderCommentContent(c.content)}
+                    {c.content}
                   </div>
                 </div>
               ))}
@@ -1902,55 +1596,13 @@ export default function WorkspacePage() {
           )}
         </div>
 
-        <div style={{ borderTop: '1px solid var(--line)', padding: 10, position: 'relative' }} className="flex items-end gap-2">
-          {commentMentionOpen && commentMentionMatches.length > 0 && (
-            <div style={{
-              position: 'absolute', bottom: '100%', left: 10, right: 10, marginBottom: 4,
-              maxHeight: 192, overflowY: 'auto',
-              background: 'var(--bg)', border: '1px solid var(--line)',
-              borderRadius: 'var(--r-md)',
-              boxShadow: '0 6px 20px rgba(0,0,0,0.12)',
-              zIndex: 30,
-            }}>
-              {commentMentionMatches.map(mm => {
-                const display = mm.display_name?.trim() || mm.email.split('@')[0]
-                return (
-                  <button key={mm.user_id} onClick={() => applyCommentMention(mm)}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs">
-                    <span style={{
-                      width: 18, height: 18, borderRadius: 999,
-                      background: 'var(--violet-soft, var(--accent-soft))',
-                      color: 'var(--violet, var(--accent))',
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 10, fontWeight: 700,
-                    }}>{display[0]?.toUpperCase() ?? '?'}</span>
-                    <span className="font-semibold" style={{ color: 'var(--ink)' }}>@{display}</span>
-                    {mm.email && mm.email !== display && (
-                      <span style={{ color: 'var(--ink-4)', fontSize: 10 }}>{mm.email}</span>
-                    )}
-                    {mm.role_label && (
-                      <span style={{ marginLeft: 'auto', fontSize: 9, color: 'var(--ink-4)' }}>{mm.role_label}</span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          )}
+        <div style={{ borderTop: '1px solid var(--line)', padding: 10 }} className="flex items-end gap-2">
           <textarea
             value={draft}
-            onChange={e => {
-              const v = e.target.value
-              setDraft(v)
-              const um = /(?:^|\s)@([\w.+\-가-힣]*)$/.exec(v)
-              if (um) { setCommentMentionOpen(true); setCommentMentionQuery(um[1] ?? '') }
-              else { setCommentMentionOpen(false) }
-            }}
-            onKeyDown={e => {
-              if (e.key === 'Escape' && commentMentionOpen) { setCommentMentionOpen(false); return }
-              if (e.key === 'Enter' && !e.shiftKey && !commentMentionOpen) { e.preventDefault(); void postComment() }
-            }}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void postComment() } }}
             rows={2}
-            placeholder="이 결과에 코멘트... (Enter 전송 / @사람 멘션)"
+            placeholder="이 결과에 코멘트... (Enter로 전송)"
             style={{
               flex: 1,
               background: 'var(--bg-2)',
@@ -1978,7 +1630,6 @@ export default function WorkspacePage() {
             <Send size={13} />
           </button>
         </div>
-        </>) : null}
       </aside>
 
       {/* Decision modal */}
@@ -2391,11 +2042,6 @@ const I2V_ENGINES = [
   { value: 'seedance-2',label: 'Seedance 2.0' },
   { value: 'kling3',    label: 'Kling 3.0' },
 ]
-const T2V_ENGINES = [
-  { value: 'seedance-2',  label: 'Seedance 2.0' },
-  { value: 'kling3',      label: 'Kling 3.0' },
-  { value: 'kling3-omni', label: 'Kling 3.0 Omni' },
-]
 const RATIOS = ['16:9', '9:16', '1:1', '4:3', '21:9']
 
 // ── @ 자산 추가 드롭다운 (Seedance R2V 전용) ─────────────────────────────────
@@ -2523,7 +2169,6 @@ function GeneratePanel({
   ratio, onRatioChange, duration, onDurationChange,
   resolution, onResolutionChange,
   seedanceRefs, onSeedanceRefsChange,
-  seedancePrefillMeta, reviewPanelOpen, onReviewPanelToggle,
   generating, onGenerate,
   referenceAssets, camera, onCameraSelect, onCameraDeselect,
   refSel, onRefSelChange, scene,
@@ -2538,8 +2183,8 @@ function GeneratePanel({
   currentPrompt: string
   promptDraft: string
   onPromptChange: (v: string) => void
-  type: 't2i' | 'i2v' | 't2v'
-  onTypeChange: (v: 't2i' | 'i2v' | 't2v') => void
+  type: 't2i' | 'i2v'
+  onTypeChange: (v: 't2i' | 'i2v') => void
   engine: string
   onEngineChange: (v: string) => void
   enginePresetActive?: boolean
@@ -2552,18 +2197,6 @@ function GeneratePanel({
   onResolutionChange?: (v: '480p' | '720p' | '1080p') => void
   seedanceRefs?: Array<{ token: string; rootAssetId: string; name: string; url: string | null; category: string }>
   onSeedanceRefsChange?: (next: Array<{ token: string; rootAssetId: string; name: string; url: string | null; category: string }>) => void
-  seedancePrefillMeta?: {
-    sceneNumber?: string | null
-    rawScript?: string
-    durationSec?: number | null
-    usedSceneMarks?: boolean
-    sceneSettings?: { angle?: string; lens?: string; lighting?: string; mood?: string } | null
-    characterVariations?: Record<string, string>
-    candidatePoolSize?: number | null
-    totalAssetsInProject?: number | null
-  } | null
-  reviewPanelOpen?: boolean
-  onReviewPanelToggle?: () => void
   generating: boolean
   onGenerate: () => Promise<void> | void
   referenceAssets: Asset[]
@@ -2591,7 +2224,7 @@ function GeneratePanel({
   onOptimize: () => Promise<void> | void
   onSavePromptToDb?: (content: string) => Promise<void> | void
 }) {
-  const engineOptions = type === 't2i' ? T2I_ENGINES : type === 't2v' ? T2V_ENGINES : I2V_ENGINES
+  const engineOptions = type === 't2i' ? T2I_ENGINES : I2V_ENGINES
 
   // ─── 최근 결과 페이지네이션 (씬별 — sessionStorage로 GeneratePanel 리마운트 후에도 유지) ──
   const RECENT_PAGE_STEP = 8
@@ -2987,115 +2620,8 @@ function GeneratePanel({
           </div>
         </div>
 
-        {/* ── 워크플로우 모드 안내 (Seedance R2V 활성 시) ── */}
-        {(type === 'i2v' || type === 't2v') && engine === 'seedance-2' && (seedanceRefs?.length ?? 0) > 0 && (
-          <div style={{
-            margin: '8px 0 4px',
-            padding: '6px 10px',
-            background: 'var(--violet-soft, var(--accent-soft))',
-            border: '1px solid var(--violet, var(--accent-line))',
-            borderRadius: 'var(--r-sm)',
-            fontSize: 10, color: 'var(--violet, var(--accent))',
-            fontWeight: 600,
-            display: 'flex', alignItems: 'center', gap: 6,
-          }}>
-            <span style={{ fontSize: 12 }}>📽</span>
-            <span>{type === 't2v' ? 'T2V R2V' : 'I2V R2V'} 모드 — 영상 생성 시 참조 자산을 직접 사용 (소스 이미지 불필요)</span>
-            <span style={{ flex: 1 }} />
-            <span style={{ opacity: 0.7 }}>{seedanceRefs?.length ?? 0}개 reference</span>
-          </div>
-        )}
-
-        {/* ── prefill 검수 패널 (collapsible) — scriptize에서 어떤 컨텍스트가 반영됐는지 ── */}
-        {(type === 'i2v' || type === 't2v') && seedancePrefillMeta && (
-          <div style={{
-            margin: '8px 0',
-            border: '1px solid var(--line)',
-            borderRadius: 'var(--r-md)',
-            background: 'var(--bg-2)',
-            overflow: 'hidden',
-          }}>
-            <button
-              onClick={onReviewPanelToggle}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 8,
-                fontSize: 11, fontWeight: 600,
-                color: 'var(--ink-2)',
-              }}
-            >
-              {reviewPanelOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-              <span>📋 prefill 검수 — 반영된 씬 컨텍스트</span>
-              <span style={{ flex: 1 }} />
-              {seedancePrefillMeta.sceneNumber && (
-                <span className="mono" style={{ fontSize: 10, color: 'var(--accent)' }}>
-                  씬 {seedancePrefillMeta.sceneNumber}
-                </span>
-              )}
-              {seedancePrefillMeta.usedSceneMarks && (
-                <span style={{
-                  fontSize: 9, fontWeight: 700,
-                  padding: '1px 6px', borderRadius: 999,
-                  background: 'var(--ok-soft, var(--accent-soft))',
-                  color: 'var(--ok, var(--accent))',
-                }}>마크 우선</span>
-              )}
-            </button>
-            {reviewPanelOpen && (
-              <div style={{ padding: '0 12px 12px', fontSize: 11, color: 'var(--ink-3)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {seedancePrefillMeta.rawScript && (
-                  <div>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-4)', marginBottom: 3 }}>원본 대본 구간</div>
-                    <div style={{
-                      padding: 8, background: 'var(--bg)', borderRadius: 'var(--r-sm)',
-                      border: '1px solid var(--line)', whiteSpace: 'pre-wrap',
-                      maxHeight: 120, overflowY: 'auto', lineHeight: 1.5,
-                    }}>{seedancePrefillMeta.rawScript}</div>
-                  </div>
-                )}
-                {seedancePrefillMeta.sceneSettings && Object.values(seedancePrefillMeta.sceneSettings).some(v => v) && (
-                  <div>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-4)', marginBottom: 3 }}>씬 비주얼 세팅</div>
-                    <div className="flex" style={{ gap: 6, flexWrap: 'wrap' }}>
-                      {Object.entries(seedancePrefillMeta.sceneSettings).map(([k, v]) => v ? (
-                        <span key={k} style={{
-                          padding: '2px 8px', borderRadius: 999,
-                          background: 'var(--bg-3)', fontSize: 10,
-                          color: 'var(--ink-2)',
-                        }}>{k}: {v}</span>
-                      ) : null)}
-                    </div>
-                  </div>
-                )}
-                {seedancePrefillMeta.characterVariations && Object.keys(seedancePrefillMeta.characterVariations).length > 0 && (
-                  <div>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-4)', marginBottom: 3 }}>캐릭터 변동사항</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                      {Object.entries(seedancePrefillMeta.characterVariations).map(([id, v]) => (
-                        <div key={id} style={{ fontSize: 10, color: 'var(--ink-3)' }}>
-                          <span className="mono" style={{ color: 'var(--ink-5)' }}>{id.slice(0, 8)}…</span>: {v}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <div style={{ fontSize: 10, color: 'var(--ink-5)', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                  {seedancePrefillMeta.durationSec != null && <span>⏱ {seedancePrefillMeta.durationSec}초</span>}
-                  {seedancePrefillMeta.candidatePoolSize != null && (
-                    <span>🎯 후보 풀: {seedancePrefillMeta.candidatePoolSize}/{seedancePrefillMeta.totalAssetsInProject ?? '?'} 자산</span>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* ── Seedance R2V 참조 자산 chips (sceneEditor 에서 prefill 받았거나 @로 추가됨) ── */}
-        {(type === 'i2v' || type === 't2v') && (seedanceRefs?.length ?? 0) > 0 && (
+        {type === 'i2v' && (seedanceRefs?.length ?? 0) > 0 && (
           <div style={{
             margin: '10px 0',
             padding: '10px 12px',
@@ -3155,7 +2681,7 @@ function GeneratePanel({
         )}
 
         {/* ── @ 자산 추가 — i2v + seedance에서만 ── */}
-        {(type === 'i2v' || type === 't2v') && engine === 'seedance-2' && (
+        {type === 'i2v' && engine === 'seedance-2' && (
           <SeedanceRefAdder
             currentRefs={seedanceRefs ?? []}
             rootAssets={rootAssets}
@@ -3402,31 +2928,23 @@ function GeneratePanel({
       <div>
         <div className="field-label">유형</div>
         <div className="flex" style={{ gap: 6, marginBottom: 14 }}>
-          {(['t2i', 'video'] as const).map(t => {
-            const active = (t === 't2i' && type === 't2i') || (t === 'video' && (type === 'i2v' || type === 't2v'))
-            return (
-              <button
-                key={t}
-                onClick={() => {
-                  if (t === 't2i') onTypeChange('t2i')
-                  // 영상 생성: 기본 i2v로. 단, 이미 t2v면 유지
-                  else if (type !== 'i2v' && type !== 't2v') onTypeChange('i2v')
-                }}
-                style={{
-                  flex: 1,
-                  padding: '8px 10px',
-                  borderRadius: 'var(--r-md)',
-                  fontSize: 12, fontWeight: 500,
-                  background: active ? 'var(--accent-soft)' : 'var(--bg-2)',
-                  color: active ? 'var(--accent)' : 'var(--ink-3)',
-                  border: `1px solid ${active ? 'var(--accent-line)' : 'var(--line)'}`,
-                }}
-                title={t === 't2i' ? '텍스트 → 이미지' : '이미지(소스) → 영상 또는 텍스트(+레퍼런스) → 영상'}
-              >
-                {t === 't2i' ? '이미지 생성' : '영상 생성'}
-              </button>
-            )
-          })}
+          {(['t2i', 'i2v'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => onTypeChange(t)}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                borderRadius: 'var(--r-md)',
+                fontSize: 12, fontWeight: 500,
+                background: type === t ? 'var(--accent-soft)' : 'var(--bg-2)',
+                color: type === t ? 'var(--accent)' : 'var(--ink-3)',
+                border: `1px solid ${type === t ? 'var(--accent-line)' : 'var(--line)'}`,
+              }}
+            >
+              {t === 't2i' ? 'T2I — 이미지' : 'I2V — 영상'}
+            </button>
+          ))}
         </div>
 
         <div className="flex items-center" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
@@ -3469,7 +2987,7 @@ function GeneratePanel({
           ))}
         </div>
 
-        {(type === 'i2v' || type === 't2v') && onDurationChange && (
+        {type === 'i2v' && onDurationChange && (
           <>
             <div className="field-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span>영상 길이</span>
@@ -3516,7 +3034,7 @@ function GeneratePanel({
           ))}
         </div>
 
-        {(type === 'i2v' || type === 't2v') && onResolutionChange && (
+        {type === 'i2v' && onResolutionChange && (
           <>
             <div className="field-label">해상도</div>
             <div className="flex" style={{ gap: 6, marginBottom: 18 }}>
