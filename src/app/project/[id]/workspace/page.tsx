@@ -183,7 +183,11 @@ export default function WorkspacePage() {
     // 탭/엔진/길이/프롬프트/refs 일괄 적용
     if (tabParam === 'i2v') setGenType('i2v')
     if (engineParam) setGenEngine(engineParam)
-    if (typeof payload.prompt === 'string' && payload.prompt) setGenPromptDraft(payload.prompt)
+    if (typeof payload.prompt === 'string' && payload.prompt) {
+      setGenPromptDraft(payload.prompt)
+      // ↓ 중요: 마스터 prefill useEffect가 빈 fallback으로 덮어쓰는 race 차단
+      setPromptUserEdited(true)
+    }
     if (Array.isArray(payload.refs)) setSeedanceRefs(payload.refs)
     if (typeof payload.durationSec === 'number') setGenDuration(payload.durationSec)
     // 씬 자동 선택 (URL에 있으면 우선, 없으면 payload.sceneId)
@@ -449,8 +453,13 @@ export default function WorkspacePage() {
     })
   }, [activeId, scenes])
 
-  // 씬 변경 → 프롬프트 편집 플래그 리셋
+  // 씬 변경 → 프롬프트 편집 플래그 리셋 (단, scriptize prefill 직후엔 유지)
   useEffect(() => {
+    if (prefillAppliedRef.current) {
+      // prefill 적용 직후 setActiveId로 인한 이 트리거는 무시 (1회)
+      prefillAppliedRef.current = 'consumed' as any
+      return
+    }
     setPromptUserEdited(false)
   }, [activeId])
 
@@ -1276,16 +1285,25 @@ export default function WorkspacePage() {
                     : isR2VMode
                       ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, mode: 'r2v', referenceImageUrls: r2vRefUrls, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution }
                       : { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, sourceImageUrl: sourceUrlForI2V, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution }
+                  console.log('[generate] 요청', { url, body: { ...body, prompt: (body as any).prompt?.slice(0, 80) + '...' } })
                   const r = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body),
                   })
                   if (!r.ok) {
-                    const j = await r.json().catch(() => ({}))
-                    alert('생성 실패: ' + (j.error ?? r.statusText))
+                    const errText = await r.text()
+                    let errParsed: any = {}
+                    try { errParsed = JSON.parse(errText) } catch {}
+                    const errMsg = errParsed?.error ?? errText.slice(0, 600) ?? r.statusText
+                    console.error('[generate] 실패', {
+                      status: r.status,
+                      statusText: r.statusText,
+                      error: errMsg,
+                      requestBody: body,
+                    })
+                    alert(`생성 실패 (${r.status}):\n\n${errMsg}\n\n— 자세한 정보는 브라우저 콘솔을 확인하세요.`)
                     await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attempt.id)
-                    // placeholder는 realAttemptId로 박혀있음 — 즉시 제거
                     setOutputs(prev => prev.filter(o => o.attempt_id !== realAttemptId))
                     return
                   }
@@ -2035,9 +2053,9 @@ function SeedanceRefAdder({
           border: '1px dashed var(--accent-line)',
           background: 'transparent',
         }}
-        title="@imageN 자산 추가 (자동으로 다음 번호 부여)"
+        title={`@imageN 자산 추가 (보유 ${rootAssets.length}개)`}
       >
-        + @ 자산 추가
+        + @ 자산 추가 ({rootAssets.length})
       </button>
       {open && (
         <div
@@ -2071,14 +2089,16 @@ function SeedanceRefAdder({
               <div style={{ padding: 16, fontSize: 11, color: 'var(--ink-4)', textAlign: 'center' }}>
                 {rootAssets.length === 0 ? '루트 자산이 비어있어요.' : '결과 없음'}
               </div>
-            ) : filtered.map(a => (
+            ) : filtered.map(a => {
+              const thumbUrl = (Array.isArray(a.reference_image_urls) && a.reference_image_urls[0]) || null
+              return (
               <button
                 key={a.id}
                 onClick={() => {
                   onAdd({
                     id: a.id, name: a.name,
-                    url: (a as any).url ?? null,
-                    category: (a as any).category ?? 'misc',
+                    url: thumbUrl,
+                    category: a.category ?? 'misc',
                   })
                   setOpen(false); setQ('')
                 }}
@@ -2092,19 +2112,20 @@ function SeedanceRefAdder({
                 onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg-2)'}
                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
               >
-                {(a as any).url ? (
-                  <img src={(a as any).url} alt="" style={{ width: 28, height: 28, borderRadius: 4, objectFit: 'cover' }} />
+                {thumbUrl ? (
+                  <img src={thumbUrl} alt="" style={{ width: 28, height: 28, borderRadius: 4, objectFit: 'cover' }} />
                 ) : (
                   <span style={{ width: 28, height: 28, borderRadius: 4, background: 'var(--bg-3)' }} />
                 )}
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ fontSize: 12, color: 'var(--ink)', fontWeight: 500 }}>{a.name}</span>
                   <span style={{ display: 'block', fontSize: 10, color: 'var(--ink-4)' }}>
-                    {(a as any).category ?? 'misc'}
+                    {a.category ?? 'misc'}
                   </span>
                 </span>
               </button>
-            ))}
+              )
+            })}
           </div>
           <div style={{ padding: 6, borderTop: '1px solid var(--line)' }}>
             <button onClick={() => setOpen(false)} className="btn" style={{ width: '100%', fontSize: 11, padding: 4 }}>
@@ -2561,7 +2582,7 @@ function GeneratePanel({
             display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center',
           }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', marginRight: 4 }}>
-              R2V 참조
+              Reference
             </span>
             {(seedanceRefs ?? []).map(ref => (
               <span
