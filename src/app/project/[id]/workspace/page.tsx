@@ -1074,7 +1074,15 @@ export default function WorkspacePage() {
               const list = candidates.filter(o => o.url) as Array<{ id: string; url: string; engine?: string; type?: string; prompt?: string }>
               const items: LightboxItem[] = list.map(o => ({
                 url: o.url!,
-                name: (o as any).engine ?? '',
+                name: (() => {
+                  const eng = (o as any).engine ?? 'asset'
+                  const t = (o as any).type
+                  const isVid = t === 'i2v' || t === 'lipsync'
+                  const ext = isVid ? 'mp4' : 'png'
+                  // 파일명: engine_타임스탬프.확장자
+                  const ts = new Date((o as any).created_at ?? Date.now()).toISOString().slice(0, 19).replace(/[:T]/g, '-')
+                  return `${eng}_${ts}.${ext}`
+                })(),
                 caption: (o as any).prompt ?? '',
                 isVideo: (o as any).type === 'i2v' || (o as any).type === 'lipsync',
               }))

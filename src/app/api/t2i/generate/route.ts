@@ -127,7 +127,12 @@ export async function POST(req: NextRequest) {
   const {
     attemptId, prompt, negativePrompt, engine, projectId, sceneId, aspectRatio,
     referenceImageUrls,   // string[] | undefined — 레퍼런스 이미지 URL 목록
+    count: rawCount,      // number | undefined — 1~4
+    quality: rawQuality,  // '1K' | '2K' | '4K' | undefined
   } = await req.json()
+  const count: number = Math.max(1, Math.min(4, Number(rawCount) || 4))
+  const quality: '1K' | '2K' | '4K' =
+    rawQuality === '2K' || rawQuality === '4K' ? rawQuality : '1K'
   const admin = createAdminClient()
 
   const errorDetail = ''
@@ -158,7 +163,7 @@ export async function POST(req: NextRequest) {
         console.log(`[T2I] 레퍼런스 이미지 ${referenceImages.length}/${targetUrls.length}장 base64 첨부 완료`)
       }
 
-      const images = await generateViaNanobanana(apiKey, prompt, aspectRatio ?? '16:9', 4, referenceImages)
+      const images = await generateViaNanobanana(apiKey, prompt, aspectRatio ?? '16:9', count, referenceImages)
 
       if (images.length === 0) throw new Error('이미지가 생성되지 않았습니다. 프롬프트를 수정해보세요.')
 
@@ -178,7 +183,7 @@ export async function POST(req: NextRequest) {
       const res = await fetch(`${mjUrl}/imagine`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${mjKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, n: 4 }),
+        body: JSON.stringify({ prompt, n: count }),
       })
 
       if (!res.ok) {
@@ -238,7 +243,7 @@ export async function POST(req: NextRequest) {
         console.log(`[T2I/openai] 레퍼런스 ${referenceImages.length}장 첨부`)
       }
 
-      const images = await generateViaOpenAI(apiKey, prompt, aspectRatio ?? '16:9', 4, referenceImages)
+      const images = await generateViaOpenAI(apiKey, prompt, aspectRatio ?? '16:9', count, referenceImages)
       if (images.length === 0) throw new Error('OpenAI에서 이미지가 생성되지 않았습니다.')
 
       for (const img of images) {
@@ -277,8 +282,8 @@ export async function POST(req: NextRequest) {
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    console.error('[T2I] 생성 실패:', msg)
+    console.error('[T2I] generate 실패:', msg)
     await admin.from('prompt_attempts').update({ status: 'failed' }).eq('id', attemptId)
-    return NextResponse.json({ error: msg, detail: errorDetail }, { status: 500 })
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
