@@ -10,7 +10,7 @@ import ImageStudio from '@/components/workspace/ImageStudio'
 import { ChevronDown } from 'lucide-react'
 
 interface SceneRow { id: string; scene_number: string; title: string; content?: string }
-interface AttemptMeta { id: string; prompt: string; engine: string; status?: string; created_at?: string }
+interface AttemptMeta { id: string; type?: string; prompt: string; engine: string; status?: string; created_at?: string }
 interface OutputRow {
   id: string; attempt_id: string
   url: string | null; archived: boolean
