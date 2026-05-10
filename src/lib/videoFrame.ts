@@ -30,9 +30,14 @@ export async function extractVideoFrame(
     })
     v.addEventListener('seeked', () => {
       try {
+        // Seedance/Kling 입력 한도 회피용 — 최대 변 1280px 로 다운스케일
+        const MAX_SIDE = 1280
+        const srcW = v.videoWidth || 1280
+        const srcH = v.videoHeight || 720
+        const scale = Math.min(1, MAX_SIDE / Math.max(srcW, srcH))
         const c = document.createElement('canvas')
-        c.width = v.videoWidth || 1280
-        c.height = v.videoHeight || 720
+        c.width = Math.max(1, Math.round(srcW * scale))
+        c.height = Math.max(1, Math.round(srcH * scale))
         const ctx = c.getContext('2d')
         if (!ctx) { cleanup(); reject(new Error('canvas 2D 컨텍스트 없음')); return }
         ctx.drawImage(v, 0, 0, c.width, c.height)

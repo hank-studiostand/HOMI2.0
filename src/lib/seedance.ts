@@ -152,8 +152,36 @@ export async function generateSeedanceT2V(
 // ── I2V (이미지 → 비디오) ────────────────────────────────────────
 // Seedance가 외부 URL fetch 시 'UnsupportedImageFormat' 에러를 자주 내므로
 // 서버에서 직접 fetch → base64 data URL로 변환해서 전달.
-// 외부 이미지 URL → base64 data URL (CDN UnsupportedImageFormat 회피용)
+// data: URL 입력은 fetch 없이 그대로 정규화.
 async function urlToBase64DataUrl(url: string, label: string): Promise<string> {
+  // 0) data: URL 직접 처리 — 클라이언트에서 캔버스로 추출한 frame 등
+  if (url.startsWith('data:')) {
+    const m = url.match(/^data:([^;,]+)(;base64)?,(.*)$/s)
+    if (!m) throw new Error(`${label} data URL 파싱 실패`)
+    const rawMime = (m[1] || '').toLowerCase()
+    const isB64 = !!m[2]
+    const payload = m[3] || ''
+    if (rawMime.startsWith('video/') || rawMime.startsWith('audio/')) {
+      throw new Error(`${label}는 이미지여야 합니다. data URL: ${rawMime}`)
+    }
+    const safeMime = (rawMime === 'image/png' || rawMime === 'image/jpeg' || rawMime === 'image/jpg' || rawMime === 'image/webp')
+      ? rawMime
+      : 'image/jpeg'
+    let buf: Buffer
+    try {
+      buf = isB64 ? Buffer.from(payload, 'base64') : Buffer.from(decodeURIComponent(payload), 'utf-8')
+    } catch (e) {
+      throw new Error(`${label} data URL 디코드 실패: ${e instanceof Error ? e.message : e}`)
+    }
+    if (buf.length < 64) throw new Error(`${label} 이미지가 너무 작거나 비어있어요 (${buf.length}B)`)
+    if (buf.length > 9 * 1024 * 1024) {
+      console.warn(`[seedance] ${label} 이미지가 너무 큼 (${(buf.length / 1024 / 1024).toFixed(1)}MB) — Seedance 제한 초과 가능`)
+    }
+    console.log(`[seedance] ${label} data URL 정규화: ${rawMime || 'none'} → ${safeMime}, ${(buf.length / 1024).toFixed(0)}KB`)
+    return `data:${safeMime};base64,${buf.toString('base64')}`
+  }
+
+  // 1) http(s) — fetch
   try {
     const r = await fetch(url)
     if (!r.ok) {
@@ -164,6 +192,7 @@ async function urlToBase64DataUrl(url: string, label: string): Promise<string> {
       throw new Error(`${label}는 이미지여야 합니다. 받은 형식: ${ct}`)
     }
     const buf = Buffer.from(await r.arrayBuffer())
+    if (buf.length < 64) throw new Error(`${label} 응답이 너무 작아요 (${buf.length}B)`)
     const safeMime = (ct === 'image/png' || ct === 'image/jpeg' || ct === 'image/jpg' || ct === 'image/webp')
       ? ct
       : 'image/jpeg'
