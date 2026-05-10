@@ -38,6 +38,7 @@ export default function VideoStudioPage() {
   const [ratio, setRatio] = useState('16:9')
   const [resolution, setResolution] = useState<'480p' | '720p' | '1080p'>('1080p')
   const [sourceImageUrl, setSourceImageUrl] = useState<string | null>(null)
+  const [endFrameUrl, setEndFrameUrl] = useState<string | null>(null)
   const [refs, setRefs] = useState<Array<{
     token: string; rootAssetId: string; name: string; url: string | null; category: string
   }>>([])
@@ -178,6 +179,7 @@ export default function VideoStudioPage() {
           : {
               attemptId: attempt.id, prompt: draft, engine,
               sourceImageUrl,
+              endFrameUrl: endFrameUrl ?? undefined,
               projectId, sceneId: activeId,
               duration, aspectRatio: ratio, resolution,
             }
@@ -284,6 +286,8 @@ export default function VideoStudioPage() {
           onGenerate={runGenerate}
           sourceImageUrl={sourceImageUrl}
           onSourceImageChange={setSourceImageUrl}
+          endFrameUrl={endFrameUrl}
+          onEndFrameChange={setEndFrameUrl}
           refs={refs}
           onRefsChange={setRefs}
           rootAssets={rootAssets}

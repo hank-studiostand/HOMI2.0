@@ -62,6 +62,8 @@ export default function VideoStudio({
   onGenerate,
   sourceImageUrl,
   onSourceImageChange,
+  endFrameUrl,
+  onEndFrameChange,
   refs,
   onRefsChange,
   rootAssets,
@@ -86,6 +88,8 @@ export default function VideoStudio({
   onGenerate: () => Promise<void> | void
   sourceImageUrl: string | null
   onSourceImageChange: (url: string | null) => void
+  endFrameUrl?: string | null
+  onEndFrameChange?: (url: string | null) => void
   refs: Array<{ token: string; rootAssetId: string; name: string; url: string | null; category: string }>
   onRefsChange: (next: Array<{ token: string; rootAssetId: string; name: string; url: string | null; category: string }>) => void
   rootAssets: RootAssetLite[]
@@ -267,7 +271,7 @@ export default function VideoStudio({
                   title="이미지 제거"
                 ><X size={12} /></button>
                 <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>
-                  소스 이미지 (I2V)
+                  Start Frame (영상 시작)
                 </span>
               </>
             ) : (
@@ -278,12 +282,20 @@ export default function VideoStudio({
                   <span style={iconBubble}><Music size={14} /></span>
                 </div>
                 <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-2)' }}>Upload media</div>
-                  <div style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 2 }}>이미지로 시작 (영상/오디오 곧 지원)</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-2)' }}>Start Frame</div>
+                  <div style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 2 }}>영상 첫 프레임 (이미지)</div>
                 </div>
               </>
             )}
           </div>
+
+          {/* End Frame 슬롯 — 옵션 (Seedance last_frame / Kling image_tail) */}
+          {onEndFrameChange && (
+            <EndFrameSlot
+              endFrameUrl={endFrameUrl ?? null}
+              onChange={onEndFrameChange}
+            />
+          )}
 
           {/* 프롬프트 */}
           <div style={{
@@ -770,6 +782,82 @@ function PopupChip({
             </button>
           ))}
         </div>
+      )}
+    </div>
+  )
+}
+
+// ── EndFrameSlot — End frame 별도 업로드 슬롯 ──
+function EndFrameSlot({
+  endFrameUrl,
+  onChange,
+}: {
+  endFrameUrl: string | null
+  onChange: (url: string | null) => void
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  function pick(file: File | null) {
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      alert('이미지 파일만 가능해요')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => onChange(String(reader.result || ''))
+    reader.readAsDataURL(file)
+  }
+  return (
+    <div
+      onDragOver={e => e.preventDefault()}
+      onDrop={e => { e.preventDefault(); pick(e.dataTransfer.files?.[0] ?? null) }}
+      onClick={() => inputRef.current?.click()}
+      style={{
+        border: `1.5px dashed ${endFrameUrl ? 'var(--accent-line)' : 'var(--line-strong)'}`,
+        borderRadius: 14,
+        padding: endFrameUrl ? 8 : '20px 16px',
+        background: endFrameUrl ? 'var(--bg)' : 'var(--bg-2)',
+        cursor: 'pointer',
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        gap: 6, position: 'relative',
+      }}>
+      <input ref={inputRef} type="file" accept="image/*" hidden
+        onChange={e => { pick(e.target.files?.[0] ?? null); if (e.target) e.target.value = '' }} />
+      {endFrameUrl ? (
+        <>
+          <img src={endFrameUrl} alt="" style={{
+            width: '100%', maxHeight: 130, objectFit: 'contain',
+            borderRadius: 10, background: 'var(--bg-3)',
+          }} />
+          <button
+            onClick={e => { e.stopPropagation(); onChange(null) }}
+            style={{
+              position: 'absolute', top: 4, right: 4,
+              width: 22, height: 22, padding: 0, borderRadius: 999,
+              background: 'rgba(0,0,0,0.6)', color: '#fff',
+              border: 'none', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+            title="끝 프레임 제거"
+          ><X size={12} /></button>
+          <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>
+            End Frame (영상 끝)
+          </span>
+        </>
+      ) : (
+        <>
+          <div style={{
+            width: 28, height: 28, borderRadius: 999,
+            background: 'var(--bg-3)', color: 'var(--ink-4)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <ImageIcon size={13} />
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-3)' }}>End Frame (선택)</div>
+            <div style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 2 }}>영상 끝 프레임 — Seedance/Kling 지원</div>
+          </div>
+        </>
       )}
     </div>
   )
