@@ -156,7 +156,7 @@ export async function generateSeedanceT2V(
 async function urlToBase64DataUrl(url: string, label: string): Promise<string> {
   // 0) data: URL 직접 처리 — 클라이언트에서 캔버스로 추출한 frame 등
   if (url.startsWith('data:')) {
-    const m = url.match(/^data:([^;,]+)(;base64)?,(.*)$/s)
+    const m = url.match(/^data:([^;,]+)(;base64)?,([\s\S]*)$/)
     if (!m) throw new Error(`${label} data URL 파싱 실패`)
     const rawMime = (m[1] || '').toLowerCase()
     const isB64 = !!m[2]
