@@ -2,8 +2,8 @@
 
 import MediaBrowser from '@/components/media/MediaBrowser'
 
-// /i2v — 프로젝트의 모든 I2V 결과를 한눈에 보는 라이브러리.
-// 씬 카드 그리드는 /scenes에 있음.
+// /i2v — Shot Workspace 씬별 영상 결과 라이브러리.
+// Video Studio (대본 비독립) 결과는 /library/studio-video 에서 별도로 조회.
 export default function I2VPage() {
-  return <MediaBrowser type="i2v" />
+  return <MediaBrowser type="i2v" lockSource="workspace" />
 }

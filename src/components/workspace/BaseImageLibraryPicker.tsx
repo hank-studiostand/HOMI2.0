@@ -18,6 +18,7 @@ interface PickerItem {
   satisfaction_score: number | null
   decision?: string | null
   created_at: string
+  type: 't2i' | 'i2v'       // 이미지 / 영상 구분
 }
 
 export default function BaseImageLibraryPicker({
@@ -25,11 +26,13 @@ export default function BaseImageLibraryPicker({
   projectId,
   onClose,
   onPick,
+  assetType = 't2i',     // 'all' = 이미지+영상, 't2i' = 이미지만, 'i2v' = 영상만
 }: {
   open: boolean
   projectId: string
   onClose: () => void
-  onPick: (outputId: string, output: { url: string; scene_id: string }) => void
+  onPick: (outputId: string, output: { url: string; scene_id: string; type: 't2i' | 'i2v' }) => void
+  assetType?: 't2i' | 'i2v' | 'all'
 }) {
   const supabase = createClient()
   const [loading, setLoading] = useState(false)
@@ -55,12 +58,13 @@ export default function BaseImageLibraryPicker({
         )
         if (sceneIds.length === 0) { setItems([]); return }
 
-        // attempts (T2I만)
+        // attempts (assetType에 따라 T2I/I2V/둘 다)
+        const typeFilter = assetType === 'all' ? ['t2i', 'i2v'] : [assetType]
         const { data: at } = await supabase
           .from('prompt_attempts')
           .select('id, scene_id, prompt, engine, type')
           .in('scene_id', sceneIds)
-          .eq('type', 't2i')
+          .in('type', typeFilter)
 
         const attemptMap = new Map<string, any>((at ?? []).map((a: any) => [a.id, a]))
         const attemptIds = (at ?? []).map((a: any) => a.id)
@@ -109,6 +113,7 @@ export default function BaseImageLibraryPicker({
             satisfaction_score: o.satisfaction_score,
             decision,
             created_at: o.created_at,
+            type: (a.type === 'i2v' ? 'i2v' : 't2i') as 't2i' | 'i2v',
           })
         }
         if (mounted) setItems(flat)
@@ -117,7 +122,7 @@ export default function BaseImageLibraryPicker({
       }
     })()
     return () => { mounted = false }
-  }, [open, projectId, supabase])
+  }, [open, projectId, supabase, assetType])
 
   const filtered = useMemo(() => {
     let list = items
@@ -238,7 +243,7 @@ export default function BaseImageLibraryPicker({
               {filtered.map(it => (
                 <button
                   key={it.id}
-                  onClick={() => { onPick(it.id, { url: it.url, scene_id: it.scene_id }); onClose() }}
+                  onClick={() => { onPick(it.id, { url: it.url, scene_id: it.scene_id, type: it.type }); onClose() }}
                   style={{
                     padding: 0, border: '1px solid var(--line)',
                     borderRadius: 10, overflow: 'hidden',
@@ -248,7 +253,9 @@ export default function BaseImageLibraryPicker({
                   }}
                   title={`${it.scene_number} · ${it.engine} · ${(it.prompt ?? '').slice(0, 80)}…`}
                 >
-                  <img src={it.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  {it.type === 'i2v'
+                    ? <video src={it.url} muted preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <img src={it.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
                   <div style={{
                     position: 'absolute', top: 4, left: 4,
                     padding: '2px 6px', borderRadius: 4,

@@ -9,7 +9,7 @@ import {
   ChevronLeft, Sparkles, Check, RotateCcw, Trash2, X,
   Image as ImageIcon, Film, MessageCircle, Send, Loader2, Plus,
   Edit2, ChevronDown, ChevronRight, Save, FileText,
-  Undo2, Redo2, History,
+  Undo2, Redo2, History, Upload,
 } from 'lucide-react'
 import type { Scene, SatisfactionScore, Asset, RootAssetSeed } from '@/types'
 import Pill, { type PillVariant } from '@/components/ui/Pill'
@@ -111,6 +111,7 @@ export default function WorkspacePage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   // 베이스 이미지 라이브러리 픽커 (I2V 모드 — 프로젝트 전체 베이스 이미지에서 소스 선택)
   const [libPickerOpen, setLibPickerOpen] = useState(false)
+  const baseAssetUploadRef = useRef<HTMLInputElement | null>(null)
   // I2V end frame (Seedance last_frame / Kling image_tail)
   const [genEndFrameUrl, setGenEndFrameUrl] = useState<string | null>(null)
   const endFrameInputRef = useRef<HTMLInputElement | null>(null)
@@ -1747,6 +1748,7 @@ export default function WorkspacePage() {
       <BaseImageLibraryPicker
         open={libPickerOpen}
         projectId={projectId}
+        assetType="all"
         onClose={() => setLibPickerOpen(false)}
         onPick={(outputId) => {
           // 다른 씬의 출력일 수도 있음 — 일단 selectedIds로 마킹.
@@ -2841,14 +2843,85 @@ function GeneratePanel({
         </p>
 
         {/* ── 인라인 결과 strip (Generate 탭에서도 결과 즉시 확인) ── */}
-        {/* 베이스 이미지 (씬별 — approved/5★ T2I만, 박스, 가로 스크롤, 드래그 정렬, 삭제) */}
+        {/* 베이스 에셋 (씬별 — approved/5★ T2I/I2V + 다른 씬 / 로컬 업로드) */}
         <div style={{ marginTop: 18 }}>
           <div className="flex items-center" style={{ gap: 8, marginBottom: 8 }}>
-            <span className="field-label" style={{ margin: 0 }}>베이스 이미지</span>
+            <span className="field-label" style={{ margin: 0 }}>베이스 에셋</span>
             <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>
-              {baseImages.length > 0 ? `${baseImages.length}장 · 드래그로 정렬, ✕로 컬렉션에서 제거` : '승인 또는 ★5 이상 결과 자동 수집'}
+              {baseImages.length > 0 ? `${baseImages.length}개 · 드래그로 정렬, ✕로 컬렉션에서 제거` : '승인 또는 ★5 이상 결과 자동 수집'}
             </span>
             <span style={{ flex: 1 }} />
+            <button
+              onClick={() => setLibPickerOpen(true)}
+              title="다른 씬의 이미지/영상에서 가져오기"
+              style={{
+                padding: '4px 10px', borderRadius: 'var(--r-sm)',
+                fontSize: 10, fontWeight: 600,
+                background: 'var(--bg)', border: '1px solid var(--line)',
+                color: 'var(--ink-2)',
+                display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer',
+              }}
+            >
+              <ImageIcon size={11} /> 다른 씬에서 불러오기
+            </button>
+            <button
+              onClick={() => baseAssetUploadRef.current?.click()}
+              title="이미지 또는 영상 파일 로컬 업로드"
+              style={{
+                padding: '4px 10px', borderRadius: 'var(--r-sm)',
+                fontSize: 10, fontWeight: 600,
+                background: 'var(--bg)', border: '1px solid var(--line)',
+                color: 'var(--ink-2)',
+                display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer',
+              }}
+            >
+              <Upload size={11} /> 로컬 업로드
+            </button>
+            <input
+              ref={baseAssetUploadRef}
+              type="file"
+              accept="image/*,video/*"
+              hidden
+              onChange={async (e) => {
+                const file = e.target.files?.[0]
+                if (!file || !activeId) return
+                e.target.value = ''
+                try {
+                  const kind: 't2i' | 'i2v' = file.type.startsWith('video/') ? 'i2v' : 't2i'
+                  const ext = (file.name.split('.').pop() || 'png').toLowerCase()
+                  const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 80)
+                  const path = `base-uploads/${projectId}/${activeId}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}_${safeName}`
+                  const { data: up, error: upErr } = await supabase.storage.from('assets').upload(path, file, {
+                    contentType: file.type, upsert: false,
+                  })
+                  if (upErr) { alert('업로드 실패: ' + upErr.message); return }
+                  const { data: { publicUrl } } = supabase.storage.from('assets').getPublicUrl(up.path)
+                  // attempt + output 페어 생성 → 베이스 에셋으로 즉시 노출
+                  const { data: at, error: atErr } = await supabase.from('prompt_attempts').insert({
+                    scene_id: activeId, type: kind, engine: 'upload',
+                    prompt: `[upload] ${file.name}`, status: 'done', depth: 0,
+                    metadata: { source: 'workspace', mode: 'upload' },
+                  }).select().single()
+                  if (atErr || !at) { alert('attempt 생성 실패: ' + (atErr?.message ?? '')); return }
+                  const { data: asset, error: asErr } = await supabase.from('assets').insert({
+                    project_id: projectId, scene_id: activeId,
+                    type: kind === 'i2v' ? 'i2v' : 't2i',
+                    name: file.name, url: publicUrl,
+                    tags: ['upload'], metadata: { source: 'upload', kind: kind === 'i2v' ? 'video' : 'image' },
+                    attempt_id: at.id,
+                  }).select().single()
+                  if (asErr || !asset) { alert('asset 생성 실패: ' + (asErr?.message ?? '')); return }
+                  await supabase.from('attempt_outputs').insert({
+                    attempt_id: at.id, asset_id: asset.id,
+                    satisfaction_score: 5,  // 업로드는 ★5로 자동 마킹 → 베이스 에셋 박스에 즉시 노출
+                  })
+                  // 결과 자동 reload — Realtime로 들어오지만 안전망
+                  if (typeof loadSceneData === 'function') void loadSceneData(activeId)
+                } catch (err) {
+                  alert('업로드 처리 오류: ' + (err instanceof Error ? err.message : String(err)))
+                }
+              }}
+            />
           </div>
           <div
             style={{
@@ -2861,7 +2934,7 @@ function GeneratePanel({
           >
             {baseImages.length === 0 ? (
               <div style={{ padding: '24px 12px', fontSize: 11, color: 'var(--ink-5)', textAlign: 'center', fontStyle: 'italic' }}>
-                아직 모인 베이스 이미지가 없어요. 결과에 OK를 누르거나 ★5를 매기면 여기로 모입니다.
+                아직 모인 베이스 에셋이 없어요. 결과에 OK / ★5 를 주거나, 다른 씬에서 불러오기·로컬 업로드 버튼으로 추가하세요.
               </div>
             ) : (
               <div
@@ -4485,7 +4558,6 @@ function EnginePresetModal({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
-
   function handleSave() {
     onSave(tab, draft)
     onClose()
@@ -4494,9 +4566,7 @@ function EnginePresetModal({
     setDraft('')
     onSave(tab, '')
   }
-
   const current = PRESET_ENGINES.find(e => e.value === tab) ?? PRESET_ENGINES[0]
-
   return (
     <div
       onClick={onClose}
@@ -4521,12 +4591,11 @@ function EnginePresetModal({
           <div style={{ flex: 1 }}>
             <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>엔진별 프롬프트 최적화 프리셋</h3>
             <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--ink-3)' }}>
-              엔진별로 따로 저장됩니다. 비어있으면 내장 가이드가 사용돼요.
+              엔진별로 따로 저장됩니다. 비어있으면 내장 가이드가 사용됼어요.
             </p>
           </div>
           <button onClick={onClose} className="btn" style={{ padding: 6 }}><X size={14} /></button>
         </div>
-
         <div className="flex" style={{ borderBottom: '1px solid var(--line)', overflowX: 'auto' }}>
           {PRESET_ENGINES.map(e => {
             const has = !!(presets[e.value] && presets[e.value].trim())
@@ -4550,7 +4619,6 @@ function EnginePresetModal({
             )
           })}
         </div>
-
         <div style={{ flex: 1, overflowY: 'auto', padding: 18 }}>
           <div className="field-label">규칙 (자유 입력 — 영문/한글 모두 OK)</div>
           <textarea
@@ -4571,7 +4639,6 @@ function EnginePresetModal({
             (브라우저 localStorage에 보관)
           </p>
         </div>
-
         <div style={{ padding: '12px 18px', borderTop: '1px solid var(--line)', display: 'flex', gap: 8, justifyContent: 'space-between' }}>
           <button
             onClick={handleReset}

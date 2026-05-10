@@ -47,9 +47,14 @@ const STATUS_OPTIONS: { v: FilterStatus; label: string; variant?: PillVariant; i
 
 interface Props {
   type: MediaType
+  // 출처 잠금 — 'workspace' 또는 'studio' 으로 고정 시 칩 토글 숨기고 헤더 라벨도 갱신
+  lockSource?: 'workspace' | 'studio'
+  // 라이브러리 라벨 커스터마이즈 (예: "Studio 이미지 라이브러리")
+  titleOverride?: string
+  subtitleOverride?: string
 }
 
-export default function MediaBrowser({ type }: Props) {
+export default function MediaBrowser({ type, lockSource, titleOverride, subtitleOverride }: Props) {
   const { id: projectId } = useParams<{ id: string }>()
   const router = useRouter()
   const supabase = createClient()
@@ -61,7 +66,7 @@ export default function MediaBrowser({ type }: Props) {
   const [filterScene, setFilterScene] = useState<string>('all')
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all')
   const [filterEngine, setFilterEngine] = useState<string>('all')
-  const [filterSource, setFilterSource] = useState<SourceFilter>('all')
+  const [filterSource, setFilterSource] = useState<SourceFilter>(lockSource ?? 'all')
   const [sortMode, setSortMode] = useState<SortMode>('scene')
   const [search, setSearch] = useState('')
   const [lbIndex, setLbIndex] = useState<number | null>(null)
@@ -78,19 +83,33 @@ export default function MediaBrowser({ type }: Props) {
 
       if (sceneIds.length === 0) { setItems([]); setLoading(false); return }
 
-      const [{ data: attempts }, { data: decRows }] = await Promise.all([
-        supabase
+      // 1) 우선 metadata 포함해서 시도 — 실패하면 metadata 없이 (마이그레이션 미적용 환경 대응)
+      let attemptsRows: any[] | null = null
+      const withMeta = await supabase
+        .from('prompt_attempts')
+        .select('id, scene_id, type, engine, created_at, status, metadata, outputs:attempt_outputs(*, asset:assets(url))')
+        .in('scene_id', sceneIds)
+        .eq('type', type)
+        .order('created_at', { ascending: false })
+      if (!withMeta.error) {
+        attemptsRows = withMeta.data
+      } else {
+        // metadata 컬럼이 없는 경우 (마이그레이션 전) — 폴백
+        console.warn('[MediaBrowser] metadata select 실패, 폴백:', withMeta.error.message)
+        const noMeta = await supabase
           .from('prompt_attempts')
-          .select('id, scene_id, type, engine, created_at, status, metadata, outputs:attempt_outputs(*, asset:assets(url))')
+          .select('id, scene_id, type, engine, created_at, status, outputs:attempt_outputs(*, asset:assets(url))')
           .in('scene_id', sceneIds)
           .eq('type', type)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('shot_decisions')
-          .select('output_id, decision_type, created_at')
-          .in('scene_id', sceneIds)
-          .order('created_at', { ascending: false }),
-      ])
+          .order('created_at', { ascending: false })
+        attemptsRows = noMeta.data
+      }
+      const { data: decRows } = await supabase
+        .from('shot_decisions')
+        .select('output_id, decision_type, created_at')
+        .in('scene_id', sceneIds)
+        .order('created_at', { ascending: false })
+      const attempts = attemptsRows
 
       const latestByOutput = new Map<string, DecisionType>()
       for (const d of (decRows ?? []) as any[]) {
@@ -212,10 +231,20 @@ export default function MediaBrowser({ type }: Props) {
   }, [items])
 
   const Icon = type === 't2i' ? ImageIcon : Film
-  const title = type === 't2i' ? '이미지 라이브러리' : '영상 라이브러리'
-  const subtitle = type === 't2i'
-    ? '프로젝트에서 생성된 모든 이미지를 씬 순서대로 둘러보세요.'
-    : '프로젝트에서 생성된 모든 영상을 씬 순서대로 둘러보세요.'
+  const defaultTitle = lockSource === 'studio'
+    ? (type === 't2i' ? 'Studio 이미지 라이브러리' : 'Studio 영상 라이브러리')
+    : lockSource === 'workspace'
+      ? (type === 't2i' ? 'Workspace 이미지 라이브러리' : 'Workspace 영상 라이브러리')
+      : (type === 't2i' ? '이미지 라이브러리' : '영상 라이브러리')
+  const title = titleOverride ?? defaultTitle
+  const defaultSubtitle = lockSource === 'studio'
+    ? (type === 't2i' ? 'Image Studio에서 만든 단일 이미지 결과만 모았어요.' : 'Video Studio에서 만든 단일 영상 결과만 모았어요.')
+    : lockSource === 'workspace'
+      ? (type === 't2i' ? 'Shot Workspace 씬별 이미지 결과를 모았어요.' : 'Shot Workspace 씬별 영상 결과를 모았어요.')
+      : (type === 't2i'
+        ? '프로젝트에서 생성된 모든 이미지를 씬 순서대로 둘러보세요.'
+        : '프로젝트에서 생성된 모든 영상을 씬 순서대로 둘러보세요.')
+  const subtitle = subtitleOverride ?? defaultSubtitle
 
   return (
     <div className="h-full flex flex-col">
@@ -359,8 +388,8 @@ export default function MediaBrowser({ type }: Props) {
           )}
         </div>
 
-        {/* 출처 필터 — 워크스페이스 vs 스튜디오 라이브러리 분리 */}
-        <div className="flex items-center" style={{ gap: 8, marginTop: 10 }}>
+        {/* 출처 필터 — 워크스페이스 vs 스튜디오 라이브러리 분리 (lockSource 시 숨김) */}
+        {!lockSource && <div className="flex items-center" style={{ gap: 8, marginTop: 10 }}>
           <span style={{ fontSize: 10, color: 'var(--ink-4)', fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
             라이브러리
           </span>
@@ -396,7 +425,7 @@ export default function MediaBrowser({ type }: Props) {
               </button>
             )
           })}
-        </div>
+        </div>}
       </div>
 
       {/* 그리드 */}
@@ -514,7 +543,7 @@ function MediaCard({ item, onClick }: { item: MediaItem; onClick: () => void }) 
           item.type === 't2i'
             ? <img src={item.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             : <video src={item.url} muted preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        )}
+       )}
         {/* 좌상단 — 씬 번호 */}
         <div
           style={{

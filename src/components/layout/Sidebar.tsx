@@ -51,12 +51,19 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'GENERATION',
     items: [
-      { href: 'workspace',     label: 'Shot Workspace',  icon: Frame },
-      { href: 'image-studio',  label: '이미지 생성',     icon: Sparkles },
-      { href: 'video-studio',  label: '영상 생성',       icon: Clapperboard },
-      { href: 't2i',           label: '이미지 라이브러리', icon: ImageIcon },
-      { href: 'i2v',           label: '영상 라이브러리',   icon: Video },
-      { href: 'lipsync',       label: '립싱크',           icon: Mic },
+      { href: 'workspace',     label: 'Shot Workspace',     icon: Frame },
+      { href: 'image-studio',  label: '이미지 생성',         icon: Sparkles },
+      { href: 'video-studio',  label: '영상 생성',           icon: Clapperboard },
+      { href: 'lipsync',       label: '립싱크',              icon: Mic },
+    ],
+  },
+  {
+    label: 'LIBRARY',
+    items: [
+      { href: 't2i',                     label: '이미지 (Workspace)',  icon: ImageIcon },
+      { href: 'i2v',                     label: '영상 (Workspace)',    icon: Video },
+      { href: 'library/studio-image',    label: '이미지 (Studio)',     icon: ImageIcon },
+      { href: 'library/studio-video',    label: '영상 (Studio)',       icon: Video },
     ],
   },
   {
