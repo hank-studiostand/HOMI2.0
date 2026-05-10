@@ -2315,6 +2315,8 @@ function GeneratePanel({
   optimizing, onOptimize,
   onSavePromptToDb,
   onOpenLibPicker, onLocalBaseUpload,
+  startFrameUrl, endFrameUrl,
+  onStartFrameChange, onEndFrameChange,
 }: {
   sceneId: string
   projectId: string
