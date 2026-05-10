@@ -121,6 +121,7 @@ export async function POST(req: NextRequest) {
           prompt: `[edit] ${editPrompt}`,
           status: 'generating',
           depth: 0,
+          metadata: { source: 'workspace', mode: 'edit' },
         })
         .select('id')
         .single()

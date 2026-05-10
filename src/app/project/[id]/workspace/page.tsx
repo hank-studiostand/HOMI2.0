@@ -1372,6 +1372,7 @@ export default function WorkspacePage() {
                 .insert({
                   scene_id: active.id, type: genType, engine: genEngine,
                   prompt: fullPrompt, status: 'generating', depth: 0,
+                  metadata: { source: 'workspace' },
                 })
                 .select().single()
               if (error || !attempt) {

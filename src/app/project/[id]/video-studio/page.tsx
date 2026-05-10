@@ -156,6 +156,7 @@ export default function VideoStudioPage() {
         .insert({
           scene_id: activeId, type: dbType, engine,
           prompt: draft, status: 'generating', depth: 0,
+          metadata: { source: 'studio' },
         })
         .select().single()
       if (error || !attempt) { alert('시도 생성 실패: ' + (error?.message ?? '')); return }

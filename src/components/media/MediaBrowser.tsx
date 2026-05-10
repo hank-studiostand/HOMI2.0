@@ -30,7 +30,10 @@ interface MediaItem {
   scene_number: string
   scene_title: string
   decision: DecisionType | null
+  source: 'workspace' | 'studio'
 }
+
+type SourceFilter = 'all' | 'workspace' | 'studio'
 
 const STATUS_OPTIONS: { v: FilterStatus; label: string; variant?: PillVariant; icon?: any }[] = [
   { v: 'all',              label: '전체' },
@@ -56,6 +59,7 @@ export default function MediaBrowser({ type }: Props) {
   const [filterScene, setFilterScene] = useState<string>('all')
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all')
   const [filterEngine, setFilterEngine] = useState<string>('all')
+  const [filterSource, setFilterSource] = useState<SourceFilter>('all')
   const [search, setSearch] = useState('')
 
   const loadAll = async () => {
@@ -73,7 +77,7 @@ export default function MediaBrowser({ type }: Props) {
       const [{ data: attempts }, { data: decRows }] = await Promise.all([
         supabase
           .from('prompt_attempts')
-          .select('id, scene_id, type, engine, created_at, status, outputs:attempt_outputs(*, asset:assets(url))')
+          .select('id, scene_id, type, engine, created_at, status, metadata, outputs:attempt_outputs(*, asset:assets(url))')
           .in('scene_id', sceneIds)
           .eq('type', type)
           .order('created_at', { ascending: false }),
@@ -93,6 +97,7 @@ export default function MediaBrowser({ type }: Props) {
       for (const a of (attempts ?? []) as any[]) {
         const sc = sceneById.get(a.scene_id)
         if (!sc) continue
+        const src: 'workspace' | 'studio' = a.metadata?.source === 'studio' ? 'studio' : 'workspace'
         for (const o of (a.outputs ?? [])) {
           const url = o.url ?? o.asset?.url ?? null
           if (!url) continue
@@ -109,6 +114,7 @@ export default function MediaBrowser({ type }: Props) {
             scene_number: sc.scene_number,
             scene_title: sc.title ?? '',
             decision: latestByOutput.get(o.id) ?? null,
+            source: src,
           })
         }
       }
@@ -153,6 +159,7 @@ export default function MediaBrowser({ type }: Props) {
     return items.filter(it => {
       if (filterScene !== 'all' && it.scene_id !== filterScene) return false
       if (filterEngine !== 'all' && it.engine !== filterEngine) return false
+      if (filterSource !== 'all' && it.source !== filterSource) return false
       if (filterStatus !== 'all') {
         if (filterStatus === 'pending' && it.decision) return false
         if (filterStatus !== 'pending' && it.decision !== filterStatus) return false
@@ -164,7 +171,17 @@ export default function MediaBrowser({ type }: Props) {
       }
       return true
     })
-  }, [items, filterScene, filterStatus, filterEngine, search])
+  }, [items, filterScene, filterStatus, filterEngine, filterSource, search])
+
+  // 소스별 카운트 (워크스페이스 / 스튜디오 분리)
+  const sourceCounts = useMemo(() => {
+    const c = { all: items.length, workspace: 0, studio: 0 }
+    for (const it of items) {
+      if (it.source === 'studio') c.studio++
+      else c.workspace++
+    }
+    return c
+  }, [items])
 
   const counts = useMemo(() => {
     const c = { all: items.length, pending: 0, approved: 0, revise_requested: 0, removed: 0 }
@@ -293,9 +310,9 @@ export default function MediaBrowser({ type }: Props) {
             ))}
           </select>
 
-          {(filterScene !== 'all' || filterStatus !== 'all' || filterEngine !== 'all' || search.trim()) && (
+          {(filterScene !== 'all' || filterStatus !== 'all' || filterEngine !== 'all' || filterSource !== 'all' || search.trim()) && (
             <button
-              onClick={() => { setFilterScene('all'); setFilterStatus('all'); setFilterEngine('all'); setSearch('') }}
+              onClick={() => { setFilterScene('all'); setFilterStatus('all'); setFilterEngine('all'); setFilterSource('all'); setSearch('') }}
               style={{
                 padding: '4px 10px', borderRadius: 'var(--r-md)',
                 fontSize: 11, color: 'var(--ink-3)',
@@ -306,6 +323,45 @@ export default function MediaBrowser({ type }: Props) {
               <X size={11} /> 필터 해제
             </button>
           )}
+        </div>
+
+        {/* 출처 필터 — 워크스페이스 vs 스튜디오 라이브러리 분리 */}
+        <div className="flex items-center" style={{ gap: 8, marginTop: 10 }}>
+          <span style={{ fontSize: 10, color: 'var(--ink-4)', fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+            라이브러리
+          </span>
+          {([
+            { v: 'all',       label: '통합',       hint: '전체' },
+            { v: 'workspace', label: 'Workspace',  hint: 'Shot Workspace' },
+            { v: 'studio',    label: 'Studio',     hint: type === 't2i' ? '이미지 생성' : '영상 생성' },
+          ] as const).map(opt => {
+            const active = filterSource === opt.v
+            const count  = sourceCounts[opt.v]
+            return (
+              <button
+                key={opt.v}
+                onClick={() => setFilterSource(opt.v as SourceFilter)}
+                title={opt.hint}
+                style={{
+                  padding: '5px 12px', gap: 6,
+                  borderRadius: 999,
+                  fontSize: 11, fontWeight: 600,
+                  background: active ? 'var(--ink)' : 'var(--bg)',
+                  color:      active ? 'var(--bg)' : 'var(--ink-2)',
+                  border: `1px solid ${active ? 'var(--ink)' : 'var(--line)'}`,
+                  display: 'inline-flex', alignItems: 'center',
+                  cursor: 'pointer',
+                }}
+              >
+                {opt.label}
+                <span style={{
+                  fontSize: 10, fontWeight: 500,
+                  color: active ? 'var(--bg-2)' : 'var(--ink-4)',
+                  fontFamily: 'var(--font-mono)',
+                }}>{count}</span>
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -348,7 +404,15 @@ export default function MediaBrowser({ type }: Props) {
               <MediaCard
                 key={it.id}
                 item={it}
-                onClick={() => router.push(`/project/${projectId}/workspace?scene=${it.scene_id}`)}
+                onClick={() => {
+                  // 출처에 따라 진입점 분기 — 스튜디오 결과는 스튜디오로, 워크스페이스 결과는 워크스페이스로
+                  if (it.source === 'studio') {
+                    const studioPath = type === 't2i' ? 'image-studio' : 'video-studio'
+                    router.push(`/project/${projectId}/${studioPath}?scene=${it.scene_id}`)
+                  } else {
+                    router.push(`/project/${projectId}/workspace?scene=${it.scene_id}`)
+                  }
+                }}
               />
             ))}
           </div>
@@ -425,6 +489,19 @@ function MediaCard({ item, onClick }: { item: MediaItem; onClick: () => void }) 
           <span>·</span>
           <span>
             {new Date(item.created_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
+          </span>
+          <span style={{ flex: 1 }} />
+          <span
+            style={{
+              padding: '1px 6px', borderRadius: 999,
+              fontSize: 9, fontWeight: 600, letterSpacing: '0.02em',
+              background: item.source === 'studio' ? 'var(--accent-soft)' : 'var(--bg-3)',
+              color:      item.source === 'studio' ? 'var(--accent)'      : 'var(--ink-3)',
+              border: `1px solid ${item.source === 'studio' ? 'var(--accent-line)' : 'var(--line)'}`,
+            }}
+            title={item.source === 'studio' ? 'Studio에서 생성' : 'Workspace에서 생성'}
+          >
+            {item.source === 'studio' ? 'Studio' : 'Work'}
           </span>
         </div>
       </div>
