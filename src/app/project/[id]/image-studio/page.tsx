@@ -37,7 +37,35 @@ export default function ImageStudioPage() {
   const [quality, setQuality] = useState<'1K' | '2K' | '4K'>('1K')
   const [referenceUrls, setReferenceUrls] = useState<string[]>([])  // 업로드된 레퍼런스 URL
   const [generating, setGenerating] = useState(false)
+  const [optimizing, setOptimizing] = useState(false)
   const [lastError, setLastError] = useState<string | null>(null)
+
+  // 엔진별 프롬프트 최적화 — /api/prompts/optimize 호출
+  async function runOptimize() {
+    const draft = promptDraft.trim()
+    if (!draft) { alert('먼저 프롬프트를 입력해주세요.'); return }
+    setOptimizing(true)
+    try {
+      const r = await fetch('/api/prompts/optimize', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          draft, type: 't2i', engine,
+          aspectRatio: ratio,
+          // sceneId 는 비독립이라 생략
+        }),
+      })
+      const data = await r.json()
+      if (!r.ok || !data?.optimized) {
+        alert('최적화 실패: ' + (data?.error ?? r.statusText))
+        return
+      }
+      setPromptDraft(String(data.optimized))
+    } catch (err) {
+      alert('최적화 오류: ' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setOptimizing(false)
+    }
+  }
 
   // ── 데이터 로드 (Studio 전용 — scene 비독립, source='studio' 만) ──
   const reload = useCallback(async () => {
@@ -235,6 +263,8 @@ export default function ImageStudioPage() {
           onRatioChange={setRatio}
           generating={generating}
           onGenerate={runGenerate}
+          optimizing={optimizing}
+          onOptimize={runOptimize}
           count={count}
           onCountChange={setCount}
           quality={quality}

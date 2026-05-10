@@ -43,6 +43,32 @@ export default function VideoStudioPage() {
   }>>([])
   const [audioOn, setAudioOn] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [optimizing, setOptimizing] = useState(false)
+
+  async function runOptimize() {
+    const draft = promptDraft.trim()
+    if (!draft) { alert('먼저 프롬프트를 입력해주세요.'); return }
+    setOptimizing(true)
+    try {
+      const r = await fetch('/api/prompts/optimize', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          draft, type: 'i2v', engine,
+          aspectRatio: ratio,
+        }),
+      })
+      const data = await r.json()
+      if (!r.ok || !data?.optimized) {
+        alert('최적화 실패: ' + (data?.error ?? r.statusText))
+        return
+      }
+      setPromptDraft(String(data.optimized))
+    } catch (err) {
+      alert('최적화 오류: ' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setOptimizing(false)
+    }
+  }
 
   // 초기 로드 (Studio — 씬 비독립)
   useEffect(() => {
@@ -215,6 +241,8 @@ export default function VideoStudioPage() {
           onResolutionChange={setResolution}
           generating={generating}
           onGenerate={runGenerate}
+          optimizing={optimizing}
+          onOptimize={runOptimize}
           sourceImageUrl={sourceImageUrl}
           onSourceImageChange={setSourceImageUrl}
           endFrameUrl={endFrameUrl}

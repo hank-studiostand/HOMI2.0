@@ -45,6 +45,8 @@ export default function ImageStudio({
   onRatioChange,
   generating,
   onGenerate,
+  optimizing,
+  onOptimize,
   recentOutputs,
   onSelectOutput,
   onZoomOutput,
@@ -70,6 +72,8 @@ export default function ImageStudio({
   onRatioChange: (v: string) => void
   generating: boolean
   onGenerate: () => Promise<void> | void
+  optimizing?: boolean
+  onOptimize?: () => Promise<void> | void
   recentOutputs: RecentItem[]
   onSelectOutput?: (id: string) => void
   onZoomOutput?: (id: string) => void
@@ -269,6 +273,17 @@ export default function ImageStudio({
               current={engine}
               onPick={v => { onEngineChange(v); setModelOpen(false) }}
             />
+            {onOptimize && (
+              <button
+                onClick={() => void onOptimize()}
+                disabled={!!optimizing}
+                title="현재 엔진에 맞게 프롬프트 최적화"
+                style={pillBtn(false)}
+              >
+                {optimizing ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+                <span>{optimizing ? '최적화중...' : '프롬프트 최적화'}</span>
+              </button>
+            )}
             <ChipDropdown open={ratioOpen} onToggle={() => setRatioOpen(o => !o)}
               label={ratio} mono
               options={RATIOS.map(r => ({ value: r, label: r }))}

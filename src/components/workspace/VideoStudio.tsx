@@ -11,6 +11,7 @@ import {
   Wand2, X, Upload, FilmIcon as Film, Layers, Pencil,
 } from 'lucide-react'
 import AssetUploadButton from './AssetUploadButton'
+import { fileToFrameOrDataUrl } from '@/lib/videoFrame'
 
 // lucide doesn't export FilmIcon — use Film
 // (이미 import 위에서 alias)
@@ -72,6 +73,8 @@ export default function VideoStudio({
   onZoomOutput,
   audioOn,
   onAudioToggle,
+  optimizing,
+  onOptimize,
 }: {
   projectId: string
   sceneId: string | null
@@ -98,6 +101,8 @@ export default function VideoStudio({
   onZoomOutput?: (id: string) => void
   audioOn: boolean
   onAudioToggle: (next: boolean) => void
+  optimizing?: boolean
+  onOptimize?: () => Promise<void> | void
 }) {
   const [tab, setTab] = useState<typeof TABS[number]['value']>('create')
   const [presetModalOpen, setPresetModalOpen] = useState(false)
@@ -175,13 +180,13 @@ export default function VideoStudio({
       alert('이미지 또는 영상 파일만 업로드 가능해요')
       return
     }
-    // 클라이언트 base64 → 임시 URL로 사용 (서버 저장은 생성 시 처리)
-    const reader = new FileReader()
-    reader.onload = () => {
-      const dataUrl = String(reader.result || '')
+    // 영상이면 클라이언트 사이드에서 첫 프레임 JPEG로 변환
+    try {
+      const dataUrl = await fileToFrameOrDataUrl(file)
       onSourceImageChange(dataUrl)
+    } catch (err) {
+      alert('프레임 추출 실패: ' + (err instanceof Error ? err.message : String(err)))
     }
-    reader.readAsDataURL(file)
   }, [onSourceImageChange])
 
   return (
@@ -557,14 +562,55 @@ export default function VideoStudio({
             )}
           </div>
 
-          {/* Duration / Ratio / Resolution chips */}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <PopupChip label={`${duration}s`} icon="⏱"
-              open={durationOpen} onToggle={() => setDurationOpen(o => !o)}
-              options={DURATIONS.map(d => ({ value: String(d), label: `${d}s` }))}
-              current={String(duration)}
-              onPick={v => { onDurationChange(Number(v)); setDurationOpen(false) }}
+          {/* 프롬프트 최적화 버튼 — 엔진별 best-practice 적용 */}
+          {onOptimize && (
+            <button
+              onClick={() => void onOptimize()}
+              disabled={!!optimizing}
+              title="현재 엔진에 맞게 프롬프트 최적화 (Seedance/Kling)"
+              style={{
+                padding: '8px 12px', borderRadius: 'var(--r-md)',
+                fontSize: 12, fontWeight: 600,
+                background: 'var(--accent-soft)',
+                color: 'var(--accent)',
+                border: '1px solid var(--accent-line)',
+                display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+                opacity: optimizing ? 0.6 : 1,
+              }}
+            >
+              <Sparkles size={12} />
+              {optimizing ? '최적화중...' : '프롬프트 최적화'}
+            </button>
+          )}
+
+          {/* Duration slider (3-15s) */}
+          <div style={{
+            padding: '8px 12px', background: 'var(--bg-2)',
+            border: '1px solid var(--line)', borderRadius: 'var(--r-md)',
+            display: 'flex', flexDirection: 'column', gap: 6,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>⏱</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-2)' }}>Duration</span>
+              <span style={{ flex: 1 }} />
+              <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)' }}>{duration}s</span>
+            </div>
+            <input
+              type="range"
+              min={3} max={15} step={1}
+              value={duration}
+              onChange={e => onDurationChange(Number(e.target.value))}
+              style={{ width: '100%', accentColor: 'var(--accent)' }}
             />
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--ink-5)' }}>
+              <span>3s</span>
+              <span>9s</span>
+              <span>15s</span>
+            </div>
+          </div>
+
+          {/* Ratio / Resolution chips */}
+          <div style={{ display: 'flex', gap: 8 }}>
             <PopupChip label={ratio} icon="□"
               open={ratioOpen} onToggle={() => setRatioOpen(o => !o)}
               options={RATIOS.map(r => ({ value: r, label: r }))}
@@ -908,15 +954,18 @@ function EndFrameSlot({
   onChange: (url: string | null) => void
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null)
-  function pick(file: File | null) {
+  async function pick(file: File | null) {
     if (!file) return
     if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
       alert('이미지 또는 영상 파일만 가능해요')
       return
     }
-    const reader = new FileReader()
-    reader.onload = () => onChange(String(reader.result || ''))
-    reader.readAsDataURL(file)
+    try {
+      const dataUrl = await fileToFrameOrDataUrl(file)
+      onChange(dataUrl)
+    } catch (err) {
+      alert('프레임 추출 실패: ' + (err instanceof Error ? err.message : String(err)))
+    }
   }
   return (
     <div

@@ -11,6 +11,7 @@ import {
   Edit2, ChevronDown, ChevronRight, Save, FileText,
   Undo2, Redo2, History, Upload,
 } from 'lucide-react'
+import { fileToFrameOrDataUrl } from '@/lib/videoFrame'
 import type { Scene, SatisfactionScore, Asset, RootAssetSeed } from '@/types'
 import Pill, { type PillVariant } from '@/components/ui/Pill'
 import CameraReferencePanel, { buildCameraPrompt } from '@/components/ui/CameraReferencePanel'
@@ -116,17 +117,20 @@ export default function WorkspacePage() {
   const endFrameInputRef = useRef<HTMLInputElement | null>(null)
   const [genStartFrameUrl, setGenStartFrameUrl] = useState<string | null>(null)
   const startFrameInputRef = useRef<HTMLInputElement | null>(null)
-  // 이미지/영상 모두 받기 — DataURL로 일단 저장 (서버 업로드는 기존 흐름 사용)
-  function pickFrame(file: File | null, setter: (v: string | null) => void) {
+  // 이미지/영상 모두 받기 — 영상이면 클라이언트에서 첫 프레임을 JPEG로 변환 (모델은 image 만 받음)
+  async function pickFrame(file: File | null, setter: (v: string | null) => void) {
     if (!file) return
     const isMedia = file.type.startsWith('image/') || file.type.startsWith('video/')
     if (!isMedia) { alert('이미지 또는 영상 파일만 가능해요'); return }
-    const reader = new FileReader()
-    reader.onload = () => setter(String(reader.result || ''))
-    reader.readAsDataURL(file)
+    try {
+      const dataUrl = await fileToFrameOrDataUrl(file)
+      setter(dataUrl)
+    } catch (err) {
+      alert('프레임 추출 실패: ' + (err instanceof Error ? err.message : String(err)))
+    }
   }
-  function pickEndFrame(file: File | null)   { pickFrame(file, setGenEndFrameUrl) }
-  function pickStartFrame(file: File | null) { pickFrame(file, setGenStartFrameUrl) }
+  function pickEndFrame(file: File | null)   { void pickFrame(file, setGenEndFrameUrl) }
+  function pickStartFrame(file: File | null) { void pickFrame(file, setGenStartFrameUrl) }
   const [compareMode, setCompareMode] = useState(false)
   const [comments, setComments] = useState<CommentRow[]>([])
   const [draft, setDraft] = useState('')
@@ -2372,17 +2376,20 @@ function GeneratePanel({
   const genEndFrameUrl = endFrameUrl ?? null
   function setGenStartFrameUrl(v: string | null) { onStartFrameChange?.(v) }
   function setGenEndFrameUrl(v: string | null) { onEndFrameChange?.(v) }
-  function pickFrame(file: File | null, setter: (v: string | null) => void) {
+  async function pickFrame(file: File | null, setter: (v: string | null) => void) {
     if (!file) return
     if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
       alert('이미지 또는 영상 파일만 가능해요'); return
     }
-    const reader = new FileReader()
-    reader.onload = () => setter(String(reader.result || ''))
-    reader.readAsDataURL(file)
+    try {
+      const dataUrl = await fileToFrameOrDataUrl(file)
+      setter(dataUrl)
+    } catch (err) {
+      alert('프레임 추출 실패: ' + (err instanceof Error ? err.message : String(err)))
+    }
   }
-  function pickStartFrame(f: File | null) { pickFrame(f, setGenStartFrameUrl) }
-  function pickEndFrame(f: File | null) { pickFrame(f, setGenEndFrameUrl) }
+  function pickStartFrame(f: File | null) { void pickFrame(f, setGenStartFrameUrl) }
+  function pickEndFrame(f: File | null) { void pickFrame(f, setGenEndFrameUrl) }
 
   // ─── 최근 결과 페이지네이션 (씬별 — sessionStorage로 GeneratePanel 리마운트 후에도 유지) ──
   const RECENT_PAGE_STEP = 8
