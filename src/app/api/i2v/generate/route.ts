@@ -21,6 +21,7 @@ function generateKlingJWT(apiKey: string, apiSecret: string): string {
 // ── Kling I2V ─────────────────────────────────────────────────────────────────
 async function generateKlingI2V(params: {
   sourceImageUrl: string
+  endImageUrl?: string | null
   prompt: string
   duration: number
   aspectRatio: string
@@ -35,7 +36,8 @@ async function generateKlingI2V(params: {
   const jwt = generateKlingJWT(apiKey, apiSecret)
 
   // 1) 생성 요청 — 엔진 별 모델 매핑
-  const body = {
+  // image: start frame (필수), image_tail: end frame (선택)
+  const body: Record<string, any> = {
     model_name:   params.modelName ?? 'kling-v2',
     image:        params.sourceImageUrl,
     prompt:       params.prompt,
@@ -43,6 +45,9 @@ async function generateKlingI2V(params: {
     aspect_ratio: params.aspectRatio,
     cfg_scale:    0.5,
     mode:         'std',
+  }
+  if (params.endImageUrl) {
+    body.image_tail = params.endImageUrl
   }
 
   console.log('[I2V] Kling create request:', JSON.stringify(body))
@@ -99,6 +104,7 @@ export async function POST(req: NextRequest) {
     attemptId,
     prompt,
     sourceImageUrl,
+    endFrameUrl,            // 끝 프레임 (선택) — Seedance last_frame, Kling image_tail
     projectId,
     sceneId,
     engine      = 'kling',  // 'kling' | 'kling3' | 'seedance-2'
@@ -148,13 +154,14 @@ export async function POST(req: NextRequest) {
       })
     } else if (engine === 'seedance-2' || engine === 'seedance') {
       videoUrl = await generateSeedanceI2V({
-        prompt, imageUrl: sourceImageUrl, duration, aspectRatio, resolution,
+        prompt, imageUrl: sourceImageUrl, endImageUrl: endFrameUrl ?? null,
+        duration, aspectRatio, resolution,
       })
     } else if (engine === 'kling3') {
-      videoUrl = await generateKlingI2V({ sourceImageUrl, prompt, duration, aspectRatio, modelName: 'kling-v2' })
+      videoUrl = await generateKlingI2V({ sourceImageUrl, endImageUrl: endFrameUrl ?? null, prompt, duration, aspectRatio, modelName: 'kling-v2' })
     } else {
       // 기본 Kling (kling, kling-1.6 등)
-      videoUrl = await generateKlingI2V({ sourceImageUrl, prompt, duration, aspectRatio, modelName: 'kling-v1-6' })
+      videoUrl = await generateKlingI2V({ sourceImageUrl, endImageUrl: endFrameUrl ?? null, prompt, duration, aspectRatio, modelName: 'kling-v1-6' })
     }
 
     if (!videoUrl) throw new Error('No video URL returned')
