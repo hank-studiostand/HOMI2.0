@@ -111,7 +111,6 @@ export default function WorkspacePage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   // 베이스 이미지 라이브러리 픽커 (I2V 모드 — 프로젝트 전체 베이스 이미지에서 소스 선택)
   const [libPickerOpen, setLibPickerOpen] = useState(false)
-  const baseAssetUploadRef = useRef<HTMLInputElement | null>(null)
   // I2V end frame (Seedance last_frame / Kling image_tail)
   const [genEndFrameUrl, setGenEndFrameUrl] = useState<string | null>(null)
   const endFrameInputRef = useRef<HTMLInputElement | null>(null)
@@ -1205,6 +1204,42 @@ export default function WorkspacePage() {
               }
               await loadSceneData(activeId)
             }}
+            onOpenLibPicker={() => setLibPickerOpen(true)}
+            onLocalBaseUpload={async (file: File) => {
+              if (!activeId) return
+              try {
+                const kind: 't2i' | 'i2v' = file.type.startsWith('video/') ? 'i2v' : 't2i'
+                const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 80)
+                const path = `base-uploads/${projectId}/${activeId}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}_${safeName}`
+                const { data: up, error: upErr } = await supabase.storage.from('assets').upload(path, file, {
+                  contentType: file.type, upsert: false,
+                })
+                if (upErr) { alert('업로드 실패: ' + upErr.message); return }
+                const { data: { publicUrl } } = supabase.storage.from('assets').getPublicUrl(up.path)
+                const { data: at, error: atErr } = await supabase.from('prompt_attempts').insert({
+                  scene_id: activeId, type: kind, engine: 'upload',
+                  prompt: `[upload] ${file.name}`, status: 'done', depth: 0,
+                  metadata: { source: 'workspace', mode: 'upload' },
+                }).select().single()
+                if (atErr || !at) { alert('attempt 생성 실패: ' + (atErr?.message ?? '')); return }
+                const { data: asset, error: asErr } = await supabase.from('assets').insert({
+                  project_id: projectId, scene_id: activeId,
+                  type: kind === 'i2v' ? 'i2v' : 't2i',
+                  name: file.name, url: publicUrl,
+                  tags: ['upload'],
+                  metadata: { source: 'upload', kind: kind === 'i2v' ? 'video' : 'image' },
+                  attempt_id: at.id,
+                }).select().single()
+                if (asErr || !asset) { alert('asset 생성 실패: ' + (asErr?.message ?? '')); return }
+                await supabase.from('attempt_outputs').insert({
+                  attempt_id: at.id, asset_id: asset.id,
+                  satisfaction_score: 5,  // 업로드는 ★5로 자동 마킹 → 베이스 에셋 박스에 즉시 노출
+                })
+                await loadSceneData(activeId)
+              } catch (err) {
+                alert('업로드 처리 오류: ' + (err instanceof Error ? err.message : String(err)))
+              }
+            }}
             onSavePromptToDb={async (content) => {
               const trimmed = (content ?? '').trim()
               if (!trimmed || !active?.id) return
@@ -2291,6 +2326,7 @@ function GeneratePanel({
   onSelectOutput, onZoomOutput, onEditOutput, onQuickDecide, onQuickRate, onQuickReset,
   optimizing, onOptimize,
   onSavePromptToDb,
+  onOpenLibPicker, onLocalBaseUpload,
 }: {
   sceneId: string
   projectId: string
@@ -2337,8 +2373,11 @@ function GeneratePanel({
   optimizing: boolean
   onOptimize: () => Promise<void> | void
   onSavePromptToDb?: (content: string) => Promise<void> | void
+  onOpenLibPicker?: () => void
+  onLocalBaseUpload?: (file: File) => Promise<void> | void
 }) {
   const engineOptions = type === 't2i' ? T2I_ENGINES : I2V_ENGINES
+  const baseUploadRef = useRef<HTMLInputElement | null>(null)
 
   // ─── 최근 결과 페이지네이션 (씬별 — sessionStorage로 GeneratePanel 리마운트 후에도 유지) ──
   const RECENT_PAGE_STEP = 8
@@ -2852,7 +2891,7 @@ function GeneratePanel({
             </span>
             <span style={{ flex: 1 }} />
             <button
-              onClick={() => setLibPickerOpen(true)}
+              onClick={() => onOpenLibPicker?.()}
               title="다른 씬의 이미지/영상에서 가져오기"
               style={{
                 padding: '4px 10px', borderRadius: 'var(--r-sm)',
@@ -2865,7 +2904,7 @@ function GeneratePanel({
               <ImageIcon size={11} /> 다른 씬에서 불러오기
             </button>
             <button
-              onClick={() => baseAssetUploadRef.current?.click()}
+              onClick={() => baseUploadRef.current?.click()}
               title="이미지 또는 영상 파일 로컬 업로드"
               style={{
                 padding: '4px 10px', borderRadius: 'var(--r-sm)',
@@ -2878,48 +2917,14 @@ function GeneratePanel({
               <Upload size={11} /> 로컬 업로드
             </button>
             <input
-              ref={baseAssetUploadRef}
+              ref={baseUploadRef}
               type="file"
               accept="image/*,video/*"
               hidden
               onChange={async (e) => {
                 const file = e.target.files?.[0]
-                if (!file || !activeId) return
                 e.target.value = ''
-                try {
-                  const kind: 't2i' | 'i2v' = file.type.startsWith('video/') ? 'i2v' : 't2i'
-                  const ext = (file.name.split('.').pop() || 'png').toLowerCase()
-                  const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 80)
-                  const path = `base-uploads/${projectId}/${activeId}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}_${safeName}`
-                  const { data: up, error: upErr } = await supabase.storage.from('assets').upload(path, file, {
-                    contentType: file.type, upsert: false,
-                  })
-                  if (upErr) { alert('업로드 실패: ' + upErr.message); return }
-                  const { data: { publicUrl } } = supabase.storage.from('assets').getPublicUrl(up.path)
-                  // attempt + output 페어 생성 → 베이스 에셋으로 즉시 노출
-                  const { data: at, error: atErr } = await supabase.from('prompt_attempts').insert({
-                    scene_id: activeId, type: kind, engine: 'upload',
-                    prompt: `[upload] ${file.name}`, status: 'done', depth: 0,
-                    metadata: { source: 'workspace', mode: 'upload' },
-                  }).select().single()
-                  if (atErr || !at) { alert('attempt 생성 실패: ' + (atErr?.message ?? '')); return }
-                  const { data: asset, error: asErr } = await supabase.from('assets').insert({
-                    project_id: projectId, scene_id: activeId,
-                    type: kind === 'i2v' ? 'i2v' : 't2i',
-                    name: file.name, url: publicUrl,
-                    tags: ['upload'], metadata: { source: 'upload', kind: kind === 'i2v' ? 'video' : 'image' },
-                    attempt_id: at.id,
-                  }).select().single()
-                  if (asErr || !asset) { alert('asset 생성 실패: ' + (asErr?.message ?? '')); return }
-                  await supabase.from('attempt_outputs').insert({
-                    attempt_id: at.id, asset_id: asset.id,
-                    satisfaction_score: 5,  // 업로드는 ★5로 자동 마킹 → 베이스 에셋 박스에 즉시 노출
-                  })
-                  // 결과 자동 reload — Realtime로 들어오지만 안전망
-                  if (typeof loadSceneData === 'function') void loadSceneData(activeId)
-                } catch (err) {
-                  alert('업로드 처리 오류: ' + (err instanceof Error ? err.message : String(err)))
-                }
+                if (file && onLocalBaseUpload) await onLocalBaseUpload(file)
               }}
             />
           </div>
