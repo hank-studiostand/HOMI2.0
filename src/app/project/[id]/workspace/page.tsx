@@ -111,6 +111,16 @@ export default function WorkspacePage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   // 베이스 이미지 라이브러리 픽커 (I2V 모드 — 프로젝트 전체 베이스 이미지에서 소스 선택)
   const [libPickerOpen, setLibPickerOpen] = useState(false)
+  // I2V end frame (Seedance last_frame / Kling image_tail)
+  const [genEndFrameUrl, setGenEndFrameUrl] = useState<string | null>(null)
+  const endFrameInputRef = useRef<HTMLInputElement | null>(null)
+  function pickEndFrame(file: File | null) {
+    if (!file) return
+    if (!file.type.startsWith('image/')) { alert('이미지 파일만 가능해요'); return }
+    const reader = new FileReader()
+    reader.onload = () => setGenEndFrameUrl(String(reader.result || ''))
+    reader.readAsDataURL(file)
+  }
   const [compareMode, setCompareMode] = useState(false)
   const [comments, setComments] = useState<CommentRow[]>([])
   const [draft, setDraft] = useState('')
@@ -1055,6 +1065,37 @@ export default function WorkspacePage() {
                 <ImageIcon size={11} /> 베이스 이미지에서 불러오기
               </button>
             )}
+            {genType === 'i2v' && (
+              <>
+                <input ref={endFrameInputRef} type="file" accept="image/*" hidden
+                  onChange={e => { pickEndFrame(e.target.files?.[0] ?? null); if (e.target) e.target.value = '' }} />
+                <button
+                  onClick={() => {
+                    if (genEndFrameUrl) setGenEndFrameUrl(null)
+                    else endFrameInputRef.current?.click()
+                  }}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 'var(--r-md)',
+                    fontSize: 11, fontWeight: 600,
+                    background: genEndFrameUrl ? 'var(--violet-soft, var(--accent-soft))' : 'var(--bg-2)',
+                    color: genEndFrameUrl ? 'var(--violet, var(--accent))' : 'var(--ink-3)',
+                    border: '1px solid ' + (genEndFrameUrl ? 'var(--violet, var(--accent-line))' : 'var(--line)'),
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                  }}
+                  title={genEndFrameUrl ? 'End Frame 제거' : 'End Frame 업로드 (Seedance/Kling)'}
+                >
+                  {genEndFrameUrl ? (
+                    <>
+                      <img src={genEndFrameUrl} alt="" style={{ width: 14, height: 14, borderRadius: 3, objectFit: 'cover' }} />
+                      End Frame ✕
+                    </>
+                  ) : (
+                    <>+ End Frame</>
+                  )}
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -1363,7 +1404,7 @@ export default function WorkspacePage() {
                     ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, projectId, sceneId: active.id, aspectRatio: genRatio, referenceImageUrls: refUrls.length > 0 ? refUrls : undefined }
                     : isR2VMode
                       ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, mode: 'r2v', referenceImageUrls: r2vRefUrls, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution }
-                      : { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, sourceImageUrl: sourceUrlForI2V, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution }
+                      : { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, sourceImageUrl: sourceUrlForI2V, endFrameUrl: genEndFrameUrl ?? undefined, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution }
                   console.log('[generate] 요청', { url, body: { ...body, prompt: (body as any).prompt?.slice(0, 80) + '...' } })
                   const r = await fetch(url, {
                     method: 'POST',
