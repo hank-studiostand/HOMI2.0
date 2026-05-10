@@ -39,36 +39,56 @@ export default function ImageStudioPage() {
   const [generating, setGenerating] = useState(false)
   const [lastError, setLastError] = useState<string | null>(null)
 
-  // ── 데이터 로드 (prompt_attempts join 패턴 — 워크스페이스와 동일) ──
-  const reload = useCallback(async (sceneId: string) => {
-    const { data: at } = await supabase
+  // ── 데이터 로드 (Studio 전용 — scene 비독립, source='studio' 만) ──
+  const reload = useCallback(async () => {
+    // 프로젝트 씬 ID 셋 — scene_id null 또는 프로젝트 씬에 속한 attempts 모두 가져오기
+    const { data: sc } = await supabase
+      .from('scenes').select('id').eq('project_id', projectId)
+    const sceneIds = (sc ?? []).map((s: any) => s.id)
+    // metadata.source='studio' 필터 — Studio 페이지 전용 라이브러리
+    let q = supabase
       .from('prompt_attempts')
-      .select('id, type, engine, prompt, status, created_at, outputs:attempt_outputs(id, archived, asset:assets(url, type, name), created_at)')
-      .eq('scene_id', sceneId)
+      .select('id, type, engine, prompt, status, created_at, scene_id, metadata, outputs:attempt_outputs(id, archived, asset:assets(url, type, name), created_at)')
       .eq('type', 't2i')
+      .eq('metadata->>source', 'studio')
       .order('created_at', { ascending: false })
-      .limit(40)
-
-    const meta: AttemptMeta[] = []
-    const flat: OutputRow[] = []
-    for (const a of (at ?? []) as any[]) {
-      meta.push({ id: a.id, type: a.type, engine: a.engine, prompt: a.prompt ?? '', status: a.status, created_at: a.created_at })
-      for (const o of (a.outputs ?? [])) {
-        flat.push({
-          id: o.id,
-          attempt_id: a.id,
-          url: o.asset?.url ?? null,
-          archived: o.archived ?? false,
-          type: a.type,
-          engine: a.engine,
-          created_at: o.created_at ?? a.created_at,
-          status: a.status,
-        })
-      }
+      .limit(60)
+    const { data: at, error } = await q
+    if (error) {
+      // metadata 미적용 환경 — 폴백 (스튜디오는 본 마이그레이션 후에만 정상)
+      console.warn('[image-studio] metadata 폴백:', error.message)
+      const fallback = await supabase
+        .from('prompt_attempts')
+        .select('id, type, engine, prompt, status, created_at, scene_id, outputs:attempt_outputs(id, archived, asset:assets(url, type, name), created_at)')
+        .eq('type', 't2i')
+        .order('created_at', { ascending: false })
+        .limit(60)
+      processAttempts(fallback.data ?? [])
+      return
     }
-    setAttempts(meta)
-    setOutputs(flat)
-  }, [supabase])
+    processAttempts(at ?? [])
+    function processAttempts(rows: any[]) {
+      const meta: AttemptMeta[] = []
+      const flat: OutputRow[] = []
+      for (const a of rows) {
+        // 프로젝트 외부 씬은 제외 (scene_id 가 set 인데 우리 프로젝트가 아닌 경우)
+        if (a.scene_id && sceneIds.length && !sceneIds.includes(a.scene_id)) continue
+        meta.push({ id: a.id, type: a.type, engine: a.engine, prompt: a.prompt ?? '', status: a.status, created_at: a.created_at })
+        for (const o of (a.outputs ?? [])) {
+          flat.push({
+            id: o.id, attempt_id: a.id,
+            url: o.asset?.url ?? null,
+            archived: o.archived ?? false,
+            type: a.type, engine: a.engine,
+            created_at: o.created_at ?? a.created_at,
+            status: a.status,
+          })
+        }
+      }
+      setAttempts(meta)
+      setOutputs(flat)
+    }
+  }, [supabase, projectId])
 
   useEffect(() => {
     let mounted = true
@@ -76,6 +96,7 @@ export default function ImageStudioPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (mounted) setMeId(user?.id ?? null)
 
+      // 씬 목록은 그대로 로드 (옵션으로 연결 가능 — UI에서 노출은 안 함)
       const { data: sc } = await supabase
         .from('scenes')
         .select('id, scene_number, title, content')
@@ -84,37 +105,29 @@ export default function ImageStudioPage() {
       if (!mounted) return
       const list = (sc ?? []) as SceneRow[]
       setScenes(list)
-
-      const sceneParam = search?.get('scene')
-      const initial = sceneParam && list.find(s => s.id === sceneParam)
-        ? sceneParam : list[0]?.id ?? null
-      setActiveId(initial)
     })()
     return () => { mounted = false }
-  }, [projectId, search, supabase])
+  }, [projectId, supabase])
 
   useEffect(() => {
-    if (!activeId) { setOutputs([]); setAttempts([]); return }
-    void reload(activeId)
-  }, [activeId, reload])
+    void reload()
+  }, [reload])
 
-  // Realtime — prompt_attempts 변화 시 reload (scene_id 필터 작동)
+  // Realtime — prompt_attempts 변화 시 reload (Studio 전체)
   useEffect(() => {
-    if (!activeId) return
     const ch = supabase
-      .channel(`image-studio-${activeId}`)
+      .channel(`image-studio-${projectId}`)
       .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'prompt_attempts', filter: `scene_id=eq.${activeId}` },
-        () => { void reload(activeId) },
+        { event: '*', schema: 'public', table: 'prompt_attempts' },
+        () => { void reload() },
       )
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'attempt_outputs' },
-        // attempt_outputs는 scene_id 컬럼이 없으니 필터 없이 — 받으면 reload (소량이라 OK)
-        () => { void reload(activeId) },
+        () => { void reload() },
       )
       .subscribe()
     return () => { void supabase.removeChannel(ch) }
-  }, [activeId, supabase, reload])
+  }, [projectId, supabase, reload])
 
   const activeScene = useMemo(() => scenes.find(s => s.id === activeId) ?? null, [scenes, activeId])
 
@@ -135,7 +148,6 @@ export default function ImageStudioPage() {
   }
 
   async function runGenerate() {
-    if (!activeId) { alert('먼저 씬을 선택해주세요.'); return }
     const draft = promptDraft.trim()
     if (!draft) { alert('프롬프트를 입력해주세요.'); return }
 
@@ -146,14 +158,18 @@ export default function ImageStudioPage() {
       const { data: attempt, error } = await supabase
         .from('prompt_attempts')
         .insert({
-          scene_id: activeId, type: 't2i', engine,
+          scene_id: null, type: 't2i', engine,    // Studio 는 씬 비독립 (마이그레이션 적용 필요)
           prompt: draft, status: 'generating', depth: 0,
           metadata: { source: 'studio', mode: 'single', count: placeholderCount, quality, ratio },
         })
         .select().single()
-      if (error || !attempt) { alert('시도 생성 실패: ' + (error?.message ?? '')); return }
+      if (error || !attempt) {
+        // scene_id NOT NULL 제약 등 — 안내
+        alert('시도 생성 실패: ' + (error?.message ?? '') + '\n\n마이그레이션 미적용 시 prompt_attempts.scene_id 가 NOT NULL이라 실패할 수 있어요.\nSupabase에서 2026-05-10_prompt_attempts_scene_nullable.sql 적용해주세요.')
+        return
+      }
 
-      void reload(activeId)  // attempt 즉시 반영
+      void reload()  // attempt 즉시 반영
 
       void (async () => {
         try {
@@ -161,10 +177,10 @@ export default function ImageStudioPage() {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               attemptId: attempt.id, prompt: draft, engine,
-              projectId, sceneId: activeId, aspectRatio: ratio,
+              projectId, sceneId: null, aspectRatio: ratio,
               referenceImageUrls: referenceUrls.length > 0 ? referenceUrls : undefined,
               count: placeholderCount,
-              quality,  // API 측에서 지원 시 적용
+              quality,
             }),
           })
           if (!r.ok) {
@@ -175,11 +191,10 @@ export default function ImageStudioPage() {
             console.error('[image-studio] 생성 실패', r.status, msg)
             setLastError(`(${r.status}) ${msg}`)
             await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attempt.id)
-            void reload(activeId)
+            void reload()
             return
           }
-          // 성공 — Realtime으로 자동 reload되지만 안전하게 한 번 더
-          void reload(activeId)
+          void reload()
         } catch (e: any) {
           console.error('[image-studio] 백그라운드 에러', e)
           setLastError(e?.message ?? String(e))
@@ -200,71 +215,11 @@ export default function ImageStudioPage() {
     if (!confirm('이 결과를 삭제할까요?')) return
     await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attemptId)
     await supabase.from('attempt_outputs').update({ archived: true }).eq('attempt_id', attemptId)
-    if (activeId) void reload(activeId)
+    void reload()
   }
 
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div style={{
-        padding: '10px 18px',
-        borderBottom: '1px solid var(--line)',
-        background: 'var(--bg-1)',
-        display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
-      }}>
-        <span style={{ fontSize: 11, color: 'var(--ink-4)', fontWeight: 500 }}>씬</span>
-        <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
-          <button onClick={() => setSceneOpen(o => !o)}
-            style={{
-              padding: '6px 12px', borderRadius: 'var(--r-md)',
-              border: '1px solid var(--line)', background: 'var(--bg)',
-              color: 'var(--ink)', fontSize: 12, fontWeight: 500,
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              cursor: 'pointer',
-            }}>
-            {activeScene ? (
-              <>
-                <span className="mono" style={{ color: 'var(--accent)', fontWeight: 700 }}>{activeScene.scene_number}</span>
-                <span style={{ color: 'var(--ink-2)' }}>{activeScene.title || '제목 없음'}</span>
-              </>
-            ) : (<span style={{ color: 'var(--ink-4)' }}>씬 선택</span>)}
-            <ChevronDown size={12} />
-          </button>
-          {sceneOpen && (
-            <div style={{
-              position: 'absolute', top: 'calc(100% + 4px)', left: 0,
-              zIndex: 50, minWidth: 280, maxHeight: 380, overflowY: 'auto',
-              background: 'var(--bg)', border: '1px solid var(--line)',
-              borderRadius: 'var(--r-md)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-              padding: 4,
-            }}>
-              {scenes.length === 0 ? (
-                <div style={{ padding: 16, fontSize: 11, color: 'var(--ink-4)', textAlign: 'center' }}>
-                  씬이 없어요
-                </div>
-              ) : scenes.map(s => (
-                <button key={s.id}
-                  onClick={() => { setActiveId(s.id); setSceneOpen(false) }}
-                  style={{
-                    width: '100%', padding: '6px 10px',
-                    background: s.id === activeId ? 'var(--accent-soft)' : 'transparent',
-                    color: s.id === activeId ? 'var(--accent)' : 'var(--ink-2)',
-                    border: 'none', borderRadius: 'var(--r-sm)',
-                    fontSize: 12, fontWeight: 500, textAlign: 'left',
-                    display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
-                  }}>
-                  <span className="mono" style={{ color: 'var(--accent)', fontWeight: 700, minWidth: 40 }}>{s.scene_number}</span>
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {s.title || '제목 없음'}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        <span style={{ flex: 1 }} />
-        <span style={{ fontSize: 10, color: 'var(--ink-5)' }}>이미지 생성 (T2I)</span>
-      </div>
-
       <div style={{ flex: 1, overflow: 'hidden' }}>
         <ImageStudio
           projectId={projectId}

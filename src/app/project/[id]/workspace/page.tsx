@@ -1785,12 +1785,35 @@ export default function WorkspacePage() {
         projectId={projectId}
         assetType="all"
         onClose={() => setLibPickerOpen(false)}
-        onPick={(outputId) => {
-          // 다른 씬의 출력일 수도 있음 — 일단 selectedIds로 마킹.
-          // workspace의 candidates는 활성 씬 outputs만 참조하므로,
-          // 다른 씬 base image를 사용하려면 outputs에 해당 row가 있어야 함.
-          // 임시: 출력 ID만 기록 → 사용자가 같은 씬으로 이동하면 자동 적용.
-          setSelectedIds([outputId])
+        onPick={async (outputId, picked) => {
+          if (!activeId) return
+          try {
+            // 다른 씬의 결과를 현재 씬으로 복제 import — 베이스 에셋 박스에 즉시 노출
+            const importType: 't2i' | 'i2v' = picked.type === 'i2v' ? 'i2v' : 't2i'
+            const { data: at } = await supabase.from('prompt_attempts').insert({
+              scene_id: activeId, type: importType, engine: 'imported',
+              prompt: `[imported] from output ${outputId}`,
+              status: 'done', depth: 0,
+              metadata: { source: 'workspace', mode: 'import', from_output_id: outputId, from_scene_id: picked.scene_id },
+            }).select().single()
+            if (!at) { alert('복제 실패 (attempt)'); return }
+            const { data: asset } = await supabase.from('assets').insert({
+              project_id: projectId, scene_id: activeId,
+              type: importType === 'i2v' ? 'i2v' : 't2i',
+              name: `imported_${Date.now()}`,
+              url: picked.url,
+              tags: ['import'],
+              metadata: { source: 'import', from_output_id: outputId, from_scene_id: picked.scene_id },
+              attempt_id: at.id,
+            }).select().single()
+            if (!asset) { alert('복제 실패 (asset)'); return }
+            await supabase.from('attempt_outputs').insert({
+              attempt_id: at.id, asset_id: asset.id, satisfaction_score: 5,  // ★5 → 베이스 에셋 자동 노출
+            })
+            await loadSceneData(activeId)
+          } catch (err) {
+            alert('가져오기 오류: ' + (err instanceof Error ? err.message : String(err)))
+          }
         }}
       />
 

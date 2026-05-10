@@ -29,8 +29,7 @@ export default function VideoStudioPage() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [outputs, setOutputs] = useState<OutputRow[]>([])
   const [attempts, setAttempts] = useState<AttemptMeta[]>([])
-  const [rootAssets, setRootAssets] = useState<RootAssetLite[]>([])
-  const [sceneOpen, setSceneOpen] = useState(false)
+  const [rootAssets] = useState<RootAssetLite[]>([])  // Studio 는 루트에셋 비독립 — 빈 배열
 
   const [promptDraft, setPromptDraft] = useState('')
   const [engine, setEngine] = useState('seedance-2')
@@ -45,7 +44,7 @@ export default function VideoStudioPage() {
   const [audioOn, setAudioOn] = useState(false)
   const [generating, setGenerating] = useState(false)
 
-  // 초기 로드
+  // 초기 로드 (Studio — 씬 비독립)
   useEffect(() => {
     let mounted = true
     void (async () => {
@@ -57,92 +56,71 @@ export default function VideoStudioPage() {
       if (!mounted) return
       const list = (sc ?? []) as SceneRow[]
       setScenes(list)
-      const sceneParam = search?.get('scene')
-      const initial = sceneParam && list.find(s => s.id === sceneParam) ? sceneParam : list[0]?.id ?? null
-      setActiveId(initial)
-
-      // 루트 자산
-      const { data: ra } = await supabase
-        .from('root_asset_seeds')
-        .select('id, name, category, reference_image_urls')
-        .eq('project_id', projectId)
-      if (mounted) setRootAssets((ra ?? []) as RootAssetLite[])
-
-      // sessionStorage prefill (scene-editor → Seedance 프롬프트화 → 여기로 라우팅하면)
-      try {
-        const raw = window.sessionStorage.getItem('seedance_prefill')
-        if (raw) {
-          const payload = JSON.parse(raw)
-          if (typeof payload?.prompt === 'string' && payload.prompt) setPromptDraft(payload.prompt)
-          if (Array.isArray(payload?.refs)) setRefs(payload.refs)
-          if (typeof payload?.durationSec === 'number') setDuration(payload.durationSec)
-          if (typeof payload?.sceneId === 'string') setActiveId(payload.sceneId)
-          window.sessionStorage.removeItem('seedance_prefill')
-        }
-      } catch {}
     })()
     return () => { mounted = false }
-  }, [projectId, search, supabase])
+  }, [projectId, supabase])
 
-  // 씬별 결과 로드
+  // Studio 결과 로드 (source='studio', 모든 씬 또는 null)
   useEffect(() => {
-    if (!activeId) { setOutputs([]); setAttempts([]); return }
     let mounted = true
     void (async () => {
-      const { data: at } = await supabase
-        .from('prompt_attempts').select('id, prompt, engine')
-        .eq('scene_id', activeId)
-      const { data: out } = await supabase
-        .from('attempt_outputs')
-        .select('id, attempt_id, scene_id, archived, asset:assets(url, type, name), created_at')
-        .eq('scene_id', activeId)
+      const tryStudio = await supabase
+        .from('prompt_attempts')
+        .select('id, prompt, engine, scene_id, type, metadata, status, created_at, outputs:attempt_outputs(id, archived, asset:assets(url, type, name), created_at)')
+        .in('type', ['i2v'])
+        .eq('metadata->>source', 'studio')
         .order('created_at', { ascending: false })
-        .limit(60)
+        .limit(80)
       if (!mounted) return
-      setAttempts((at ?? []) as AttemptMeta[])
-      const flat: OutputRow[] = (out ?? []).map((o: any) => ({
-        id: o.id, attempt_id: o.attempt_id, scene_id: o.scene_id,
-        url: o.asset?.url ?? null,
-        archived: o.archived ?? false,
-        type: o.asset?.type ?? 'i2v',
-        engine: (at ?? []).find((a: any) => a.id === o.attempt_id)?.engine ?? '',
-        created_at: o.created_at,
-      }))
+      let rows: any[] = []
+      if (tryStudio.error) {
+        // 폴백 — metadata 컬럼 미적용
+        const fb = await supabase
+          .from('prompt_attempts')
+          .select('id, prompt, engine, scene_id, type, status, created_at, outputs:attempt_outputs(id, archived, asset:assets(url, type, name), created_at)')
+          .in('type', ['i2v'])
+          .order('created_at', { ascending: false })
+          .limit(80)
+        rows = fb.data ?? []
+      } else {
+        rows = tryStudio.data ?? []
+      }
+      const meta: AttemptMeta[] = []
+      const flat: OutputRow[] = []
+      for (const a of rows) {
+        meta.push({ id: a.id, prompt: a.prompt ?? '', engine: a.engine })
+        for (const o of (a.outputs ?? [])) {
+          flat.push({
+            id: o.id, attempt_id: a.id, scene_id: a.scene_id,
+            url: o.asset?.url ?? null,
+            archived: o.archived ?? false,
+            type: o.asset?.type ?? 'i2v',
+            engine: a.engine,
+            created_at: o.created_at ?? a.created_at,
+          })
+        }
+      }
+      setAttempts(meta)
       setOutputs(flat)
     })()
     return () => { mounted = false }
-  }, [activeId, supabase])
+  }, [supabase])
 
-  // Realtime
+  // Realtime — 전체 prompt_attempts/attempt_outputs 변화 시 reload (Studio 전체)
   useEffect(() => {
-    if (!activeId) return
     const ch = supabase
-      .channel(`video-studio-${activeId}`)
+      .channel(`video-studio-${projectId}`)
       .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'attempt_outputs', filter: `scene_id=eq.${activeId}` },
-        async () => {
-          const { data: out } = await supabase
-            .from('attempt_outputs')
-            .select('id, attempt_id, scene_id, archived, asset:assets(url, type, name), created_at')
-            .eq('scene_id', activeId)
-            .order('created_at', { ascending: false })
-            .limit(60)
-          const flat: OutputRow[] = (out ?? []).map((o: any) => ({
-            id: o.id, attempt_id: o.attempt_id, scene_id: o.scene_id,
-            url: o.asset?.url ?? null, archived: o.archived ?? false,
-            type: o.asset?.type ?? 'i2v', engine: '', created_at: o.created_at,
-          }))
-          setOutputs(flat)
-        },
+        { event: '*', schema: 'public', table: 'prompt_attempts' },
+        () => { /* 의존성: 위 useEffect가 다음 tick에서 reload — 여기선 nothing */ },
       )
       .subscribe()
     return () => { void supabase.removeChannel(ch) }
-  }, [activeId, supabase])
+  }, [projectId, supabase])
 
   const activeScene = useMemo(() => scenes.find(s => s.id === activeId) ?? null, [scenes, activeId])
 
   async function runGenerate() {
-    if (!activeId) { alert('먼저 씬을 선택해주세요.'); return }
     const draft = promptDraft.trim()
     if (!draft) { alert('프롬프트를 입력해주세요.'); return }
 
@@ -156,7 +134,7 @@ export default function VideoStudioPage() {
       const { data: attempt, error } = await supabase
         .from('prompt_attempts')
         .insert({
-          scene_id: activeId, type: dbType, engine,
+          scene_id: null, type: dbType, engine,    // Studio — 씬 비독립
           prompt: draft, status: 'generating', depth: 0,
           metadata: {
             source: 'studio', mode: studioMode,
@@ -167,28 +145,31 @@ export default function VideoStudioPage() {
           },
         })
         .select().single()
-      if (error || !attempt) { alert('시도 생성 실패: ' + (error?.message ?? '')); return }
+      if (error || !attempt) {
+        alert('시도 생성 실패: ' + (error?.message ?? '') + '\n\n마이그레이션 미적용 시 prompt_attempts.scene_id NOT NULL 제약으로 실패할 수 있어요.\nSupabase에서 2026-05-10_prompt_attempts_scene_nullable.sql 적용해주세요.')
+        return
+      }
 
       const url = useT2V ? '/api/t2v/generate' : '/api/i2v/generate'
       const refUrls = refs.map(r => r.url).filter((u): u is string => !!u)
       const body = useT2V
         ? {
             attemptId: attempt.id, prompt: draft, engine,
-            projectId, sceneId: activeId, duration,
+            projectId, sceneId: null, duration,
             aspectRatio: ratio,
           }
         : isR2V
           ? {
               attemptId: attempt.id, prompt: draft, engine,
               mode: 'r2v', referenceImageUrls: refUrls,
-              projectId, sceneId: activeId,
+              projectId, sceneId: null,
               duration, aspectRatio: ratio, resolution,
             }
           : {
               attemptId: attempt.id, prompt: draft, engine,
               sourceImageUrl,
               endFrameUrl: endFrameUrl ?? undefined,
-              projectId, sceneId: activeId,
+              projectId, sceneId: null,
               duration, aspectRatio: ratio, resolution,
             }
 
@@ -216,66 +197,6 @@ export default function VideoStudioPage() {
 
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div style={{
-        padding: '10px 18px',
-        borderBottom: '1px solid var(--line)',
-        background: 'var(--bg-1)',
-        display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
-      }}>
-        <span style={{ fontSize: 11, color: 'var(--ink-4)', fontWeight: 500 }}>씬</span>
-        <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
-          <button onClick={() => setSceneOpen(o => !o)}
-            style={{
-              padding: '6px 12px', borderRadius: 'var(--r-md)',
-              border: '1px solid var(--line)', background: 'var(--bg)',
-              color: 'var(--ink)', fontSize: 12, fontWeight: 500,
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              cursor: 'pointer',
-            }}>
-            {activeScene ? (
-              <>
-                <span className="mono" style={{ color: 'var(--accent)', fontWeight: 700 }}>{activeScene.scene_number}</span>
-                <span style={{ color: 'var(--ink-2)' }}>{activeScene.title || '제목 없음'}</span>
-              </>
-            ) : (<span style={{ color: 'var(--ink-4)' }}>씬 선택</span>)}
-            <ChevronDown size={12} />
-          </button>
-          {sceneOpen && (
-            <div style={{
-              position: 'absolute', top: 'calc(100% + 4px)', left: 0,
-              zIndex: 50, minWidth: 280, maxHeight: 380, overflowY: 'auto',
-              background: 'var(--bg)', border: '1px solid var(--line)',
-              borderRadius: 'var(--r-md)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-              padding: 4,
-            }}>
-              {scenes.length === 0 ? (
-                <div style={{ padding: 16, fontSize: 11, color: 'var(--ink-4)', textAlign: 'center' }}>
-                  씬이 없어요
-                </div>
-              ) : scenes.map(s => (
-                <button key={s.id}
-                  onClick={() => { setActiveId(s.id); setSceneOpen(false) }}
-                  style={{
-                    width: '100%', padding: '6px 10px',
-                    background: s.id === activeId ? 'var(--accent-soft)' : 'transparent',
-                    color: s.id === activeId ? 'var(--accent)' : 'var(--ink-2)',
-                    border: 'none', borderRadius: 'var(--r-sm)',
-                    fontSize: 12, fontWeight: 500, textAlign: 'left',
-                    display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
-                  }}>
-                  <span className="mono" style={{ color: 'var(--accent)', fontWeight: 700, minWidth: 40 }}>{s.scene_number}</span>
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {s.title || '제목 없음'}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        <span style={{ flex: 1 }} />
-        <span style={{ fontSize: 10, color: 'var(--ink-5)' }}>영상 생성 (I2V / T2V / R2V)</span>
-      </div>
-
       <div style={{ flex: 1, overflow: 'hidden' }}>
         <VideoStudio
           projectId={projectId}

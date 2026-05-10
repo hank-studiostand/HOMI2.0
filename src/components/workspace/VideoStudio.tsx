@@ -101,6 +101,11 @@ export default function VideoStudio({
 }) {
   const [tab, setTab] = useState<typeof TABS[number]['value']>('create')
   const [presetModalOpen, setPresetModalOpen] = useState(false)
+  // 업로드 에셋 — VideoStudio 자체 트래킹 (Shot Workspace 비독립).
+  // image1/image2/video1/audio1 처럼 종류별 자동 넘버링 + 프롬프트에 @토큰 삽입.
+  const [uploadedAssets, setUploadedAssets] = useState<Array<{
+    id: string; url: string; name: string; kind: 'image' | 'video' | 'audio'; token: string
+  }>>([])
   const [rightTab, setRightTab] = useState<'guide' | 'history' | 'how'>('guide')
   const [modelOpen, setModelOpen] = useState(false)
   const [durationOpen, setDurationOpen] = useState(false)
@@ -327,7 +332,62 @@ export default function VideoStudio({
             projectId={projectId}
             sceneId={sceneId}
             compact
+            onUploaded={(asset) => {
+              setUploadedAssets(prev => {
+                // kind별 자동 넘버링 — image1, video1, audio1
+                const sameKind = prev.filter(p => p.kind === asset.kind)
+                const n = sameKind.length + 1
+                const token = `@${asset.kind}${n}`
+                return [...prev, { id: asset.id, url: asset.url, name: asset.name, kind: asset.kind, token }]
+              })
+            }}
           />
+
+          {/* 업로드 에셋 토큰 strip — 클릭 시 프롬프트에 @image1 식 토큰 삽입 */}
+          {uploadedAssets.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, paddingTop: 4 }}>
+              <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--ink-4)', letterSpacing: '0.04em', alignSelf: 'center' }}>
+                ELEMENTS
+              </span>
+              {uploadedAssets.map(a => (
+                <button
+                  key={a.id}
+                  onClick={() => {
+                    const ta = taRef.current
+                    if (!ta) {
+                      onPromptChange((promptDraft + ' ' + a.token).trim())
+                      return
+                    }
+                    const start = ta.selectionStart ?? promptDraft.length
+                    const end   = ta.selectionEnd ?? start
+                    const next = promptDraft.slice(0, start) + a.token + ' ' + promptDraft.slice(end)
+                    onPromptChange(next)
+                    setTimeout(() => {
+                      ta.focus()
+                      const pos = start + a.token.length + 1
+                      ta.setSelectionRange(pos, pos)
+                    }, 0)
+                  }}
+                  title={`${a.name} 클릭 시 프롬프트에 ${a.token} 삽입`}
+                  style={{
+                    padding: '4px 8px', borderRadius: 999,
+                    fontSize: 11, fontWeight: 600,
+                    background: 'var(--accent-soft)', color: 'var(--accent)',
+                    border: '1px solid var(--accent-line)',
+                    display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer',
+                  }}
+                >
+                  {a.kind === 'image' ? <ImageIcon size={10} /> : a.kind === 'video' ? <Video size={10} /> : <Music size={10} />}
+                  {a.token}
+                  <span
+                    onClick={(e) => { e.stopPropagation(); setUploadedAssets(prev => prev.filter(p => p.id !== a.id)) }}
+                    style={{ marginLeft: 4, padding: '0 2px', cursor: 'pointer', opacity: 0.6 }}
+                    title="제거"
+                  >×</span>
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* 프롬프트 */}
           <div style={{
