@@ -99,6 +99,7 @@ export default function VideoStudio({
   onAudioToggle: (next: boolean) => void
 }) {
   const [tab, setTab] = useState<typeof TABS[number]['value']>('create')
+  const [presetModalOpen, setPresetModalOpen] = useState(false)
   const [rightTab, setRightTab] = useState<'guide' | 'history' | 'how'>('guide')
   const [modelOpen, setModelOpen] = useState(false)
   const [durationOpen, setDurationOpen] = useState(false)
@@ -206,8 +207,28 @@ export default function VideoStudio({
           ))}
         </div>
 
-        {/* 컨트롤 본문 — 스크롤 */}
+        {/* 컨트롤 본문 — 스크롤 (탭별 분기) */}
         <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {tab === 'edit' && (
+            <EditVideoPanel
+              recentOutputs={recentOutputs}
+              onPickVideo={(url) => {
+                onSourceImageChange(url)
+                setTab('create')
+                alert('영상이 소스로 선택됐어요. Create 탭에서 프롬프트로 변형/리믹스하세요.')
+              }}
+            />
+          )}
+          {tab === 'motion' && (
+            <MotionControlPanel
+              promptDraft={promptDraft}
+              onAppend={(token) => {
+                const cur = (promptDraft || '').replace(/\s+$/, '')
+                onPromptChange(cur ? `${cur}, ${token}` : token)
+              }}
+            />
+          )}
+          {tab === 'create' && (<>
           {/* DISCOVER PRESETS 카드 */}
           <div style={{
             position: 'relative',
@@ -225,8 +246,11 @@ export default function VideoStudio({
                 Seedance 2.0
               </div>
             </div>
-            <button className="btn primary"
-              style={{ padding: '5px 12px', fontSize: 11, fontWeight: 600 }}>
+            <button
+              onClick={() => setPresetModalOpen(true)}
+              className="btn primary"
+              style={{ padding: '5px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+              title="시네마틱 프리셋 — 클릭하면 프롬프트에 자동 주입">
               Explore
             </button>
           </div>
@@ -356,9 +380,17 @@ export default function VideoStudio({
                 <Layers size={11} /> Elements ({rootAssets.length})
               </button>
               <button
-                onClick={() => onAudioToggle(!audioOn)}
+                onClick={() => {
+                  const next = !audioOn
+                  onAudioToggle(next)
+                  if (next && engine !== 'kling3-omni') {
+                    if (confirm('Audio 자동 생성은 Kling 3.0 Omni만 지원합니다. 엔진을 전환할까요?')) {
+                      onEngineChange('kling3-omni')
+                    }
+                  }
+                }}
                 style={miniBtn(audioOn)}
-                title="오디오 자동 생성 (지원 모델만)"
+                title={audioOn ? 'Audio 생성 — Kling 3.0 Omni 권장' : 'Audio 자동 생성 (지원 모델 한정)'}
               >
                 {audioOn ? <Volume2 size={11} /> : <VolumeX size={11} />}
                 {audioOn ? 'On' : 'Off'}
@@ -492,6 +524,7 @@ export default function VideoStudio({
               📽 R2V 모드 — Reference {refs.length}개로 영상 생성
             </div>
           )}
+          </>)}
         </div>
 
         {/* Generate 버튼 — 좌측 패널 하단 sticky */}
@@ -564,6 +597,18 @@ export default function VideoStudio({
           {rightTab === 'how' && <HowItWorksContent />}
         </div>
       </main>
+
+      {/* Preset 모달 */}
+      {presetModalOpen && (
+        <PresetModal
+          onClose={() => setPresetModalOpen(false)}
+          onApply={(text) => {
+            const cur = (promptDraft || '').replace(/\s+$/, '')
+            onPromptChange(cur ? `${cur}, ${text}` : text)
+            setPresetModalOpen(false)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -859,6 +904,215 @@ function EndFrameSlot({
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+
+// ── Edit Video 탭 — 프로젝트의 영상 결과 picker ──
+function EditVideoPanel({
+  recentOutputs, onPickVideo,
+}: {
+  recentOutputs: RecentItem[]
+  onPickVideo: (url: string) => void
+}) {
+  const videos = recentOutputs.filter(o => !!o.url).slice(0, 30)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', letterSpacing: '0.04em' }}>
+        영상 편집 — 기존 결과 선택
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--ink-4)', lineHeight: 1.5 }}>
+        편집할 영상을 클릭하면 첫 프레임이 소스로 들어가요. Create 탭에서 새 프롬프트로 변형/리믹스하세요.
+      </div>
+      {videos.length === 0 ? (
+        <div style={{
+          padding: 30, textAlign: 'center', color: 'var(--ink-5)', fontSize: 12,
+          background: 'var(--bg-2)', borderRadius: 12, border: '1px dashed var(--line)',
+        }}>
+          편집할 영상이 없어요. 먼저 Create 탭에서 영상을 생성하세요.
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+          {videos.map(v => (
+            <button key={v.id}
+              onClick={() => v.url && onPickVideo(v.url)}
+              style={{
+                padding: 0, border: '1px solid var(--line)',
+                borderRadius: 10, overflow: 'hidden',
+                aspectRatio: '16/9', background: 'var(--bg-2)',
+                cursor: 'pointer', position: 'relative',
+              }}
+              title={v.prompt ?? ''}
+            >
+              <video src={v.url ?? ''} muted playsInline preload="metadata"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              {v.engine && (
+                <span style={{
+                  position: 'absolute', bottom: 4, left: 4,
+                  padding: '1px 6px', borderRadius: 4,
+                  fontSize: 9, fontWeight: 600,
+                  background: 'rgba(0,0,0,0.65)', color: '#fff',
+                }}>{v.engine}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Motion Control 탭 — 카메라/모션 프리셋 (클릭 시 프롬프트에 토큰 주입) ──
+function MotionControlPanel({
+  promptDraft, onAppend,
+}: {
+  promptDraft: string
+  onAppend: (token: string) => void
+}) {
+  const sections = [
+    { title: '카메라 무브', tokens: [
+      'slow dolly in', 'slow dolly out', 'tracking shot left to right', 'tracking shot right to left',
+      'crane up', 'crane down', 'handheld with subtle shake', 'gimbal smooth glide',
+      'orbital 360 rotation', 'whip pan', 'tilt up', 'tilt down',
+    ]},
+    { title: '프레이밍', tokens: [
+      'extreme close-up', 'close-up', 'medium close-up', 'medium shot',
+      'medium wide', 'wide shot', 'establishing shot', 'over-the-shoulder', 'top-down birds-eye',
+    ]},
+    { title: '렌즈/포커스', tokens: [
+      '24mm wide', '35mm', '50mm portrait', '85mm telephoto', 'anamorphic',
+      'shallow depth of field f/1.4', 'rack focus', 'macro lens',
+    ]},
+    { title: '속도/시간', tokens: [
+      'slow motion', 'time-lapse', 'hyper-lapse', 'natural pace',
+      'freeze frame', 'cinematic 24fps look',
+    ]},
+  ]
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', letterSpacing: '0.04em' }}>
+        Motion Control — 카메라 / 프레이밍 프리셋
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--ink-4)', lineHeight: 1.5 }}>
+        클릭하면 프롬프트에 자동으로 추가돼요.
+      </div>
+      {sections.map(sec => (
+        <div key={sec.title}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink-4)', letterSpacing: '0.04em', marginBottom: 6 }}>
+            {sec.title}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {sec.tokens.map(t => {
+              const active = promptDraft.toLowerCase().includes(t.toLowerCase())
+              return (
+                <button key={t}
+                  onClick={() => onAppend(t)}
+                  style={{
+                    padding: '5px 9px', borderRadius: 999,
+                    background: active ? 'var(--accent-soft)' : 'var(--bg-2)',
+                    color: active ? 'var(--accent)' : 'var(--ink-2)',
+                    border: '1px solid ' + (active ? 'var(--accent-line)' : 'var(--line)'),
+                    fontSize: 10, fontWeight: 500, cursor: 'pointer',
+                  }}>
+                  {active ? '✓ ' : ''}{t}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── Preset 모달 — 시네마틱 무드/스타일 프리셋 ──
+function PresetModal({ onClose, onApply }: { onClose: () => void; onApply: (text: string) => void }) {
+  const cats = [
+    { title: '톤/그레이드', presets: [
+      '35mm film look, warm amber color grade',
+      'cool teal-and-orange cinematic grade',
+      'desaturated documentary look',
+      'high-contrast noir black and white',
+      'pastel dreamy palette',
+      'neon cyberpunk magenta-cyan',
+    ]},
+    { title: '조명', presets: [
+      'soft window light from camera left',
+      'golden hour backlight',
+      'harsh midday sun',
+      'rim light separating subject from background',
+      'candlelight warm ambient',
+      'practical light from neon signs',
+      'blue hour exterior twilight',
+    ]},
+    { title: '분위기', presets: [
+      'intimate, contemplative, slow rhythm',
+      'tense thriller atmosphere',
+      'whimsical, joyful, light-hearted',
+      'eerie, unsettling, dreamlike',
+      'epic, grand scale',
+      'minimalist, restrained',
+    ]},
+    { title: '카메라', presets: [
+      'static eye-level shot, cinematic 35mm',
+      'slow tracking shot from behind subject',
+      'handheld documentary style',
+      'gimbal smooth glide circling subject',
+      'crane shot rising up',
+      'over-the-shoulder dialogue framing',
+    ]},
+  ]
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, zIndex: 200,
+      background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        width: 'min(820px, 100%)', maxHeight: '88vh',
+        background: 'var(--bg)', border: '1px solid var(--line)',
+        borderRadius: 'var(--r-md)', overflow: 'hidden',
+        display: 'flex', flexDirection: 'column',
+      }}>
+        <div style={{
+          padding: '14px 18px', borderBottom: '1px solid var(--line)',
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <Sparkles size={14} style={{ color: 'var(--accent)' }} />
+          <span style={{ fontSize: 13, fontWeight: 700 }}>Discover Presets</span>
+          <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>시네마틱 무드/스타일 — 클릭하여 프롬프트에 추가</span>
+          <span style={{ flex: 1 }} />
+          <button onClick={onClose} className="btn" style={{ padding: 6 }}>
+            <X size={14} />
+          </button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 18, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {cats.map(c => (
+            <div key={c.title}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', letterSpacing: '0.04em', marginBottom: 6 }}>
+                {c.title}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 6 }}>
+                {c.presets.map(p => (
+                  <button key={p}
+                    onClick={() => onApply(p)}
+                    style={{
+                      padding: '8px 12px', borderRadius: 8,
+                      background: 'var(--bg-2)', color: 'var(--ink-2)',
+                      border: '1px solid var(--line)',
+                      fontSize: 11, textAlign: 'left',
+                      cursor: 'pointer', lineHeight: 1.5,
+                    }}
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg-3)'}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg-2)'}
+                  >{p}</button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

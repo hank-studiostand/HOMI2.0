@@ -290,7 +290,11 @@ export default function ImageStudio({
                 onPick={v => { onQualityChange(v as '1K' | '2K' | '4K'); setQualityOpen(false) }}
               />
             )}
-            <button style={pillBtn(false)} title="그림으로 시작 (개발 중)">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              style={pillBtn(false)}
+              title="스케치 / 손그림 업로드 — 레퍼런스로 사용"
+            >
               <Pencil size={11} />
               <span>Draw</span>
             </button>
