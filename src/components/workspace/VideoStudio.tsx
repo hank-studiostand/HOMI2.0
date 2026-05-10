@@ -171,8 +171,8 @@ export default function VideoStudio({
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const onFilePicked = useCallback(async (file: File | null) => {
     if (!file) return
-    if (!file.type.startsWith('image/')) {
-      alert('이미지 파일만 업로드 가능해요 (영상/오디오는 곧 지원)')
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+      alert('이미지 또는 영상 파일만 업로드 가능해요')
       return
     }
     // 클라이언트 base64 → 임시 URL로 사용 (서버 저장은 생성 시 처리)
@@ -281,14 +281,13 @@ export default function VideoStudio({
               gap: 8, position: 'relative',
             }}
           >
-            <input ref={fileInputRef} type="file" accept="image/*" hidden
+            <input ref={fileInputRef} type="file" accept="image/*,video/*" hidden
               onChange={e => { const f = e.target.files?.[0]; void onFilePicked(f ?? null) }} />
             {sourceImageUrl ? (
               <>
-                <img src={sourceImageUrl} alt="" style={{
-                  width: '100%', maxHeight: 160, objectFit: 'contain',
-                  borderRadius: 10, background: 'var(--bg-3)',
-                }} />
+                {sourceImageUrl.startsWith('data:video') || /\.(mp4|webm|mov)(\?|$)/i.test(sourceImageUrl)
+                  ? <video src={sourceImageUrl} muted controls style={{ width: '100%', maxHeight: 160, objectFit: 'contain', borderRadius: 10, background: 'var(--bg-3)' }} />
+                  : <img src={sourceImageUrl} alt="" style={{ width: '100%', maxHeight: 160, objectFit: 'contain', borderRadius: 10, background: 'var(--bg-3)' }} />}
                 <button
                   onClick={e => { e.stopPropagation(); onSourceImageChange(null) }}
                   style={{
@@ -911,8 +910,8 @@ function EndFrameSlot({
   const inputRef = useRef<HTMLInputElement | null>(null)
   function pick(file: File | null) {
     if (!file) return
-    if (!file.type.startsWith('image/')) {
-      alert('이미지 파일만 가능해요')
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+      alert('이미지 또는 영상 파일만 가능해요')
       return
     }
     const reader = new FileReader()
@@ -934,14 +933,13 @@ function EndFrameSlot({
         alignItems: 'center', justifyContent: 'center',
         gap: 6, position: 'relative',
       }}>
-      <input ref={inputRef} type="file" accept="image/*" hidden
+      <input ref={inputRef} type="file" accept="image/*,video/*" hidden
         onChange={e => { pick(e.target.files?.[0] ?? null); if (e.target) e.target.value = '' }} />
       {endFrameUrl ? (
         <>
-          <img src={endFrameUrl} alt="" style={{
-            width: '100%', maxHeight: 130, objectFit: 'contain',
-            borderRadius: 10, background: 'var(--bg-3)',
-          }} />
+          {endFrameUrl.startsWith('data:video') || /\.(mp4|webm|mov)(\?|$)/i.test(endFrameUrl)
+            ? <video src={endFrameUrl} muted controls style={{ width: '100%', maxHeight: 130, objectFit: 'contain', borderRadius: 10, background: 'var(--bg-3)' }} />
+            : <img src={endFrameUrl} alt="" style={{ width: '100%', maxHeight: 130, objectFit: 'contain', borderRadius: 10, background: 'var(--bg-3)' }} />}
           <button
             onClick={e => { e.stopPropagation(); onChange(null) }}
             style={{

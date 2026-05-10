@@ -66,7 +66,8 @@ export default function VideoStudioPage() {
     void (async () => {
       const tryStudio = await supabase
         .from('prompt_attempts')
-        .select('id, prompt, engine, scene_id, type, metadata, status, created_at, outputs:attempt_outputs(id, archived, asset:assets(url, type, name), created_at)')
+        .select('id, prompt, engine, scene_id, project_id, type, metadata, status, created_at, outputs:attempt_outputs(id, archived, asset:assets(url, type, name), created_at)')
+        .eq('project_id', projectId)
         .in('type', ['i2v'])
         .eq('metadata->>source', 'studio')
         .order('created_at', { ascending: false })
@@ -134,6 +135,7 @@ export default function VideoStudioPage() {
       const { data: attempt, error } = await supabase
         .from('prompt_attempts')
         .insert({
+          project_id: projectId,
           scene_id: null, type: dbType, engine,    // Studio — 씬 비독립
           prompt: draft, status: 'generating', depth: 0,
           metadata: {

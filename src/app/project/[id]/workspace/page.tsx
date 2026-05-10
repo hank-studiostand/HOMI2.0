@@ -114,13 +114,19 @@ export default function WorkspacePage() {
   // I2V end frame (Seedance last_frame / Kling image_tail)
   const [genEndFrameUrl, setGenEndFrameUrl] = useState<string | null>(null)
   const endFrameInputRef = useRef<HTMLInputElement | null>(null)
-  function pickEndFrame(file: File | null) {
+  const [genStartFrameUrl, setGenStartFrameUrl] = useState<string | null>(null)
+  const startFrameInputRef = useRef<HTMLInputElement | null>(null)
+  // 이미지/영상 모두 받기 — DataURL로 일단 저장 (서버 업로드는 기존 흐름 사용)
+  function pickFrame(file: File | null, setter: (v: string | null) => void) {
     if (!file) return
-    if (!file.type.startsWith('image/')) { alert('이미지 파일만 가능해요'); return }
+    const isMedia = file.type.startsWith('image/') || file.type.startsWith('video/')
+    if (!isMedia) { alert('이미지 또는 영상 파일만 가능해요'); return }
     const reader = new FileReader()
-    reader.onload = () => setGenEndFrameUrl(String(reader.result || ''))
+    reader.onload = () => setter(String(reader.result || ''))
     reader.readAsDataURL(file)
   }
+  function pickEndFrame(file: File | null)   { pickFrame(file, setGenEndFrameUrl) }
+  function pickStartFrame(file: File | null) { pickFrame(file, setGenStartFrameUrl) }
   const [compareMode, setCompareMode] = useState(false)
   const [comments, setComments] = useState<CommentRow[]>([])
   const [draft, setDraft] = useState('')
@@ -1048,54 +1054,6 @@ export default function WorkspacePage() {
                 Compare {compareMode && `(${selectedIds.length})`}
               </button>
             )}
-            {genType === 'i2v' && (
-              <button
-                onClick={() => setLibPickerOpen(true)}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: 'var(--r-md)',
-                  fontSize: 11, fontWeight: 600,
-                  background: 'var(--accent-soft)',
-                  color: 'var(--accent)',
-                  border: '1px solid var(--accent-line)',
-                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                }}
-                title="프로젝트 전체 베이스 이미지 라이브러리에서 소스 선택"
-              >
-                <ImageIcon size={11} /> 베이스 이미지에서 불러오기
-              </button>
-            )}
-            {genType === 'i2v' && (
-              <>
-                <input ref={endFrameInputRef} type="file" accept="image/*" hidden
-                  onChange={e => { pickEndFrame(e.target.files?.[0] ?? null); if (e.target) e.target.value = '' }} />
-                <button
-                  onClick={() => {
-                    if (genEndFrameUrl) setGenEndFrameUrl(null)
-                    else endFrameInputRef.current?.click()
-                  }}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: 'var(--r-md)',
-                    fontSize: 11, fontWeight: 600,
-                    background: genEndFrameUrl ? 'var(--violet-soft, var(--accent-soft))' : 'var(--bg-2)',
-                    color: genEndFrameUrl ? 'var(--violet, var(--accent))' : 'var(--ink-3)',
-                    border: '1px solid ' + (genEndFrameUrl ? 'var(--violet, var(--accent-line))' : 'var(--line)'),
-                    display: 'inline-flex', alignItems: 'center', gap: 5,
-                  }}
-                  title={genEndFrameUrl ? 'End Frame 제거' : 'End Frame 업로드 (Seedance/Kling)'}
-                >
-                  {genEndFrameUrl ? (
-                    <>
-                      <img src={genEndFrameUrl} alt="" style={{ width: 14, height: 14, borderRadius: 3, objectFit: 'cover' }} />
-                      End Frame ✕
-                    </>
-                  ) : (
-                    <>+ End Frame</>
-                  )}
-                </button>
-              </>
-            )}
           </div>
         </div>
 
@@ -1204,6 +1162,10 @@ export default function WorkspacePage() {
               }
               await loadSceneData(activeId)
             }}
+            startFrameUrl={genStartFrameUrl}
+            endFrameUrl={genEndFrameUrl}
+            onStartFrameChange={setGenStartFrameUrl}
+            onEndFrameChange={setGenEndFrameUrl}
             onOpenLibPicker={() => setLibPickerOpen(true)}
             onLocalBaseUpload={async (file: File) => {
               if (!activeId) return
@@ -1365,16 +1327,15 @@ export default function WorkspacePage() {
                 }
               }
 
-              // I2V는 source image 필수 — 단, R2V 모드(seedance-2 + 참조 자산 1개 이상)는 source 없이도 가능
+              // I2V는 source image 또는 영상 필요 — 영상은 서버에서 첫 프레임 추출.
+              // R2V 모드(seedance-2 + 참조 자산 1개 이상)는 source 없이도 가능.
               const explicitSrcId = selectedIds[0]
               const explicitSrc = explicitSrcId ? filteredCandidates.find(o => o.id === explicitSrcId) : null
               const isR2VMode = genType === 'i2v' && genEngine === 'seedance-2' && seedanceRefs.length > 0
-              if (genType === 'i2v' && explicitSrc && (explicitSrc.type === 'i2v' || explicitSrc.type === 'lipsync')) {
-                alert('I2V 영상 생성의 소스는 이미지(T2I)여야 해요.\n현재 선택은 영상이라 사용할 수 없어요. T2I 결과를 클릭해 소스로 선택해주세요.')
-                return
-              }
-              if (genType === 'i2v' && !explicitSrc?.url && !isR2VMode) {
-                alert('I2V 영상 생성에는 소스 이미지가 필요해요.\n좌측 "최근 결과"에서 T2I 이미지를 클릭해 소스로 선택하세요.\n(또는 Seedance + @ 참조 자산을 추가해 R2V 모드로 생성)')
+              // 영상도 소스로 허용 — Start Frame 업로드(영상 포함) 우선 → explicit 선택(이미지/영상) → R2V
+              const hasUploadedStart = !!genStartFrameUrl
+              if (genType === 'i2v' && !hasUploadedStart && !explicitSrc?.url && !isR2VMode) {
+                alert('I2V 영상 생성에는 소스(이미지 또는 영상)가 필요해요.\n• 베이스 에셋 위 "+ Start Frame" 버튼으로 직접 업로드\n• 또는 좌측 결과에서 카드 클릭으로 선택\n• 또는 Seedance + @ 참조로 R2V 생성')
                 return
               }
 
@@ -1441,7 +1402,7 @@ export default function WorkspacePage() {
                     ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, projectId, sceneId: active.id, aspectRatio: genRatio, referenceImageUrls: refUrls.length > 0 ? refUrls : undefined }
                     : isR2VMode
                       ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, mode: 'r2v', referenceImageUrls: r2vRefUrls, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution }
-                      : { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, sourceImageUrl: sourceUrlForI2V, endFrameUrl: genEndFrameUrl ?? undefined, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution }
+                      : { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, sourceImageUrl: (genStartFrameUrl ?? sourceUrlForI2V), endFrameUrl: genEndFrameUrl ?? undefined, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution }
                   console.log('[generate] 요청', { url, body: { ...body, prompt: (body as any).prompt?.slice(0, 80) + '...' } })
                   const r = await fetch(url, {
                     method: 'POST',
@@ -2398,9 +2359,30 @@ function GeneratePanel({
   onSavePromptToDb?: (content: string) => Promise<void> | void
   onOpenLibPicker?: () => void
   onLocalBaseUpload?: (file: File) => Promise<void> | void
+  startFrameUrl?: string | null
+  endFrameUrl?: string | null
+  onStartFrameChange?: (next: string | null) => void
+  onEndFrameChange?: (next: string | null) => void
 }) {
   const engineOptions = type === 't2i' ? T2I_ENGINES : I2V_ENGINES
   const baseUploadRef = useRef<HTMLInputElement | null>(null)
+  const startFrameInputRef = useRef<HTMLInputElement | null>(null)
+  const endFrameInputRef = useRef<HTMLInputElement | null>(null)
+  const genStartFrameUrl = startFrameUrl ?? null
+  const genEndFrameUrl = endFrameUrl ?? null
+  function setGenStartFrameUrl(v: string | null) { onStartFrameChange?.(v) }
+  function setGenEndFrameUrl(v: string | null) { onEndFrameChange?.(v) }
+  function pickFrame(file: File | null, setter: (v: string | null) => void) {
+    if (!file) return
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+      alert('이미지 또는 영상 파일만 가능해요'); return
+    }
+    const reader = new FileReader()
+    reader.onload = () => setter(String(reader.result || ''))
+    reader.readAsDataURL(file)
+  }
+  function pickStartFrame(f: File | null) { pickFrame(f, setGenStartFrameUrl) }
+  function pickEndFrame(f: File | null) { pickFrame(f, setGenEndFrameUrl) }
 
   // ─── 최근 결과 페이지네이션 (씬별 — sessionStorage로 GeneratePanel 리마운트 후에도 유지) ──
   const RECENT_PAGE_STEP = 8
@@ -2903,6 +2885,53 @@ function GeneratePanel({
         <p style={{ marginTop: 6, fontSize: 11, color: 'var(--ink-4)' }}>
           씬에 진입할 때 마스터 프롬프트가 자동 로드돼요. 비우면 비운 채로 유지됩니다.
         </p>
+
+        {/* I2V Start Frame / End Frame — 베이스 에셋 위로 이동, 이미지+영상 둘 다 가능 */}
+        {type === 'i2v' && (
+          <div style={{ marginTop: 14, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span className="field-label" style={{ margin: 0 }}>I2V 프레임</span>
+            <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>이미지 또는 영상 — 영상은 첫/마지막 프레임 자동 추출 (서버 처리)</span>
+            <span style={{ flex: 1 }} />
+            <input ref={startFrameInputRef} type="file" accept="image/*,video/*" hidden
+              onChange={e => { pickStartFrame(e.target.files?.[0] ?? null); if (e.target) e.target.value = '' }} />
+            <button
+              onClick={() => {
+                if (genStartFrameUrl) setGenStartFrameUrl(null)
+                else startFrameInputRef.current?.click()
+              }}
+              style={{
+                padding: '6px 12px', borderRadius: 'var(--r-md)',
+                fontSize: 11, fontWeight: 600,
+                background: genStartFrameUrl ? 'var(--accent-soft)' : 'var(--bg-2)',
+                color: genStartFrameUrl ? 'var(--accent)' : 'var(--ink-3)',
+                border: '1px solid ' + (genStartFrameUrl ? 'var(--accent-line)' : 'var(--line)'),
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+              }}
+              title={genStartFrameUrl ? 'Start Frame 제거' : 'Start Frame 업로드 (이미지/영상)'}
+            >
+              {genStartFrameUrl ? <>Start ✕</> : <>+ Start Frame</>}
+            </button>
+            <input ref={endFrameInputRef} type="file" accept="image/*,video/*" hidden
+              onChange={e => { pickEndFrame(e.target.files?.[0] ?? null); if (e.target) e.target.value = '' }} />
+            <button
+              onClick={() => {
+                if (genEndFrameUrl) setGenEndFrameUrl(null)
+                else endFrameInputRef.current?.click()
+              }}
+              style={{
+                padding: '6px 12px', borderRadius: 'var(--r-md)',
+                fontSize: 11, fontWeight: 600,
+                background: genEndFrameUrl ? 'var(--violet-soft, var(--accent-soft))' : 'var(--bg-2)',
+                color: genEndFrameUrl ? 'var(--violet, var(--accent))' : 'var(--ink-3)',
+                border: '1px solid ' + (genEndFrameUrl ? 'var(--violet, var(--accent-line))' : 'var(--line)'),
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+              }}
+              title={genEndFrameUrl ? 'End Frame 제거' : 'End Frame 업로드 (이미지/영상)'}
+            >
+              {genEndFrameUrl ? <>End ✕</> : <>+ End Frame</>}
+            </button>
+          </div>
+        )}
 
         {/* ── 인라인 결과 strip (Generate 탭에서도 결과 즉시 확인) ── */}
         {/* 베이스 에셋 (씬별 — approved/5★ T2I/I2V + 다른 씬 / 로컬 업로드) */}

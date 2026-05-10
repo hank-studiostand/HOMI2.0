@@ -32,7 +32,7 @@ export default function ImageStudioPage() {
 
   const [promptDraft, setPromptDraft] = useState('')
   const [engine, setEngine] = useState('nanobanana')
-  const [ratio, setRatio] = useState('3:4')
+  const [ratio, setRatio] = useState('16:9')
   const [count, setCount] = useState(4)
   const [quality, setQuality] = useState<'1K' | '2K' | '4K'>('1K')
   const [referenceUrls, setReferenceUrls] = useState<string[]>([])  // 업로드된 레퍼런스 URL
@@ -46,9 +46,11 @@ export default function ImageStudioPage() {
       .from('scenes').select('id').eq('project_id', projectId)
     const sceneIds = (sc ?? []).map((s: any) => s.id)
     // metadata.source='studio' 필터 — Studio 페이지 전용 라이브러리
+    // project_id 로 필터 — Studio 결과만
     let q = supabase
       .from('prompt_attempts')
-      .select('id, type, engine, prompt, status, created_at, scene_id, metadata, outputs:attempt_outputs(id, archived, asset:assets(url, type, name), created_at)')
+      .select('id, type, engine, prompt, status, created_at, scene_id, project_id, metadata, outputs:attempt_outputs(id, archived, asset:assets(url, type, name), created_at)')
+      .eq('project_id', projectId)
       .eq('type', 't2i')
       .eq('metadata->>source', 'studio')
       .order('created_at', { ascending: false })
@@ -158,6 +160,7 @@ export default function ImageStudioPage() {
       const { data: attempt, error } = await supabase
         .from('prompt_attempts')
         .insert({
+          project_id: projectId,
           scene_id: null, type: 't2i', engine,    // Studio 는 씬 비독립 (마이그레이션 적용 필요)
           prompt: draft, status: 'generating', depth: 0,
           metadata: { source: 'studio', mode: 'single', count: placeholderCount, quality, ratio },

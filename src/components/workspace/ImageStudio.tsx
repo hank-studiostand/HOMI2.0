@@ -185,11 +185,6 @@ export default function ImageStudio({
           boxShadow: '0 4px 18px rgba(0,0,0,0.06)',
           display: 'flex', flexDirection: 'column', overflow: 'visible',
         }}>
-          {/* 일반 에셋 업로드 (이미지/영상/음악) — 좁게 */}
-          <div style={{ padding: '10px 14px 0' }}>
-            <AssetUploadButton projectId={projectId} sceneId={sceneId} compact />
-          </div>
-
           {/* refs strip — 업로드된 레퍼런스 미리보기 */}
           {refs.length > 0 && (
             <div style={{
@@ -201,7 +196,7 @@ export default function ImageStudio({
               {refs.map(u => (
                 <span key={u} style={{
                   position: 'relative',
-                  width: 38, height: 38, borderRadius: 8, overflow: 'hidden',
+                  width: 80, height: 80, borderRadius: 10, overflow: 'hidden',
                   border: '1px solid var(--line-strong)',
                 }}>
                   <img src={u} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -209,15 +204,15 @@ export default function ImageStudio({
                     <button
                       onClick={() => onReferenceRemove(u)}
                       style={{
-                        position: 'absolute', top: 2, right: 2,
-                        width: 16, height: 16, padding: 0, borderRadius: 999,
-                        background: 'rgba(0,0,0,0.65)', color: '#fff',
+                        position: 'absolute', top: 4, right: 4,
+                        width: 22, height: 22, padding: 0, borderRadius: 999,
+                        background: 'rgba(0,0,0,0.7)', color: '#fff',
                         border: 'none', cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}
                       title="제거"
                     >
-                      <X size={9} />
+                      <X size={12} />
                     </button>
                   )}
                 </span>
