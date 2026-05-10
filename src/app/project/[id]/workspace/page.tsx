@@ -18,6 +18,7 @@ import SceneReferencePicker, {
   emptyRefSelection, allSelectedUrls, type RefSelection,
 } from '@/components/ui/SceneReferencePicker'
 import ImageLightbox, { type LightboxItem } from '@/components/ui/ImageLightbox'
+import BaseImageLibraryPicker from '@/components/workspace/BaseImageLibraryPicker'
 
 // ─── Prompt history (per-project, per-type, localStorage, max 30) ──
 const PROMPT_HISTORY_MAX = 30
@@ -108,6 +109,8 @@ export default function WorkspacePage() {
   const [outputs, setOutputs] = useState<OutputItem[]>([])
   const [attempts, setAttempts] = useState<AttemptMeta[]>([])
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+  // 베이스 이미지 라이브러리 픽커 (I2V 모드 — 프로젝트 전체 베이스 이미지에서 소스 선택)
+  const [libPickerOpen, setLibPickerOpen] = useState(false)
   const [compareMode, setCompareMode] = useState(false)
   const [comments, setComments] = useState<CommentRow[]>([])
   const [draft, setDraft] = useState('')
@@ -1035,6 +1038,23 @@ export default function WorkspacePage() {
                 Compare {compareMode && `(${selectedIds.length})`}
               </button>
             )}
+            {genType === 'i2v' && (
+              <button
+                onClick={() => setLibPickerOpen(true)}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 'var(--r-md)',
+                  fontSize: 11, fontWeight: 600,
+                  background: 'var(--accent-soft)',
+                  color: 'var(--accent)',
+                  border: '1px solid var(--accent-line)',
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                }}
+                title="프로젝트 전체 베이스 이미지 라이브러리에서 소스 선택"
+              >
+                <ImageIcon size={11} /> 베이스 이미지에서 불러오기
+              </button>
+            )}
           </div>
         </div>
 
@@ -1682,6 +1702,19 @@ export default function WorkspacePage() {
         />
       )}
       {/* 라이트박스 — 결과 클릭 시 팝업 */}
+      <BaseImageLibraryPicker
+        open={libPickerOpen}
+        projectId={projectId}
+        onClose={() => setLibPickerOpen(false)}
+        onPick={(outputId) => {
+          // 다른 씬의 출력일 수도 있음 — 일단 selectedIds로 마킹.
+          // workspace의 candidates는 활성 씬 outputs만 참조하므로,
+          // 다른 씬 base image를 사용하려면 outputs에 해당 row가 있어야 함.
+          // 임시: 출력 ID만 기록 → 사용자가 같은 씬으로 이동하면 자동 적용.
+          setSelectedIds([outputId])
+        }}
+      />
+
       {lightboxState && (
         <ImageLightbox
           items={lightboxState.items}
