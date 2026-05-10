@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import Pill, { type PillVariant } from '@/components/ui/Pill'
 import { sortScenesByNumber, compareSceneNumbers } from '@/lib/sceneSort'
+import ImageLightbox, { type LightboxItem } from '@/components/ui/ImageLightbox'
 
 // 미디어 브라우저 — 프로젝트 전체에서 생성된 결과물을 시간/씬/상태별로 둘러보기.
 // /t2i, /i2v 사이드바 진입점으로, 씬 카드 그리드 (= /scenes)와 차별화된 결과-중심 뷰.
@@ -34,6 +35,7 @@ interface MediaItem {
 }
 
 type SourceFilter = 'all' | 'workspace' | 'studio'
+type SortMode    = 'newest' | 'rating' | 'scene'
 
 const STATUS_OPTIONS: { v: FilterStatus; label: string; variant?: PillVariant; icon?: any }[] = [
   { v: 'all',              label: '전체' },
@@ -60,7 +62,9 @@ export default function MediaBrowser({ type }: Props) {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all')
   const [filterEngine, setFilterEngine] = useState<string>('all')
   const [filterSource, setFilterSource] = useState<SourceFilter>('all')
+  const [sortMode, setSortMode] = useState<SortMode>('scene')
   const [search, setSearch] = useState('')
+  const [lbIndex, setLbIndex] = useState<number | null>(null)
 
   const loadAll = async () => {
       setLoading(true)
@@ -156,7 +160,7 @@ export default function MediaBrowser({ type }: Props) {
 
   // 필터 적용
   const filtered = useMemo(() => {
-    return items.filter(it => {
+    const out = items.filter(it => {
       if (filterScene !== 'all' && it.scene_id !== filterScene) return false
       if (filterEngine !== 'all' && it.engine !== filterEngine) return false
       if (filterSource !== 'all' && it.source !== filterSource) return false
@@ -171,7 +175,20 @@ export default function MediaBrowser({ type }: Props) {
       }
       return true
     })
-  }, [items, filterScene, filterStatus, filterEngine, filterSource, search])
+    // 정렬 — 기본 'scene' (씬순), 'newest' (최신), 'rating' (평점 높은 순)
+    if (sortMode === 'newest') {
+      out.sort((a, b) => b.created_at.localeCompare(a.created_at))
+    } else if (sortMode === 'rating') {
+      out.sort((a, b) => {
+        const ra = a.satisfaction_score ?? 0
+        const rb = b.satisfaction_score ?? 0
+        if (rb !== ra) return rb - ra
+        return b.created_at.localeCompare(a.created_at)
+      })
+    }
+    // 'scene' 은 loadAll에서 이미 정렬해둠
+    return out
+  }, [items, filterScene, filterStatus, filterEngine, filterSource, search, sortMode])
 
   // 소스별 카운트 (워크스페이스 / 스튜디오 분리)
   const sourceCounts = useMemo(() => {
@@ -310,6 +327,23 @@ export default function MediaBrowser({ type }: Props) {
             ))}
           </select>
 
+          {/* 정렬 */}
+          <select
+            value={sortMode}
+            onChange={e => setSortMode(e.target.value as SortMode)}
+            title="정렬 기준"
+            style={{
+              padding: '4px 10px',
+              borderRadius: 'var(--r-md)', fontSize: 11,
+              background: 'var(--bg-2)', border: '1px solid var(--line)',
+              color: 'var(--ink-2)', outline: 'none',
+            }}
+          >
+            <option value="scene">씬순</option>
+            <option value="newest">최신순</option>
+            <option value="rating">평점순</option>
+          </select>
+
           {(filterScene !== 'all' || filterStatus !== 'all' || filterEngine !== 'all' || filterSource !== 'all' || search.trim()) && (
             <button
               onClick={() => { setFilterScene('all'); setFilterStatus('all'); setFilterEngine('all'); setFilterSource('all'); setSearch('') }}
@@ -400,24 +434,45 @@ export default function MediaBrowser({ type }: Props) {
               gap: 14,
             }}
           >
-            {filtered.map(it => (
+            {filtered.map((it, i) => (
               <MediaCard
                 key={it.id}
                 item={it}
-                onClick={() => {
-                  // 출처에 따라 진입점 분기 — 스튜디오 결과는 스튜디오로, 워크스페이스 결과는 워크스페이스로
-                  if (it.source === 'studio') {
-                    const studioPath = type === 't2i' ? 'image-studio' : 'video-studio'
-                    router.push(`/project/${projectId}/${studioPath}?scene=${it.scene_id}`)
-                  } else {
-                    router.push(`/project/${projectId}/workspace?scene=${it.scene_id}`)
-                  }
-                }}
+                onClick={() => setLbIndex(i)}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* 라이트박스 — 카드 클릭 시 즉시 미리보기 */}
+      {lbIndex !== null && filtered[lbIndex] && (
+        <ImageLightbox
+          items={filtered.map<LightboxItem>(it => ({
+            url:     it.url ?? '',
+            name:    `${it.scene_number} ${it.scene_title}`.trim(),
+            caption: `${it.engine}${it.satisfaction_score ? ` · ★${it.satisfaction_score}` : ''}${it.source === 'studio' ? ' · Studio' : ' · Workspace'}`,
+            isVideo: it.type === 'i2v' || it.type === 'lipsync',
+          }))}
+          initialIndex={lbIndex}
+          onClose={() => setLbIndex(null)}
+          actions={[
+            {
+              label: '씬으로 이동',
+              onClick: (i) => {
+                const it = filtered[i]
+                if (!it) return
+                if (it.source === 'studio') {
+                  const studioPath = type === 't2i' ? 'image-studio' : 'video-studio'
+                  router.push(`/project/${projectId}/${studioPath}?scene=${it.scene_id}`)
+                } else {
+                  router.push(`/project/${projectId}/workspace?scene=${it.scene_id}`)
+                }
+              },
+            },
+          ]}
+        />
+      )}
     </div>
   )
 }

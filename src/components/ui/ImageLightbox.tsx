@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { X, ChevronLeft, ChevronRight, Download } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 export interface LightboxItem {
   url: string
@@ -10,13 +11,21 @@ export interface LightboxItem {
   isVideo?: boolean
 }
 
+export interface LightboxAction {
+  label: string
+  icon?: ReactNode
+  onClick: (idx: number) => void
+}
+
 interface ImageLightboxProps {
   items: LightboxItem[]
   initialIndex?: number
   onClose: () => void
+  // 우상단 다운로드 옆에 추가로 표시할 액션 (예: "씬으로 이동")
+  actions?: LightboxAction[]
 }
 
-export default function ImageLightbox({ items, initialIndex = 0, onClose }: ImageLightboxProps) {
+export default function ImageLightbox({ items, initialIndex = 0, onClose, actions = [] }: ImageLightboxProps) {
   const [idx, setIdx] = useState(Math.max(0, Math.min(initialIndex, items.length - 1)))
 
   const go = useCallback((dir: -1 | 1) => {
@@ -100,6 +109,23 @@ export default function ImageLightbox({ items, initialIndex = 0, onClose }: Imag
             {idx + 1} / {items.length}
           </span>
         )}
+        {actions.map((a, i) => (
+          <button
+            key={i}
+            onClick={() => a.onClick(idx)}
+            title={a.label}
+            style={{
+              padding: '8px 12px', borderRadius: 8,
+              background: 'rgba(255,255,255,0.1)',
+              color: '#fff', flexShrink: 0,
+              fontSize: 12, fontWeight: 500,
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            {a.icon}
+            {a.label}
+          </button>
+        ))}
         <button
           onClick={handleDownload}
           title="다운로드"

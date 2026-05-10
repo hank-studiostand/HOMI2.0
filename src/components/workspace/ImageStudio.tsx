@@ -7,6 +7,7 @@ import {
   Plus, ChevronDown, Sparkles, History as HistoryIcon, X,
   Image as ImageIcon, Pencil, RotateCw, Trash2, Loader2, AlertCircle, Check,
 } from 'lucide-react'
+import AssetUploadButton from './AssetUploadButton'
 
 interface RecentItem {
   id: string
@@ -184,6 +185,11 @@ export default function ImageStudio({
           boxShadow: '0 4px 18px rgba(0,0,0,0.06)',
           display: 'flex', flexDirection: 'column', overflow: 'visible',
         }}>
+          {/* 일반 에셋 업로드 (이미지/영상/음악) — 좁게 */}
+          <div style={{ padding: '10px 14px 0' }}>
+            <AssetUploadButton projectId={projectId} sceneId={sceneId} compact />
+          </div>
+
           {/* refs strip — 업로드된 레퍼런스 미리보기 */}
           {refs.length > 0 && (
             <div style={{

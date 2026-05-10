@@ -10,6 +10,7 @@ import {
   Image as ImageIcon, Video, Music, Volume2, VolumeX,
   Wand2, X, Upload, FilmIcon as Film, Layers, Pencil,
 } from 'lucide-react'
+import AssetUploadButton from './AssetUploadButton'
 
 // lucide doesn't export FilmIcon — use Film
 // (이미 import 위에서 alias)
@@ -320,6 +321,13 @@ export default function VideoStudio({
               onChange={onEndFrameChange}
             />
           )}
+
+          {/* 일반 에셋 업로드 — 이미지/영상/음악 */}
+          <AssetUploadButton
+            projectId={projectId}
+            sceneId={sceneId}
+            compact
+          />
 
           {/* 프롬프트 */}
           <div style={{

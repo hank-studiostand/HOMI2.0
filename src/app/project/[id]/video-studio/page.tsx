@@ -147,6 +147,8 @@ export default function VideoStudioPage() {
     if (!draft) { alert('프롬프트를 입력해주세요.'); return }
 
     const isR2V = engine === 'seedance-2' && refs.length > 0
+    const useT2V = !sourceImageUrl && refs.length === 0
+    const studioMode: 't2v' | 'r2v' | 'i2v' = useT2V ? 't2v' : isR2V ? 'r2v' : 'i2v'
 
     setGenerating(true)
     try {
@@ -156,12 +158,17 @@ export default function VideoStudioPage() {
         .insert({
           scene_id: activeId, type: dbType, engine,
           prompt: draft, status: 'generating', depth: 0,
-          metadata: { source: 'studio' },
+          metadata: {
+            source: 'studio', mode: studioMode,
+            duration, ratio, resolution,
+            hasStartFrame: !!sourceImageUrl,
+            hasEndFrame:   !!endFrameUrl,
+            refCount: refs.length,
+          },
         })
         .select().single()
       if (error || !attempt) { alert('시도 생성 실패: ' + (error?.message ?? '')); return }
 
-      const useT2V = !sourceImageUrl && refs.length === 0
       const url = useT2V ? '/api/t2v/generate' : '/api/i2v/generate'
       const refUrls = refs.map(r => r.url).filter((u): u is string => !!u)
       const body = useT2V
