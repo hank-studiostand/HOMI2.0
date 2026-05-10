@@ -1163,24 +1163,6 @@ export default function SceneEditorPage() {
             {/* 라벨 (씬 번호와 별개) */}
             <LabelEditor scene={scene} onUpdate={updateScene} />
 
-            {/* Seedance 프롬프트화 */}
-            <button
-              onClick={() => void runScriptize(scene)}
-              disabled={scriptizingSceneId === scene.id}
-              className="flex items-center gap-1 px-2.5 h-6 rounded-full text-[10px] font-semibold transition-all hover:opacity-80 disabled:opacity-50"
-              style={{
-                background: 'var(--accent-soft)',
-                color: 'var(--accent)',
-                border: '1px solid var(--accent-line)',
-              }}
-              title="이 씬(또는 선택 구간)을 Seedance R2V 프롬프트로 변환하고 워크스페이스 I2V 탭으로 이동"
-            >
-              {scriptizingSceneId === scene.id
-                ? <Loader2 size={10} className="animate-spin" />
-                : <Wand2 size={10} />}
-              Seedance 프롬프트화
-            </button>
-
             {/* 합치기 */}
             {idx > 0 && (
               <button

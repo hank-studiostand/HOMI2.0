@@ -198,7 +198,7 @@ export default function WorkspacePage() {
     try { sessionStorage.removeItem('seedance_prefill') } catch {}
   }, [search])
 
-  // I2V 모드 진입 시 — 첫 T2I 결과를 소스로 자동 선택 (한 번만, 사용자 해제 후 outputs 변동에도 다시 선택하지 않음)
+  // I2V 모드 진입 시 — 첫 베이스 이미지(approved/5★) 또는 첫 T2I 결과를 소스로 자동 선택 (한 번만)
   const i2vAutoSelDoneRef = useRef(false)
   useEffect(() => {
     if (genType !== 'i2v') {
@@ -211,6 +211,16 @@ export default function WorkspacePage() {
         i2vAutoSelDoneRef.current = true
         return prev
       }
+      // 1순위: 베이스 이미지 — approved 또는 5★ T2I
+      const firstBase = outputs.find(o =>
+        o.type === 't2i' && !!o.url && !o.archived &&
+        (o.decision === 'approved' || (o.satisfaction_score ?? 0) >= 5)
+      )
+      if (firstBase) {
+        i2vAutoSelDoneRef.current = true
+        return [firstBase.id]
+      }
+      // 2순위: 첫 T2I 결과 (베이스가 아직 없을 때)
       const firstT2I = outputs.find(o => o.type === 't2i' && !!o.url && !o.archived)
       if (firstT2I) {
         i2vAutoSelDoneRef.current = true
@@ -1168,13 +1178,31 @@ export default function WorkspacePage() {
                 if (genCamera.shotSize) camTokens.push(`shot:${genCamera.shotSize}`)
                 if (genCamera.lens)     camTokens.push(`lens:${genCamera.lens}`)
                 if (genCamera.lighting) camTokens.push(`lighting:${genCamera.lighting}`)
-                // 레퍼런스 라벨 (카테고리만 — URL 노출은 LLM에 불필요)
+                // 레퍼런스 라벨 — 카테고리 + 카운트 + 루트 자산 description까지 풍부하게
                 const refLabels: string[] = []
                 for (const [k, v] of Object.entries(genRefSel)) {
                   if ((v as Set<string>).size > 0) refLabels.push(`${k}: ${(v as Set<string>).size}장`)
                 }
-                for (const [k, v] of Object.entries(genRootSel)) {
-                  if ((v as Set<string>).size > 0) refLabels.push(`root-${k}: ${(v as Set<string>).size}장`)
+                // 선택된 루트 자산의 상세 description을 LLM에 전달
+                const selectedRootDetails: Array<{ category: string; name: string; description: string }> = []
+                for (const cat of ['character', 'space', 'object', 'misc'] as const) {
+                  const urls = Array.from((genRootSel as any)[cat] as Set<string>)
+                  for (const url of urls) {
+                    const seed = rootAssets.find(s =>
+                      Array.isArray(s.reference_image_urls) && s.reference_image_urls.includes(url as string)
+                    )
+                    if (seed) {
+                      selectedRootDetails.push({
+                        category: cat,
+                        name: seed.name,
+                        description: (seed.description ?? '').slice(0, 400),
+                      })
+                    }
+                  }
+                }
+                for (const d of selectedRootDetails) {
+                  const desc = d.description ? ` — ${d.description.slice(0, 100)}` : ''
+                  refLabels.push(`[${d.category}] ${d.name}${desc}`)
                 }
                 const r = await fetch('/api/prompts/optimize', {
                   method: 'POST',
@@ -1274,7 +1302,8 @@ export default function WorkspacePage() {
                 created_at: new Date().toISOString(),
                 decision: null,
               }))
-              setOutputs(prev => [...prev, ...placeholders])
+              // 새 placeholder를 최상단에 (최근 결과에서 가장 위)
+              setOutputs(prev => [...placeholders, ...prev])
 
               // 1단계 — attempt insert (짧음, 락 유지)
               const { data: attempt, error } = await supabase
