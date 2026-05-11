@@ -1216,39 +1216,11 @@ function PopupChip({
   )
 }
 
-function popupItem(active: boolean): React.CSSProperties {
-  return {
-    width: '100%', padding: '8px 12px',
-    background: active ? 'var(--accent-soft)' : 'transparent',
-    color: active ? 'var(--accent)' : 'var(--ink-2)',
-    border: 'none', borderRadius: 'var(--r-sm)',
-    fontSize: 12, fontWeight: active ? 600 : 500,
-    textAlign: 'left', cursor: 'pointer',
-  }
-}
-
-const iconBubble: React.CSSProperties = {
-  width: 22, height: 22, borderRadius: 999,
-  background: 'var(--bg-3)', color: 'var(--ink-3)',
-  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-}
-
 const initialBubble: React.CSSProperties = {
   width: 22, height: 22, borderRadius: 999,
   background: 'var(--accent)', color: '#fff',
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
   fontWeight: 700, fontSize: 11,
-}
-
-function rightTabBtn(active: boolean): React.CSSProperties {
-  return {
-    padding: '6px 10px', borderRadius: 'var(--r-md)',
-    background: active ? 'var(--bg-2)' : 'transparent',
-    color: active ? 'var(--ink)' : 'var(--ink-3)',
-    border: 'none', cursor: 'pointer',
-    fontSize: 12, fontWeight: active ? 600 : 500,
-    display: 'inline-flex', alignItems: 'center', gap: 6,
-  }
 }
 
 
