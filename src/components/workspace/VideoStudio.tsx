@@ -8,7 +8,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import {
   Plus, ChevronDown, Sparkles, History as HistoryIcon, BookOpen,
   Image as ImageIcon, Video, Music, Volume2, VolumeX,
-  Wand2, X, Upload, FilmIcon as Film, Layers, Pencil,
+  Wand2, X, Upload, FilmIcon as Film, Layers, Pencil, Loader2,
 } from 'lucide-react'
 import AssetUploadButton from './AssetUploadButton'
 import { fileToFrameOrDataUrl } from '@/lib/videoFrame'
@@ -24,6 +24,9 @@ interface RecentItem {
   engine?: string
   created_at: string
   attempt_id: string
+  status?: string                            // pending / generating / done / failed
+  failureReason?: string | null              // 실패 시 사유
+  metadata?: Record<string, any> | null      // attempt metadata (mode, resolution, duration, refs 등)
 }
 
 interface RootAssetLite {
@@ -977,7 +980,20 @@ export default function VideoStudio({
 
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {rightTab === 'guide' && <GuideContent />}
-          {rightTab === 'history' && <HistoryContent items={recentOutputs} onZoom={onZoomOutput} />}
+          {rightTab === 'history' && (
+            <HistoryContent
+              items={recentOutputs}
+              onZoom={onZoomOutput}
+              generating={generating}
+              currentPrompt={promptDraft}
+              uploadedAssets={uploadedAssets}
+              currentEngine={engine}
+              currentDuration={duration}
+              currentRatio={ratio}
+              currentResolution={resolution}
+              onCancelGenerating={() => { /* placeholder — 추후 큐 cancel */ }}
+            />
+          )}
           {rightTab === 'how' && <HowItWorksContent />}
         </div>
       </main>
@@ -1043,49 +1059,230 @@ function GuideContent() {
   )
 }
 
-function HistoryContent({ items, onZoom }: { items: RecentItem[]; onZoom?: (id: string) => void }) {
-  if (items.length === 0) {
-    return (
-      <div style={{ padding: 80, textAlign: 'center', color: 'var(--ink-4)' }}>
-        <HistoryIcon size={40} style={{ opacity: 0.3, marginBottom: 14 }} />
-        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink-3)' }}>아직 생성된 영상이 없어요</div>
-        <div style={{ fontSize: 12, marginTop: 6 }}>좌측 패널에서 프롬프트를 입력하고 Generate 해보세요.</div>
-      </div>
-    )
-  }
+function HistoryContent({
+  items, onZoom, generating, currentPrompt, uploadedAssets,
+  currentEngine, currentDuration, currentRatio, currentResolution, onCancelGenerating,
+}: {
+  items: RecentItem[]
+  onZoom?: (id: string) => void
+  generating?: boolean
+  currentPrompt?: string
+  uploadedAssets?: Array<{ id: string; url: string; name: string; kind: 'image' | 'video' | 'audio'; token: string }>
+  currentEngine?: string
+  currentDuration?: number
+  currentRatio?: string
+  currentResolution?: string
+  onCancelGenerating?: () => void
+}) {
+  // 뷰 모드 + 줌 (sessionStorage 영속)
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>(() => {
+    if (typeof window === 'undefined') return 'list'
+    try { return (window.sessionStorage.getItem('vs:viewMode') as any) || 'list' } catch { return 'list' }
+  })
+  const [zoom, setZoom] = useState<number>(() => {
+    if (typeof window === 'undefined') return 1
+    try { const v = parseFloat(window.sessionStorage.getItem('vs:zoom') || '1'); return isFinite(v) && v > 0.5 && v < 2.5 ? v : 1 } catch { return 1 }
+  })
+  function setView(m: 'list' | 'grid') { setViewMode(m); try { window.sessionStorage.setItem('vs:viewMode', m) } catch {} }
+  function setZoomPersist(z: number) { setZoom(z); try { window.sessionStorage.setItem('vs:zoom', String(z)) } catch {} }
+
+  // 실패한 attempt 별로 그룹핑 — 첫 output의 metadata.failureReason 가 있으면 표시
+  const failed = items.filter(o => o.status === 'failed')
+  const succeeded = items.filter(o => o.status !== 'failed' && !!o.url)
+
+  // 카드 너비 — viewMode + zoom 반영
+  const baseListW = 420
+  const baseGridW = 220
+  const cardMinW = (viewMode === 'list' ? baseListW : baseGridW) * zoom
+
+  const showProgress = !!generating
+
   return (
-    <div style={{ padding: 18, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
-      {items.map(o => (
-        <button key={o.id}
-          onClick={() => o.url && onZoom?.(o.id)}
-          style={{
-            padding: 0, border: '1px solid var(--line)',
-            borderRadius: 12, overflow: 'hidden',
-            aspectRatio: '16/9',
-            background: 'var(--bg-2)', cursor: 'pointer', position: 'relative',
-          }}
-          title={o.prompt ?? ''}
-        >
-          {o.url ? (
-            <video src={o.url} muted playsInline preload="metadata"
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          ) : (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* 컨트롤 바 — zoom slider + List/Grid 토글 */}
+      <div style={{
+        padding: '8px 18px', borderBottom: '1px solid var(--line)',
+        display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0,
+      }}>
+        <span style={{ fontSize: 10, color: 'var(--ink-4)', fontWeight: 600 }}>{items.length}개</span>
+        <span style={{ flex: 1 }} />
+        {/* Zoom */}
+        <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>크기</span>
+        <input type="range" min={0.7} max={2.0} step={0.05} value={zoom}
+          onChange={e => setZoomPersist(parseFloat(e.target.value))}
+          style={{ width: 100, accentColor: 'var(--accent)' }}
+          title="카드 크기 조절" />
+        <span className="mono" style={{ fontSize: 10, color: 'var(--ink-3)', minWidth: 32 }}>{Math.round(zoom * 100)}%</span>
+        {/* List / Grid */}
+        <div style={{ display: 'inline-flex', background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)' }}>
+          <button onClick={() => setView('list')}
+            style={{
+              padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+              background: viewMode === 'list' ? 'var(--accent-soft)' : 'transparent',
+              color: viewMode === 'list' ? 'var(--accent)' : 'var(--ink-3)',
+              border: 'none', borderRadius: 'var(--r-sm)',
+            }}>List</button>
+          <button onClick={() => setView('grid')}
+            style={{
+              padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+              background: viewMode === 'grid' ? 'var(--accent-soft)' : 'transparent',
+              color: viewMode === 'grid' ? 'var(--accent)' : 'var(--ink-3)',
+              border: 'none', borderRadius: 'var(--r-sm)',
+            }}>Grid</button>
+        </div>
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* Progress 카드 — 생성 중 */}
+        {showProgress && (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: viewMode === 'list' ? '1fr 1fr' : '1fr',
+            gap: 12,
+            border: '1px solid var(--accent-line)',
+            background: 'var(--bg-1)',
+            borderRadius: 14, padding: 12,
+          }}>
             <div style={{
-              width: '100%', height: '100%',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'var(--ink-5)', fontSize: 12,
-            }}>생성 중</div>
-          )}
-          {o.engine && (
-            <span style={{
-              position: 'absolute', bottom: 6, left: 6,
-              padding: '2px 8px', borderRadius: 999,
-              fontSize: 10, fontWeight: 600,
-              background: 'rgba(0,0,0,0.65)', color: '#fff',
-            }}>{o.engine}</span>
-          )}
-        </button>
-      ))}
+              aspectRatio: '16/9', background: 'var(--bg-3)',
+              borderRadius: 'var(--r-md)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              position: 'relative', overflow: 'hidden',
+            }}>
+              <Loader2 size={18} className="animate-spin" style={{ color: 'var(--accent)' }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)' }}>Processing</span>
+              {onCancelGenerating && (
+                <button onClick={onCancelGenerating}
+                  style={{
+                    position: 'absolute', top: 8, right: 8,
+                    padding: '3px 8px', borderRadius: 999, fontSize: 10, fontWeight: 600,
+                    background: 'var(--bg)', border: '1px solid var(--line-strong)',
+                    color: 'var(--ink-3)', cursor: 'pointer',
+                  }}>⊘ Cancel</button>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Sparkles size={11} style={{ color: 'var(--accent)' }} />
+                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink-3)', letterSpacing: '0.04em' }}>
+                  {currentEngine?.toUpperCase() ?? 'SEEDANCE'}
+                </span>
+                <span style={{ flex: 1 }} />
+                <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>
+                  {currentResolution} · {currentDuration}s · {currentRatio}
+                </span>
+              </div>
+              {currentPrompt && (
+                <div style={{
+                  fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.5,
+                  maxHeight: 140, overflowY: 'auto',
+                  background: 'var(--bg-2)', padding: 8, borderRadius: 'var(--r-sm)',
+                  whiteSpace: 'pre-wrap',
+                }}>{currentPrompt}</div>
+              )}
+              {uploadedAssets && uploadedAssets.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {uploadedAssets.slice(0, 8).map(a => (
+                    <span key={a.id} style={{
+                      width: 32, height: 32, borderRadius: 'var(--r-sm)',
+                      overflow: 'hidden', background: 'var(--bg-3)',
+                      border: '1px solid var(--accent-line)',
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      position: 'relative',
+                    }}>
+                      {a.kind === 'image' && <img src={a.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                      {a.kind === 'video' && <video src={a.url} muted preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                      {a.kind === 'audio' && <Music size={12} />}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 실패 카드들 */}
+        {failed.map(f => (
+          <div key={f.id} style={{
+            border: '1px solid color-mix(in oklab, var(--err) 30%, var(--line))',
+            background: 'color-mix(in oklab, var(--err) 4%, var(--bg-1))',
+            borderRadius: 14, padding: 12,
+            display: 'flex', alignItems: 'flex-start', gap: 10,
+          }}>
+            <div style={{
+              width: 26, height: 26, borderRadius: 999,
+              background: 'color-mix(in oklab, var(--err) 18%, transparent)',
+              color: 'var(--err)',
+              display: 'grid', placeItems: 'center', flexShrink: 0,
+            }}>
+              <X size={14} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--err)' }}>
+                생성 실패
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2, lineHeight: 1.5 }}>
+                {f.failureReason ?? '알 수 없는 오류 — 다시 시도해주세요.'}
+              </div>
+              {f.prompt && (
+                <div style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {f.prompt}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {/* 빈 상태 */}
+        {!showProgress && succeeded.length === 0 && failed.length === 0 && (
+          <div style={{ padding: 60, textAlign: 'center', color: 'var(--ink-4)' }}>
+            <HistoryIcon size={36} style={{ opacity: 0.3, marginBottom: 12 }} />
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink-3)' }}>아직 생성된 영상이 없어요</div>
+            <div style={{ fontSize: 12, marginTop: 6 }}>좌측 패널에서 프롬프트를 입력하고 Generate 해보세요.</div>
+          </div>
+        )}
+
+        {/* 성공 결과 — List(1열 큰 카드) 또는 Grid(다열) */}
+        {succeeded.length > 0 && (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(auto-fill, minmax(${cardMinW}px, 1fr))`,
+            gap: 12,
+          }}>
+            {succeeded.map(o => (
+              <button key={o.id}
+                onClick={() => o.url && onZoom?.(o.id)}
+                style={{
+                  padding: 0, border: '1px solid var(--line)',
+                  borderRadius: 12, overflow: 'hidden',
+                  aspectRatio: '16/9',
+                  background: 'var(--bg-2)', cursor: 'pointer', position: 'relative',
+                }}
+                title={o.prompt ?? ''}
+              >
+                {o.url ? (
+                  <video src={o.url} muted playsInline preload="metadata"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <div style={{
+                    width: '100%', height: '100%',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: 'var(--ink-5)', fontSize: 12,
+                  }}>생성 중</div>
+                )}
+                {o.engine && (
+                  <span style={{
+                    position: 'absolute', bottom: 6, left: 6,
+                    padding: '2px 8px', borderRadius: 999,
+                    fontSize: 10, fontWeight: 600,
+                    background: 'rgba(0,0,0,0.65)', color: '#fff',
+                  }}>{o.engine}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -1260,226 +1457,6 @@ function EditVideoPanel({
           </button>
         ))}
       </div>
-    </div>
-  )
-}
-
-// ── MotionControlPanel ─────────────────────────────────────────────
-function MotionControlPanel({
-  promptDraft, onAppend,
-}: {
-  promptDraft: string
-  onAppend: (token: string) => void
-}) {
-  const sections = [
-    { title: "카메라 무브", tokens: [
-      "slow dolly in", "slow dolly out", "tracking shot left to right", "tracking shot right to left",
-      "crane up", "crane down", "handheld with subtle shake", "gimbal smooth glide",
-      "orbital 360 rotation", "whip pan", "tilt up", "tilt down",
-    ]},
-    { title: "프레이밍", tokens: [
-      "extreme close-up", "close-up", "medium close-up", "medium shot",
-      "medium wide", "wide shot", "establishing shot", "over-the-shoulder", "top-down birds-eye",
-    ]},
-    { title: "렌즈/포커스", tokens: [
-      "24mm wide", "35mm", "50mm portrait", "85mm telephoto", "anamorphic",
-      "shallow depth of field f/1.4", "rack focus", "macro lens",
-    ]},
-    { title: "속도/시간", tokens: [
-      "slow motion", "time-lapse", "hyper-lapse", "natural pace",
-      "freeze frame", "cinematic 24fps look",
-    ]},
-  ]
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {sections.map(s => (
-        <div key={s.title}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "var(--ink-4)", letterSpacing: "0.04em", marginBottom: 4 }}>
-            {s.title}
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-            {s.tokens.map(t => {
-              const has = promptDraft.toLowerCase().includes(t.toLowerCase())
-              return (
-                <button key={t}
-                  onClick={() => onAppend(t)}
-                  style={{
-                    padding: "4px 8px", borderRadius: 999,
-                    background: has ? "var(--accent-soft)" : "var(--bg-2)",
-                    color: has ? "var(--accent)" : "var(--ink-2)",
-                    border: "1px solid " + (has ? "var(--accent-line)" : "var(--line)"),
-                    fontSize: 10, fontWeight: 500, cursor: "pointer",
-                  }}
-                >+ {t}</button>
-              )
-            })}
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-// ── PresetModal ────────────────────────────────────────────────────
-function PresetModal({ onClose, onApply }: { onClose: () => void; onApply: (text: string) => void }) {
-  const cats = [
-    { title: "톤/그레이드", presets: [
-      "35mm film look, warm amber color grade",
-      "cool teal-and-orange cinematic grade",
-      "desaturated documentary look",
-      "high-contrast noir black and white",
-      "pastel dreamy palette",
-      "neon cyberpunk magenta-cyan",
-    ]},
-    { title: "조명", presets: [
-      "soft window light from camera left",
-      "golden hour backlight",
-      "harsh midday sun",
-      "rim light separating subject from background",
-      "candlelight warm ambient",
-      "practical light from neon signs",
-      "blue hour exterior twilight",
-    ]},
-    { title: "분위기", presets: [
-      "intimate, contemplative, slow rhythm",
-      "tense thriller atmosphere",
-      "whimsical, joyful, light-hearted",
-      "eerie, unsettling, dreamlike",
-      "epic, grand scale",
-      "minimalist, restrained",
-    ]},
-    { title: "카메라", presets: [
-      "static eye-level shot, cinematic 35mm",
-      "slow tracking shot from behind subject",
-      "handheld documentary style",
-      "gimbal smooth glide circling subject",
-      "crane shot rising up",
-      "over-the-shoulder dialogue framing",
-    ]},
-  ]
-  return (
-    <div onClick={onClose} style={{
-      position: "fixed", inset: 0, zIndex: 200,
-      background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
-      display: "flex", alignItems: "center", justifyContent: "center",
-      padding: "clamp(12px, 3vw, 32px)",
-    }}>
-      <div onClick={e => e.stopPropagation()} style={{
-        width: "100%", maxWidth: 880, maxHeight: "calc(100vh - 48px)",
-        background: "var(--bg)", border: "1px solid var(--line)",
-        borderRadius: "var(--r-md)", overflow: "hidden",
-        display: "flex", flexDirection: "column",
-      }}>
-        <div style={{
-          padding: "12px 16px", borderBottom: "1px solid var(--line)",
-          display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap",
-        }}>
-          <Sparkles size={14} style={{ color: "var(--accent)" }} />
-          <span style={{ fontSize: 13, fontWeight: 700 }}>Edit Presets</span>
-          <span style={{ fontSize: 11, color: "var(--ink-4)", minWidth: 0, flex: "1 1 200px" }}>
-            시네마틱 무드/스타일 — 클릭하여 프롬프트에 추가
-          </span>
-          <button onClick={onClose} className="btn" style={{ padding: 6 }}>
-            <X size={14} />
-          </button>
-        </div>
-        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "clamp(12px, 2vw, 20px)", display: "flex", flexDirection: "column", gap: 16 }}>
-          {cats.map(c => (
-            <div key={c.title}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-3)", letterSpacing: "0.04em", marginBottom: 6 }}>
-                {c.title}
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 200px), 1fr))", gap: 6 }}>
-                {c.presets.map(p => (
-                  <button key={p}
-                    onClick={() => onApply(p)}
-                    style={{
-                      padding: "8px 12px", borderRadius: 8,
-                      background: "var(--bg-2)", color: "var(--ink-2)",
-                      border: "1px solid var(--line)",
-                      fontSize: 11, textAlign: "left",
-                      cursor: "pointer", lineHeight: 1.5,
-                    }}
-                  >{p}</button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-
-// ── EndFrameSlot — 영상 끝 프레임 슬롯 (Seedance last_frame / Kling image_tail) ──
-function EndFrameSlot({
-  endFrameUrl, onChange,
-}: {
-  endFrameUrl: string | null
-  onChange: (next: string | null) => void
-}) {
-  const inputRef = useRef<HTMLInputElement | null>(null)
-  async function pick(file: File | null) {
-    if (!file) return
-    if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) {
-      alert("이미지 또는 영상 파일만 가능해요")
-      return
-    }
-    try {
-      const dataUrl = await fileToFrameOrDataUrl(file)
-      onChange(dataUrl)
-    } catch (err) {
-      alert("프레임 추출 실패: " + (err instanceof Error ? err.message : String(err)))
-    }
-  }
-  return (
-    <div
-      onDragOver={e => e.preventDefault()}
-      onDrop={e => { e.preventDefault(); pick(e.dataTransfer.files?.[0] ?? null) }}
-      onClick={() => inputRef.current?.click()}
-      style={{
-        border: `1.5px dashed ${endFrameUrl ? "var(--accent-line)" : "var(--line-strong)"}`,
-        borderRadius: 14,
-        padding: endFrameUrl ? 6 : "16px 10px",
-        background: endFrameUrl ? "var(--bg)" : "var(--bg-2)",
-        cursor: "pointer",
-        display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center",
-        gap: 6, position: "relative", minHeight: 110,
-      }}>
-      <input ref={inputRef} type="file" accept="image/*,video/*" hidden
-        onChange={e => { pick(e.target.files?.[0] ?? null); if (e.target) e.target.value = "" }} />
-      {endFrameUrl ? (
-        <>
-          {endFrameUrl.startsWith("data:video") || /\.(mp4|webm|mov)(\?|$)/i.test(endFrameUrl)
-            ? <video src={endFrameUrl} muted controls style={{ width: "100%", maxHeight: 110, objectFit: "contain", borderRadius: 8, background: "var(--bg-3)" }} />
-            : <img src={endFrameUrl} alt="" style={{ width: "100%", maxHeight: 110, objectFit: "contain", borderRadius: 8, background: "var(--bg-3)" }} />}
-          <button
-            onClick={e => { e.stopPropagation(); onChange(null) }}
-            style={{
-              position: "absolute", top: 4, right: 4,
-              width: 20, height: 20, padding: 0, borderRadius: 999,
-              background: "rgba(0,0,0,0.6)", color: "#fff",
-              border: "none", cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}
-            title="제거"
-          ><X size={11} /></button>
-          <span style={{ fontSize: 9, color: "var(--ink-4)", fontWeight: 600 }}>End</span>
-        </>
-      ) : (
-        <>
-          <div style={{ display: "flex", gap: 3 }}>
-            <span style={iconBubble}><ImageIcon size={12} /></span>
-            <span style={iconBubble}><Video size={12} /></span>
-          </div>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)" }}>+ End Frame</div>
-            <div style={{ fontSize: 9, color: "var(--ink-4)", marginTop: 1 }}>영상 끝 (선택)</div>
-          </div>
-        </>
-      )}
     </div>
   )
 }
