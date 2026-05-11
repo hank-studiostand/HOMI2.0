@@ -152,10 +152,8 @@ export default function VideoStudioPage() {
     return () => { mounted = false }
   }, [projectId, supabase])
 
-  // Studio 결과 로드 (source='studio', 모든 씬 또는 null)
-  useEffect(() => {
-    let mounted = true
-    void (async () => {
+  // Studio 결과 로드 함수 — useEffect + Realtime 양쪽에서 호출
+  const loadStudioData = async () => {
       const tryStudio = await supabase
         .from('prompt_attempts')
         .select('id, prompt, engine, scene_id, project_id, type, metadata, status, created_at, outputs:attempt_outputs(id, archived, asset:assets(url, type, name), created_at)')
@@ -164,7 +162,6 @@ export default function VideoStudioPage() {
         .eq('metadata->>source', 'studio')
         .order('created_at', { ascending: false })
         .limit(80)
-      if (!mounted) return
       let rows: any[] = []
       if (tryStudio.error) {
         // 폴백 — metadata/project_id 컬럼 미적용 환경 (마이그레이션 미적용)
@@ -219,21 +216,32 @@ export default function VideoStudioPage() {
       }
       setAttempts(meta)
       setOutputs(flat)
-    })()
-    return () => { mounted = false }
-  }, [supabase])
+  }
 
-  // Realtime — 전체 prompt_attempts/attempt_outputs 변화 시 reload (Studio 전체)
+  // 마운트 시 1회 로드
   useEffect(() => {
+    void loadStudioData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId])
+
+  // Realtime — prompt_attempts / attempt_outputs 변화 시 즉시 reload
+  useEffect(() => {
+    let pending: any = null
+    const debouncedReload = () => {
+      if (pending) clearTimeout(pending)
+      pending = setTimeout(() => { void loadStudioData() }, 250)
+    }
     const ch = supabase
       .channel(`video-studio-${projectId}`)
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'prompt_attempts' },
-        () => { /* 의존성: 위 useEffect가 다음 tick에서 reload — 여기선 nothing */ },
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'prompt_attempts' }, debouncedReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attempt_outputs' }, debouncedReload)
       .subscribe()
-    return () => { void supabase.removeChannel(ch) }
-  }, [projectId, supabase])
+    return () => {
+      if (pending) clearTimeout(pending)
+      void supabase.removeChannel(ch)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId])
 
   const activeScene = useMemo(() => scenes.find(s => s.id === activeId) ?? null, [scenes, activeId])
 
@@ -279,6 +287,20 @@ export default function VideoStudioPage() {
         alert('시도 생성 실패: ' + (error?.message ?? '') + '\n\n마이그레이션 미적용 시 prompt_attempts.scene_id NOT NULL 제약으로 실패할 수 있어요.\nSupabase에서 2026-05-10_prompt_attempts_scene_nullable.sql 적용해주세요.')
         return
       }
+      // Optimistic: insert 한 attempt 을 즉시 로컬 state 에 푸시 — Realtime 대기 없이 큐카드 표시
+      const newAttemptMeta: AttemptMeta = {
+        id: attempt.id, prompt: draft, engine,
+        status: 'generating',
+        metadata: attempt.metadata ?? null,
+      }
+      setAttempts(prev => [newAttemptMeta, ...prev.filter(a => a.id !== attempt.id)])
+      setOutputs(prev => [{
+        id: `attempt:${attempt.id}`, attempt_id: attempt.id, scene_id: null as any,
+        url: null, archived: false, type: 'i2v', engine,
+        created_at: new Date().toISOString(),
+        status: 'generating', failureReason: null,
+        metadata: attempt.metadata ?? null,
+      }, ...prev.filter(o => o.attempt_id !== attempt.id)])
 
       const url = useT2V ? '/api/t2v/generate' : '/api/i2v/generate'
       const refUrls = refs.map(r => r.url).filter((u): u is string => !!u)

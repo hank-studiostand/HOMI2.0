@@ -76,6 +76,7 @@ export default function VideoStudio({
   recentOutputs,
   onZoomOutput,
   onRetryAttempt,
+  onDeleteAttempt,
   audioOn,
   onAudioToggle,
   optimizing,
@@ -107,6 +108,7 @@ export default function VideoStudio({
   recentOutputs: RecentItem[]
   onZoomOutput?: (id: string) => void
   onRetryAttempt?: (attemptId: string) => void
+  onDeleteAttempt?: (attemptId: string) => void
   audioOn: boolean
   onAudioToggle: (next: boolean) => void
   optimizing?: boolean
@@ -987,6 +989,7 @@ export default function VideoStudio({
               items={recentOutputs}
               onZoom={onZoomOutput}
               onRetry={onRetryAttempt}
+              onDelete={onDeleteAttempt}
               generating={generating}
               currentPrompt={promptDraft}
               uploadedAssets={uploadedAssets}
@@ -1063,12 +1066,13 @@ function GuideContent() {
 }
 
 function HistoryContent({
-  items, onZoom, onRetry, generating, currentPrompt, uploadedAssets,
+  items, onZoom, onRetry, onDelete, generating, currentPrompt, uploadedAssets,
   currentEngine, currentDuration, currentRatio, currentResolution, onCancelGenerating,
 }: {
   items: RecentItem[]
   onZoom?: (id: string) => void
   onRetry?: (attemptId: string) => void
+  onDelete?: (attemptId: string) => void
   generating?: boolean
   currentPrompt?: string
   uploadedAssets?: Array<{ id: string; url: string; name: string; kind: 'image' | 'video' | 'audio'; token: string }>
@@ -1205,50 +1209,97 @@ function HistoryContent({
           </div>
         )}
 
-        {/* 실패 카드들 */}
-        {failed.map(f => (
-          <div key={f.id} style={{
-            border: '1px solid color-mix(in oklab, var(--err) 30%, var(--line))',
-            background: 'color-mix(in oklab, var(--err) 4%, var(--bg-1))',
-            borderRadius: 14, padding: 12,
-            display: 'flex', alignItems: 'flex-start', gap: 10,
-          }}>
-            <div style={{
-              width: 26, height: 26, borderRadius: 999,
-              background: 'color-mix(in oklab, var(--err) 18%, transparent)',
-              color: 'var(--err)',
-              display: 'grid', placeItems: 'center', flexShrink: 0,
+        {/* 실패 카드들 — 큐카드 스타일: 좌측 Failed 박스 + 우측 프롬프트/elements, 하단 Retry/Delete */}
+        {failed.map(f => {
+          const meta = (f.metadata && typeof f.metadata === 'object') ? f.metadata as any : null
+          const elements: any[] = Array.isArray(meta?.elements) ? meta.elements : []
+          const refsArr: any[] = Array.isArray(meta?.refs) ? meta.refs : []
+          return (
+            <div key={f.id} style={{
+              display: 'grid',
+              gridTemplateColumns: viewMode === 'list' ? '1.4fr 1fr' : '1fr',
+              gap: 12,
+              border: '1px solid color-mix(in oklab, var(--err) 30%, var(--line))',
+              background: 'color-mix(in oklab, var(--err) 4%, var(--bg-1))',
+              borderRadius: 14, padding: 12,
             }}>
-              <X size={14} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--err)' }}>
-                생성 실패
+              {/* 좌측 — Failed 라벨 박스 */}
+              <div style={{
+                aspectRatio: '16/9', background: 'var(--bg-2)',
+                borderRadius: 'var(--r-md)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                border: '1px dashed color-mix(in oklab, var(--err) 30%, var(--line))',
+              }}>
+                <X size={18} style={{ color: 'var(--err)' }} />
+                <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--err)', letterSpacing: '0.05em' }}>FAILED</span>
               </div>
-              <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2, lineHeight: 1.5 }}>
-                {f.failureReason ?? '알 수 없는 오류 — 다시 시도해주세요.'}
+              {/* 우측 — 프롬프트 + elements + 액션 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--err)', letterSpacing: '0.04em' }}>FAILED</span>
+                  <span style={{ flex: 1 }} />
+                  <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>
+                    {meta?.resolution ?? ''} {meta?.duration ? '· ' + meta.duration + 's' : ''} {meta?.ratio ? '· ' + meta.ratio : ''}
+                  </span>
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--ink-3)', lineHeight: 1.5,
+                  background: 'color-mix(in oklab, var(--err) 6%, transparent)',
+                  border: '1px solid color-mix(in oklab, var(--err) 20%, transparent)',
+                  borderRadius: 'var(--r-sm)', padding: 6,
+                }}>
+                  {f.failureReason ?? '알 수 없는 오류 — 다시 시도해주세요.'}
+                </div>
+                {f.prompt && (
+                  <div style={{
+                    fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.5,
+                    maxHeight: 100, overflowY: 'auto',
+                    background: 'var(--bg-2)', padding: 8, borderRadius: 'var(--r-sm)',
+                    whiteSpace: 'pre-wrap',
+                  }}>{f.prompt}</div>
+                )}
+                {(elements.length > 0 || refsArr.length > 0) && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {elements.slice(0, 8).map((el: any) => (
+                      <span key={'el-' + el.id} title={(el.token ?? '') + ' · ' + (el.name ?? '')}
+                        style={{
+                          width: 28, height: 28, borderRadius: 'var(--r-sm)',
+                          overflow: 'hidden', background: 'var(--bg-3)',
+                          border: '1px solid var(--accent-line)',
+                        }}>
+                        {el.kind === 'image' && el.url && <img src={el.url} alt='' style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                        {el.kind === 'video' && el.url && <video src={el.url} muted preload='metadata' style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 6, marginTop: 'auto' }}>
+                  {onRetry && f.attempt_id && (
+                    <button onClick={() => onRetry(f.attempt_id!)}
+                      style={{
+                        flex: 1, padding: '8px 12px', borderRadius: 8,
+                        background: 'var(--accent)', color: '#fff',
+                        border: 'none', fontSize: 11, fontWeight: 700,
+                        cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      }}>
+                      ↻ Retry
+                    </button>
+                  )}
+                  {onDelete && f.attempt_id && (
+                    <button onClick={() => onDelete(f.attempt_id!)}
+                      style={{
+                        flex: 1, padding: '8px 12px', borderRadius: 8,
+                        background: 'var(--bg-2)', color: 'var(--ink-3)',
+                        border: '1px solid var(--line)', fontSize: 11, fontWeight: 600,
+                        cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      }}>
+                      🗑 Delete
+                    </button>
+                  )}
+                </div>
               </div>
-              {f.prompt && (
-                <div style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {f.prompt}
-                </div>
-              )}
-              {onRetry && f.attempt_id && (
-                <div style={{ marginTop: 8 }}>
-                  <button onClick={() => onRetry(f.attempt_id!)}
-                    style={{
-                      padding: '6px 12px', borderRadius: 999,
-                      background: 'var(--accent)', color: '#fff',
-                      border: 'none', fontSize: 11, fontWeight: 700,
-                      cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
-                    }}>
-                    ↻ 다시 시도
-                  </button>
-                </div>
-              )}
             </div>
-          </div>
-        ))}
+          )
+        })}
 
         {/* 빈 상태 */}
         {!showProgress && succeeded.length === 0 && failed.length === 0 && (
@@ -1259,7 +1310,7 @@ function HistoryContent({
           </div>
         )}
 
-        {/* 최신 결과 — 대형 feature 카드 (영상 + 프롬프트/elements/meta 우측 패널) */}
+        {/* 최신 결과 — 컴팩트 feature 카드 (영상 + 프롬프트/elements/meta 우측 패널) */}
         {!showProgress && succeeded.length > 0 && (() => {
           const top = succeeded[0]
           const meta = (top.metadata && typeof top.metadata === 'object') ? top.metadata as any : null
@@ -1268,11 +1319,12 @@ function HistoryContent({
           return (
             <div style={{
               display: 'grid',
-              gridTemplateColumns: viewMode === 'list' ? '1.4fr 1fr' : '1fr',
-              gap: 12,
+              gridTemplateColumns: viewMode === 'list' ? '1fr 0.85fr' : '1fr',
+              gap: 10,
               border: '1px solid var(--line-strong)',
               background: 'var(--bg-1)',
-              borderRadius: 14, padding: 12,
+              borderRadius: 12, padding: 10,
+              maxWidth: 720, width: '100%',
             }}>
               {/* 영상 */}
               <button onClick={() => top.url && onZoom?.(top.id)}
