@@ -1363,7 +1363,18 @@ export default function WorkspacePage() {
               const explicitSource = selectedIds[0]
                 ? filteredCandidates.find(o => o.id === selectedIds[0])
                 : null
-              const sourceUrlForI2V = explicitSource?.url ?? null
+              let sourceUrlForI2V: string | null = explicitSource?.url ?? null
+              // 영상이 소스로 선택된 경우 — 클라이언트에서 첫 프레임을 JPEG로 추출 (Seedance/Kling는 image만)
+              if (genType === 'i2v' && sourceUrlForI2V && explicitSource && (explicitSource.type === 'i2v' || explicitSource.type === 'lipsync')) {
+                try {
+                  const { extractVideoFrame } = await import('@/lib/videoFrame')
+                  sourceUrlForI2V = await extractVideoFrame(sourceUrlForI2V, { time: 0 })
+                } catch (err) {
+                  alert('영상 첫 프레임 추출 실패: ' + (err instanceof Error ? err.message : String(err)) + '\n(영상 CORS 차단 또는 코덱 미지원)')
+                  setGenerating(false)
+                  return
+                }
+              }
               const ownerSceneId = active.id
               const placeholders: OutputItem[] = Array.from({ length: placeholderCount }, (_, i) => ({
                 id: `temp_${Date.now()}_${i}_${Math.random().toString(36).slice(2,7)}`,
