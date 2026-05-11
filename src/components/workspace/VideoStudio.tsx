@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import AssetUploadButton from './AssetUploadButton'
 import { fileToFrameOrDataUrl } from '@/lib/videoFrame'
+import { createClient } from '@/lib/supabase/client'
 
 // lucide doesn't export FilmIcon — use Film
 // (이미 import 위에서 alias)
@@ -75,6 +76,8 @@ export default function VideoStudio({
   onAudioToggle,
   optimizing,
   onOptimize,
+  uploadedAssets: uploadedAssetsProp,
+  onUploadedAssetsChange,
 }: {
   projectId: string
   sceneId: string | null
@@ -103,14 +106,24 @@ export default function VideoStudio({
   onAudioToggle: (next: boolean) => void
   optimizing?: boolean
   onOptimize?: () => Promise<void> | void
+  uploadedAssets?: Array<{ id: string; url: string; name: string; kind: 'image' | 'video' | 'audio'; token: string }>
+  onUploadedAssetsChange?: (next: Array<{ id: string; url: string; name: string; kind: 'image' | 'video' | 'audio'; token: string }>) => void
 }) {
   const [tab, setTab] = useState<typeof TABS[number]['value']>('create')
   const [presetModalOpen, setPresetModalOpen] = useState(false)
-  // 업로드 에셋 — VideoStudio 자체 트래킹 (Shot Workspace 비독립).
-  // image1/image2/video1/audio1 처럼 종류별 자동 넘버링 + 프롬프트에 @토큰 삽입.
-  const [uploadedAssets, setUploadedAssets] = useState<Array<{
+  // 업로드 에셋 — 부모(page)가 sessionStorage 로 영속화. props 없으면 내부 state 사용 (fallback)
+  const [internalUploaded, setInternalUploaded] = useState<Array<{
     id: string; url: string; name: string; kind: 'image' | 'video' | 'audio'; token: string
   }>>([])
+  const uploadedAssets = uploadedAssetsProp ?? internalUploaded
+  const setUploadedAssets: React.Dispatch<React.SetStateAction<typeof internalUploaded>> = (updater) => {
+    if (onUploadedAssetsChange) {
+      const next = typeof updater === 'function' ? (updater as any)(uploadedAssets) : updater
+      onUploadedAssetsChange(next)
+    } else {
+      setInternalUploaded(updater)
+    }
+  }
   const [rightTab, setRightTab] = useState<'guide' | 'history' | 'how'>('guide')
   const [modelOpen, setModelOpen] = useState(false)
   const [durationOpen, setDurationOpen] = useState(false)
@@ -129,6 +142,57 @@ export default function VideoStudio({
     el.style.height = Math.min(el.scrollHeight, 240) + 'px'
   }
   useEffect(() => { autoGrow(taRef.current) }, [promptDraft])
+
+  // Ctrl/Cmd+V — 클립보드 이미지 → 에셋 업로드 자동 추가 (Elements)
+  useEffect(() => {
+    const supabase = createClient()
+    function onPaste(e: ClipboardEvent) {
+      const items = e.clipboardData?.items
+      if (!items) return
+      for (const it of Array.from(items)) {
+        if (it.kind === 'file' && it.type.startsWith('image/')) {
+          const file = it.getAsFile()
+          if (!file) continue
+          e.preventDefault()
+          void (async () => {
+            try {
+              const ext = (file.type.split('/')[1] || 'png').toLowerCase()
+              const path = `uploads/${projectId}/${Date.now()}_paste.${ext}`
+              const { data, error } = await supabase.storage.from('assets').upload(path, file, {
+                contentType: file.type, upsert: false,
+              })
+              if (error) { console.warn('paste upload error', error.message); return }
+              const { data: { publicUrl } } = supabase.storage.from('assets').getPublicUrl(data.path)
+              const { data: row } = await supabase.from('assets').insert({
+                project_id: projectId,
+                scene_id: sceneId ?? null,
+                type: 'reference',
+                name: file.name || `paste_${Date.now()}.${ext}`,
+                url: publicUrl,
+                tags: ['upload', 'image', 'paste'],
+                metadata: { source: 'upload', kind: 'image', via: 'clipboard' },
+              }).select().single()
+              if (!row) return
+              setUploadedAssets(prev => {
+                const sameKind = prev.filter(p => p.kind === 'image')
+                const n = sameKind.length + 1
+                return [...prev, {
+                  id: row.id, url: publicUrl, name: row.name as string,
+                  kind: 'image' as const, token: `@image${n}`,
+                }]
+              })
+            } catch (err) {
+              console.warn('paste upload failed', err)
+            }
+          })()
+          break  // 한 번에 하나만
+        }
+      }
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, sceneId])
 
   // outside click — popup 닫기
   useEffect(() => {
@@ -489,7 +553,7 @@ export default function VideoStudio({
               onKeyDown={e => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void onGenerate() }
               }}
-              placeholder="장면을 자세히 묘사하세요. @로 자산 참조 가능"
+              placeholder="장면을 자세히 묘사하세요. @로 자산 참조 가능 · 이미지 ctrl+v로 붙여넣기"
               rows={3}
               style={{
                 width: '100%', minHeight: 64,
@@ -498,6 +562,57 @@ export default function VideoStudio({
                 lineHeight: 1.55,
               }}
             />
+            {/* @토큰 매핑 인디케이터 — 프롬프트의 @image1 / @video2 등이 실제 업로드된 자산과 매칭되는지 표시 */}
+            {(() => {
+              const tokens = Array.from(new Set(
+                (promptDraft.match(/@(image|video|audio)\d+/g) ?? []).map(t => t.toLowerCase())
+              ))
+              if (tokens.length === 0) return null
+              return (
+                <div style={{
+                  display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4,
+                  padding: '6px 8px', background: 'var(--bg-3)',
+                  borderRadius: 'var(--r-sm)', border: '1px solid var(--line)',
+                }}>
+                  <span style={{ fontSize: 9, color: 'var(--ink-4)', fontWeight: 700, marginRight: 4, alignSelf: 'center' }}>
+                    매핑
+                  </span>
+                  {tokens.map(tok => {
+                    const matched = uploadedAssets.find(a => a.token.toLowerCase() === tok)
+                    const isOk = !!matched
+                    return (
+                      <span key={tok} title={isOk ? `${tok} → ${matched!.name}` : `${tok} → 매칭된 자산 없음`}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 3,
+                          padding: '2px 6px 2px 2px',
+                          borderRadius: 999,
+                          background: isOk ? 'var(--accent-soft)' : 'var(--bg)',
+                          color: isOk ? 'var(--accent)' : 'var(--err)',
+                          border: `1px solid ${isOk ? 'var(--accent-line)' : 'color-mix(in oklab, var(--err) 30%, transparent)'}`,
+                          fontSize: 10, fontWeight: 600,
+                        }}>
+                        {isOk && matched.kind === 'image' && (
+                          <img src={matched.url} alt="" style={{ width: 14, height: 14, borderRadius: 999, objectFit: 'cover' }} />
+                        )}
+                        {isOk && matched.kind === 'video' && (
+                          <Video size={10} style={{ marginLeft: 2 }} />
+                        )}
+                        {isOk && matched.kind === 'audio' && (
+                          <Music size={10} style={{ marginLeft: 2 }} />
+                        )}
+                        {!isOk && (
+                          <span style={{
+                            width: 14, height: 14, borderRadius: 999, background: 'var(--bg-3)', color: 'var(--err)',
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700,
+                          }}>?</span>
+                        )}
+                        {tok}
+                      </span>
+                    )
+                  })}
+                </div>
+              )
+            })()}
             {/* refs 칩 */}
             {refs.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
@@ -1133,129 +1248,27 @@ function MotionControlPanel({
     ]},
   ]
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', letterSpacing: '0.04em' }}>
-        Motion Control — 카메라 / 프레이밍 프리셋
-      </div>
-      <div style={{ fontSize: 11, color: 'var(--ink-4)', lineHeight: 1.5 }}>
-        클릭하면 프롬프트에 자동으로 추가돼요.
-      </div>
-      {sections.map(sec => (
-        <div key={sec.title}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink-4)', letterSpacing: '0.04em', marginBottom: 6 }}>
-            {sec.title}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {sections.map(s => (
+        <div key={s.title}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink-4)', letterSpacing: '0.04em', marginBottom: 4 }}>
+            {s.title}
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            {sec.tokens.map(t => {
-              const active = promptDraft.toLowerCase().includes(t.toLowerCase())
-              return (
-                <button key={t}
-                  onClick={() => onAppend(t)}
-                  style={{
-                    padding: '5px 9px', borderRadius: 999,
-                    background: active ? 'var(--accent-soft)' : 'var(--bg-2)',
-                    color: active ? 'var(--accent)' : 'var(--ink-2)',
-                    border: '1px solid ' + (active ? 'var(--accent-line)' : 'var(--line)'),
-                    fontSize: 10, fontWeight: 500, cursor: 'pointer',
-                  }}>
-                  {active ? '✓ ' : ''}{t}
-                </button>
-              )
-            })}
+            {s.tokens.map(t => (
+              <button key={t}
+                onClick={() => onAppend(t)}
+                style={{
+                  padding: '4px 8px', borderRadius: 999,
+                  background: 'var(--bg-2)', color: 'var(--ink-2)',
+                  border: '1px solid var(--line)',
+                  fontSize: 10, fontWeight: 500, cursor: 'pointer',
+                }}
+              >+ {t}</button>
+            ))}
           </div>
         </div>
       ))}
-    </div>
-  )
-}
-
-// ── Preset 모달 — 시네마틱 무드/스타일 프리셋 ──
-function PresetModal({ onClose, onApply }: { onClose: () => void; onApply: (text: string) => void }) {
-  const cats = [
-    { title: '톤/그레이드', presets: [
-      '35mm film look, warm amber color grade',
-      'cool teal-and-orange cinematic grade',
-      'desaturated documentary look',
-      'high-contrast noir black and white',
-      'pastel dreamy palette',
-      'neon cyberpunk magenta-cyan',
-    ]},
-    { title: '조명', presets: [
-      'soft window light from camera left',
-      'golden hour backlight',
-      'harsh midday sun',
-      'rim light separating subject from background',
-      'candlelight warm ambient',
-      'practical light from neon signs',
-      'blue hour exterior twilight',
-    ]},
-    { title: '분위기', presets: [
-      'intimate, contemplative, slow rhythm',
-      'tense thriller atmosphere',
-      'whimsical, joyful, light-hearted',
-      'eerie, unsettling, dreamlike',
-      'epic, grand scale',
-      'minimalist, restrained',
-    ]},
-    { title: '카메라', presets: [
-      'static eye-level shot, cinematic 35mm',
-      'slow tracking shot from behind subject',
-      'handheld documentary style',
-      'gimbal smooth glide circling subject',
-      'crane shot rising up',
-      'over-the-shoulder dialogue framing',
-    ]},
-  ]
-  return (
-    <div onClick={onClose} style={{
-      position: 'fixed', inset: 0, zIndex: 200,
-      background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: 'clamp(12px, 3vw, 32px)',
-    }}>
-      <div onClick={e => e.stopPropagation()} style={{
-        width: '100%', maxWidth: 880, maxHeight: 'calc(100vh - 48px)',
-        background: 'var(--bg)', border: '1px solid var(--line)',
-        borderRadius: 'var(--r-md)', overflow: 'hidden',
-        display: 'flex', flexDirection: 'column',
-      }}>
-        <div style={{
-          padding: '12px 16px', borderBottom: '1px solid var(--line)',
-          display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap',
-        }}>
-          <Sparkles size={14} style={{ color: 'var(--accent)' }} />
-          <span style={{ fontSize: 13, fontWeight: 700 }}>Discover Presets</span>
-          <span style={{ fontSize: 11, color: 'var(--ink-4)', minWidth: 0, flex: '1 1 200px' }}>
-            시네마틱 무드와 스타일
-          </span>
-          <button onClick={onClose} className="btn" style={{ padding: 6 }}>
-            <X size={14} />
-          </button>
-        </div>
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 'clamp(12px, 2vw, 20px)', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {cats.map(c => (
-            <div key={c.title}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', letterSpacing: '0.04em', marginBottom: 6 }}>
-                {c.title}
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 200px), 1fr))', gap: 6 }}>
-                {c.presets.map(p => (
-                  <button key={p}
-                    onClick={() => onApply(p)}
-                    style={{
-                      padding: '8px 12px', borderRadius: 8,
-                      background: 'var(--bg-2)', color: 'var(--ink-2)',
-                      border: '1px solid var(--line)',
-                      fontSize: 11, textAlign: 'left',
-                      cursor: 'pointer', lineHeight: 1.5,
-                    }}
-                  >{p}</button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   )
 }

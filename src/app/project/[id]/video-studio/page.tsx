@@ -31,17 +31,54 @@ export default function VideoStudioPage() {
   const [attempts, setAttempts] = useState<AttemptMeta[]>([])
   const [rootAssets] = useState<RootAssetLite[]>([])  // Studio 는 루트에셋 비독립 — 빈 배열
 
-  const [promptDraft, setPromptDraft] = useState('')
-  const [engine, setEngine] = useState('seedance-2')
-  const [duration, setDuration] = useState(7)
-  const [ratio, setRatio] = useState('16:9')
-  const [resolution, setResolution] = useState<'480p' | '720p' | '1080p'>('1080p')
-  const [sourceImageUrl, setSourceImageUrl] = useState<string | null>(null)
+  // sessionStorage 초기값 헬퍼 — 페이지 이동/리마운트해도 입력값 유지
+  const STORE_KEY = `video-studio:${projectId}`
+  function readStore<T>(k: string, fallback: T): T {
+    if (typeof window === 'undefined') return fallback
+    try {
+      const raw = window.sessionStorage.getItem(STORE_KEY)
+      if (!raw) return fallback
+      const o = JSON.parse(raw)
+      return (k in o) ? (o[k] as T) : fallback
+    } catch { return fallback }
+  }
+  function persist(patch: Record<string, any>) {
+    if (typeof window === 'undefined') return
+    try {
+      const raw = window.sessionStorage.getItem(STORE_KEY)
+      const o = raw ? JSON.parse(raw) : {}
+      window.sessionStorage.setItem(STORE_KEY, JSON.stringify({ ...o, ...patch }))
+    } catch {}
+  }
+
+  const [promptDraft, _setPromptDraft] = useState(() => readStore('promptDraft', ''))
+  const setPromptDraft = (v: string) => { _setPromptDraft(v); persist({ promptDraft: v }) }
+  const [engine, _setEngine] = useState(() => readStore('engine', 'seedance-2'))
+  const setEngine = (v: string) => { _setEngine(v); persist({ engine: v }) }
+  const [duration, _setDuration] = useState(() => readStore('duration', 7))
+  const setDuration = (v: number) => { _setDuration(v); persist({ duration: v }) }
+  const [ratio, _setRatio] = useState(() => readStore('ratio', '16:9'))
+  const setRatio = (v: string) => { _setRatio(v); persist({ ratio: v }) }
+  const [resolution, _setResolution] = useState<'480p' | '720p' | '1080p'>(() => readStore('resolution', '1080p'))
+  const setResolution = (v: '480p' | '720p' | '1080p') => { _setResolution(v); persist({ resolution: v }) }
+  const [sourceImageUrl, setSourceImageUrl] = useState<string | null>(null)  // base64 라 sessionStorage 부담 — 휘발성 유지
   const [endFrameUrl, setEndFrameUrl] = useState<string | null>(null)
   const [refs, setRefs] = useState<Array<{
     token: string; rootAssetId: string; name: string; url: string | null; category: string
   }>>([])
-  const [audioOn, setAudioOn] = useState(false)
+  // uploadedAssets — 페이지에 lift up + sessionStorage 영속 (URL/메타만, 작음)
+  const [uploadedAssets, _setUploadedAssets] = useState<Array<{
+    id: string; url: string; name: string; kind: 'image' | 'video' | 'audio'; token: string
+  }>>(() => readStore('uploadedAssets', []))
+  const setUploadedAssets: typeof _setUploadedAssets = (u) => {
+    _setUploadedAssets(prev => {
+      const next = typeof u === 'function' ? (u as any)(prev) : u
+      persist({ uploadedAssets: next })
+      return next
+    })
+  }
+  const [audioOn, _setAudioOn] = useState(() => readStore('audioOn', true))  // 기본값 ON
+  const setAudioOn = (v: boolean) => { _setAudioOn(v); persist({ audioOn: v }) }
   const [generating, setGenerating] = useState(false)
   const [optimizing, setOptimizing] = useState(false)
 
@@ -180,25 +217,29 @@ export default function VideoStudioPage() {
 
       const url = useT2V ? '/api/t2v/generate' : '/api/i2v/generate'
       const refUrls = refs.map(r => r.url).filter((u): u is string => !!u)
+      // 업로드한 이미지 에셋도 reference 로 전달 (image kind 만 — video/audio 는 다른 채널)
+      const uploadedImgUrls = uploadedAssets.filter(a => a.kind === 'image' && a.url).map(a => a.url)
+      const allRefImgs = [...refUrls, ...uploadedImgUrls].slice(0, 4)
       const body = useT2V
         ? {
             attemptId: attempt.id, prompt: draft, engine,
             projectId, sceneId: null, duration,
-            aspectRatio: ratio,
+            aspectRatio: ratio, generateAudio: audioOn,
+            referenceImageUrls: allRefImgs.length > 0 ? allRefImgs : undefined,
           }
         : isR2V
           ? {
               attemptId: attempt.id, prompt: draft, engine,
-              mode: 'r2v', referenceImageUrls: refUrls,
+              mode: 'r2v', referenceImageUrls: allRefImgs,
               projectId, sceneId: null,
-              duration, aspectRatio: ratio, resolution,
+              duration, aspectRatio: ratio, resolution, generateAudio: audioOn,
             }
           : {
               attemptId: attempt.id, prompt: draft, engine,
               sourceImageUrl,
               endFrameUrl: endFrameUrl ?? undefined,
               projectId, sceneId: null,
-              duration, aspectRatio: ratio, resolution,
+              duration, aspectRatio: ratio, resolution, generateAudio: audioOn,
             }
 
       void (async () => {
@@ -260,6 +301,8 @@ export default function VideoStudioPage() {
             }))}
           audioOn={audioOn}
           onAudioToggle={setAudioOn}
+          uploadedAssets={uploadedAssets}
+          onUploadedAssetsChange={setUploadedAssets}
         />
       </div>
     </div>

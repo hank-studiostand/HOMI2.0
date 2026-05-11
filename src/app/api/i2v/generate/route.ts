@@ -119,6 +119,7 @@ export async function POST(req: NextRequest) {
     referenceImageUrls,     // R2V 모드
     referenceVideoUrl,      // V2V 모드 — 영상 참고 (Seedance 전용)
     resolution  = '720p',
+    generateAudio,          // Seedance 오디오 생성 옵션
   } = await req.json()
 
   console.log('[I2V] generate called', {
@@ -165,17 +166,19 @@ export async function POST(req: NextRequest) {
         referenceVideoUrl: referenceVideoUrl as string,
         // 이미지 레퍼런스도 있으면 같이
         referenceImageUrls: Array.isArray(referenceImageUrls) ? (referenceImageUrls as string[]).slice(0, 4) : undefined,
+        generateAudio,
       })
     } else if (isR2V) {
       // R2V — Seedance T2V + reference_image[] (Seedance가 4장 한도)
       videoUrl = await generateSeedanceT2V({
         prompt, duration, aspectRatio, resolution,
         referenceImageUrls: (referenceImageUrls as string[]).slice(0, 4),
+        generateAudio,
       })
     } else if (engine === 'seedance-2' || engine === 'seedance') {
       videoUrl = await generateSeedanceI2V({
         prompt, imageUrl: sourceImageUrl, endImageUrl: endFrameUrl ?? null,
-        duration, aspectRatio, resolution,
+        duration, aspectRatio, resolution, generateAudio,
       })
     } else if (engine === 'kling3') {
       videoUrl = await generateKlingI2V({ sourceImageUrl, endImageUrl: endFrameUrl ?? null, prompt, duration, aspectRatio, modelName: 'kling-v2' })
