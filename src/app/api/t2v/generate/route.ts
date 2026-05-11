@@ -3,6 +3,10 @@ import { createClient } from '@/lib/supabase/server'
 import crypto from 'crypto'
 import { generateSeedanceT2V } from '@/lib/seedance'
 
+// Seedance 영상 폴링 길이 (15s 영상 ~ 3분) — Vercel Pro maxDuration 300s
+export const runtime = 'nodejs'
+export const maxDuration = 300
+
 // ── Kling JWT (HS256) ──────────────────────────────────────────────
 function generateKlingJWT(apiKey: string, apiSecret: string): string {
   const header  = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url')
