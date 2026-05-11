@@ -1141,15 +1141,16 @@ function HistoryContent({
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {/* Progress 카드 — 생성 중 */}
+        {/* Progress 카드 — 생성 중 (컴팩트 720px 통일) */}
         {showProgress && (
           <div style={{
             display: 'grid',
-            gridTemplateColumns: viewMode === 'list' ? '1fr 1fr' : '1fr',
-            gap: 12,
+            gridTemplateColumns: viewMode === 'list' ? '1fr 0.85fr' : '1fr',
+            gap: 10,
             border: '1px solid var(--accent-line)',
             background: 'var(--bg-1)',
-            borderRadius: 14, padding: 12,
+            borderRadius: 12, padding: 10,
+            maxWidth: 720, width: '100%',
           }}>
             <div style={{
               aspectRatio: '16/9', background: 'var(--bg-3)',
@@ -1217,11 +1218,12 @@ function HistoryContent({
           return (
             <div key={f.id} style={{
               display: 'grid',
-              gridTemplateColumns: viewMode === 'list' ? '1.4fr 1fr' : '1fr',
-              gap: 12,
+              gridTemplateColumns: viewMode === 'list' ? '1fr 0.85fr' : '1fr',
+              gap: 10,
               border: '1px solid color-mix(in oklab, var(--err) 30%, var(--line))',
               background: 'color-mix(in oklab, var(--err) 4%, var(--bg-1))',
-              borderRadius: 14, padding: 12,
+              borderRadius: 12, padding: 10,
+              maxWidth: 720, width: '100%',
             }}>
               {/* 좌측 — Failed 라벨 박스 */}
               <div style={{
