@@ -1460,3 +1460,223 @@ function EditVideoPanel({
     </div>
   )
 }
+
+
+// ── MotionControlPanel ─────────────────────────────────────────────
+function MotionControlPanel({
+  promptDraft, onAppend,
+}: {
+  promptDraft: string
+  onAppend: (token: string) => void
+}) {
+  const sections = [
+    { title: "카메라 무브", tokens: [
+      "slow dolly in", "slow dolly out", "tracking shot left to right", "tracking shot right to left",
+      "crane up", "crane down", "handheld with subtle shake", "gimbal smooth glide",
+      "orbital 360 rotation", "whip pan", "tilt up", "tilt down",
+    ]},
+    { title: "프레이밍", tokens: [
+      "extreme close-up", "close-up", "medium close-up", "medium shot",
+      "medium wide", "wide shot", "establishing shot", "over-the-shoulder", "top-down birds-eye",
+    ]},
+    { title: "렌즈/포커스", tokens: [
+      "24mm wide", "35mm", "50mm portrait", "85mm telephoto", "anamorphic",
+      "shallow depth of field f/1.4", "rack focus", "macro lens",
+    ]},
+    { title: "속도/시간", tokens: [
+      "slow motion", "time-lapse", "hyper-lapse", "natural pace",
+      "freeze frame", "cinematic 24fps look",
+    ]},
+  ]
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {sections.map(s => (
+        <div key={s.title}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "var(--ink-4)", letterSpacing: "0.04em", marginBottom: 4 }}>
+            {s.title}
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {s.tokens.map(t => {
+              const has = promptDraft.toLowerCase().includes(t.toLowerCase())
+              return (
+                <button key={t}
+                  onClick={() => onAppend(t)}
+                  style={{
+                    padding: "4px 8px", borderRadius: 999,
+                    background: has ? "var(--accent-soft)" : "var(--bg-2)",
+                    color: has ? "var(--accent)" : "var(--ink-2)",
+                    border: "1px solid " + (has ? "var(--accent-line)" : "var(--line)"),
+                    fontSize: 10, fontWeight: 500, cursor: "pointer",
+                  }}
+                >+ {t}</button>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── PresetModal ────────────────────────────────────────────────────
+function PresetModal({ onClose, onApply }: { onClose: () => void; onApply: (text: string) => void }) {
+  const cats = [
+    { title: "톤/그레이드", presets: [
+      "35mm film look, warm amber color grade",
+      "cool teal-and-orange cinematic grade",
+      "desaturated documentary look",
+      "high-contrast noir black and white",
+      "pastel dreamy palette",
+      "neon cyberpunk magenta-cyan",
+    ]},
+    { title: "조명", presets: [
+      "soft window light from camera left",
+      "golden hour backlight",
+      "harsh midday sun",
+      "rim light separating subject from background",
+      "candlelight warm ambient",
+      "practical light from neon signs",
+      "blue hour exterior twilight",
+    ]},
+    { title: "분위기", presets: [
+      "intimate, contemplative, slow rhythm",
+      "tense thriller atmosphere",
+      "whimsical, joyful, light-hearted",
+      "eerie, unsettling, dreamlike",
+      "epic, grand scale",
+      "minimalist, restrained",
+    ]},
+    { title: "카메라", presets: [
+      "static eye-level shot, cinematic 35mm",
+      "slow tracking shot from behind subject",
+      "handheld documentary style",
+      "gimbal smooth glide circling subject",
+      "crane shot rising up",
+      "over-the-shoulder dialogue framing",
+    ]},
+  ]
+  return (
+    <div onClick={onClose} style={{
+      position: "fixed", inset: 0, zIndex: 200,
+      background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: "clamp(12px, 3vw, 32px)",
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        width: "100%", maxWidth: 880, maxHeight: "calc(100vh - 48px)",
+        background: "var(--bg)", border: "1px solid var(--line)",
+        borderRadius: "var(--r-md)", overflow: "hidden",
+        display: "flex", flexDirection: "column",
+      }}>
+        <div style={{
+          padding: "12px 16px", borderBottom: "1px solid var(--line)",
+          display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap",
+        }}>
+          <Sparkles size={14} style={{ color: "var(--accent)" }} />
+          <span style={{ fontSize: 13, fontWeight: 700 }}>Edit Presets</span>
+          <span style={{ fontSize: 11, color: "var(--ink-4)", minWidth: 0, flex: "1 1 200px" }}>
+            시네마틱 무드/스타일 — 클릭하여 프롬프트에 추가
+          </span>
+          <button onClick={onClose} className="btn" style={{ padding: 6 }}>
+            <X size={14} />
+          </button>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "clamp(12px, 2vw, 20px)", display: "flex", flexDirection: "column", gap: 16 }}>
+          {cats.map(c => (
+            <div key={c.title}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-3)", letterSpacing: "0.04em", marginBottom: 6 }}>
+                {c.title}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 200px), 1fr))", gap: 6 }}>
+                {c.presets.map(p => (
+                  <button key={p}
+                    onClick={() => onApply(p)}
+                    style={{
+                      padding: "8px 12px", borderRadius: 8,
+                      background: "var(--bg-2)", color: "var(--ink-2)",
+                      border: "1px solid var(--line)",
+                      fontSize: 11, textAlign: "left",
+                      cursor: "pointer", lineHeight: 1.5,
+                    }}
+                  >{p}</button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── EndFrameSlot ───────────────────────────────────────────────────
+function EndFrameSlot({
+  endFrameUrl, onChange,
+}: {
+  endFrameUrl: string | null
+  onChange: (next: string | null) => void
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  async function pick(file: File | null) {
+    if (!file) return
+    if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) {
+      alert("이미지 또는 영상 파일만 가능해요")
+      return
+    }
+    try {
+      const dataUrl = await fileToFrameOrDataUrl(file)
+      onChange(dataUrl)
+    } catch (err) {
+      alert("프레임 추출 실패: " + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+  return (
+    <div
+      onDragOver={e => e.preventDefault()}
+      onDrop={e => { e.preventDefault(); pick(e.dataTransfer.files?.[0] ?? null) }}
+      onClick={() => inputRef.current?.click()}
+      style={{
+        border: `1.5px dashed ${endFrameUrl ? "var(--accent-line)" : "var(--line-strong)"}`,
+        borderRadius: 14,
+        padding: endFrameUrl ? 6 : "16px 10px",
+        background: endFrameUrl ? "var(--bg)" : "var(--bg-2)",
+        cursor: "pointer",
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        gap: 6, position: "relative", minHeight: 110,
+      }}>
+      <input ref={inputRef} type="file" accept="image/*,video/*" hidden
+        onChange={e => { pick(e.target.files?.[0] ?? null); if (e.target) e.target.value = "" }} />
+      {endFrameUrl ? (
+        <>
+          {endFrameUrl.startsWith("data:video") || /\.(mp4|webm|mov)(\?|$)/i.test(endFrameUrl)
+            ? <video src={endFrameUrl} muted controls style={{ width: "100%", maxHeight: 110, objectFit: "contain", borderRadius: 8, background: "var(--bg-3)" }} />
+            : <img src={endFrameUrl} alt="" style={{ width: "100%", maxHeight: 110, objectFit: "contain", borderRadius: 8, background: "var(--bg-3)" }} />}
+          <button
+            onClick={e => { e.stopPropagation(); onChange(null) }}
+            style={{
+              position: "absolute", top: 4, right: 4,
+              width: 20, height: 20, padding: 0, borderRadius: 999,
+              background: "rgba(0,0,0,0.6)", color: "#fff",
+              border: "none", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+            title="제거"
+          ><X size={11} /></button>
+          <span style={{ fontSize: 9, color: "var(--ink-4)", fontWeight: 600 }}>End</span>
+        </>
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 3 }}>
+            <span style={iconBubble}><ImageIcon size={12} /></span>
+            <span style={iconBubble}><Video size={12} /></span>
+          </div>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)" }}>+ End Frame</div>
+            <div style={{ fontSize: 9, color: "var(--ink-4)", marginTop: 1 }}>영상 끝 (선택)</div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
