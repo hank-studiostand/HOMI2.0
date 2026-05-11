@@ -115,6 +115,13 @@ export default function VideoStudio({
   const [internalUploaded, setInternalUploaded] = useState<Array<{
     id: string; url: string; name: string; kind: 'image' | 'video' | 'audio'; token: string
   }>>([])
+  // Elements 드래그 reorder
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
+  // 프롬프트 @ 자동완성 드롭다운
+  const [mentionOpen, setMentionOpen] = useState(false)
+  const [mentionQuery, setMentionQuery] = useState('')
+  const [mentionAnchor, setMentionAnchor] = useState<{ start: number; end: number } | null>(null)
   const uploadedAssets = uploadedAssetsProp ?? internalUploaded
   const setUploadedAssets: React.Dispatch<React.SetStateAction<typeof internalUploaded>> = (updater) => {
     if (onUploadedAssetsChange) {
@@ -456,15 +463,69 @@ export default function VideoStudio({
           {uploadedAssets.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 2 }}>
               <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--ink-4)', letterSpacing: '0.05em' }}>
-                ELEMENTS · 클릭하면 프롬프트에 @토큰이 삽입됩니다
+                ELEMENTS · 클릭 = @토큰 삽입 · 드래그 = 순서 변경 (시드값 자동 재배치)
               </span>
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))',
                 gap: 6,
               }}>
-                {uploadedAssets.map(a => (
-                  <div key={a.id} style={{ position: 'relative' }}>
+                {uploadedAssets.map((a, idx) => (
+                  <div key={a.id}
+                    draggable
+                    onDragStart={(e) => { setDragIdx(idx); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', String(idx)) } catch {} }}
+                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverIdx(idx) }}
+                    onDragLeave={() => { if (dragOverIdx === idx) setDragOverIdx(null) }}
+                    onDragEnd={() => { setDragIdx(null); setDragOverIdx(null) }}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      const from = dragIdx
+                      const to = idx
+                      setDragIdx(null); setDragOverIdx(null)
+                      if (from === null || from === to) return
+                      setUploadedAssets(prev => {
+                        const arr = [...prev]
+                        const [moved] = arr.splice(from, 1)
+                        arr.splice(to, 0, moved)
+                        // 같은 kind 내에서 순서대로 재넘버링 — @imageN cascade rename
+                        const counters: Record<string, number> = {}
+                        const renamed = arr.map(p => {
+                          counters[p.kind] = (counters[p.kind] ?? 0) + 1
+                          return { ...p, token: `@${p.kind}${counters[p.kind]}` }
+                        })
+                        // 프롬프트 텍스트의 기존 토큰도 새 매핑으로 치환 — 토큰 cascade
+                        // 단순화: 자산은 같은 자산을 가리키므로 (id 동일), 기존 → 새 토큰 매핑을 만들어 텍스트 일괄 치환
+                        const tokenMap = new Map<string, string>()
+                        for (let i = 0; i < arr.length; i++) {
+                          if (arr[i].token !== renamed[i].token) tokenMap.set(arr[i].token, renamed[i].token)
+                        }
+                        if (tokenMap.size > 0) {
+                          // 충돌 회피용 두 단계 치환: 우선 임시 토큰으로, 그 다음 최종 토큰으로
+                          let txt = promptDraft
+                          let i = 0
+                          const tmp = new Map<string, string>()
+                          tokenMap.forEach((newTok, oldTok) => {
+                            const ph = `@__tmp${i++}__`
+                            tmp.set(oldTok, ph)
+                            txt = txt.split(oldTok).join(ph)
+                          })
+                          tmp.forEach((ph, oldTok) => {
+                            const newTok = tokenMap.get(oldTok)!
+                            txt = txt.split(ph).join(newTok)
+                          })
+                          if (txt !== promptDraft) onPromptChange(txt)
+                        }
+                        return renamed
+                      })
+                    }}
+                    style={{
+                      position: 'relative',
+                      opacity: dragIdx === idx ? 0.5 : 1,
+                      outline: dragOverIdx === idx && dragIdx !== idx ? '2px solid var(--accent)' : 'none',
+                      outlineOffset: 1,
+                      borderRadius: 'var(--r-md)',
+                    }}
+                  >
                     <button
                       onClick={() => {
                         const ta = taRef.current
@@ -549,8 +610,23 @@ export default function VideoStudio({
             <textarea
               ref={taRef}
               value={promptDraft}
-              onChange={e => onPromptChange(e.target.value)}
+              onChange={e => {
+                const v = e.target.value
+                onPromptChange(v)
+                // 커서 위치 기준 직전 @토큰 감지
+                const cursor = e.target.selectionStart ?? v.length
+                const before = v.slice(0, cursor)
+                const m = before.match(/@([a-zA-Z]*)$/)
+                if (m) {
+                  setMentionOpen(true)
+                  setMentionQuery(m[1])
+                  setMentionAnchor({ start: cursor - m[0].length, end: cursor })
+                } else {
+                  setMentionOpen(false)
+                }
+              }}
               onKeyDown={e => {
+                if (e.key === 'Escape') { setMentionOpen(false); return }
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void onGenerate() }
               }}
               placeholder="장면을 자세히 묘사하세요. @로 자산 참조 가능 · 이미지 ctrl+v로 붙여넣기"
@@ -562,6 +638,58 @@ export default function VideoStudio({
                 lineHeight: 1.55,
               }}
             />
+            {/* @ 멘션 드롭다운 */}
+            {mentionOpen && uploadedAssets.length > 0 && (() => {
+              const q = mentionQuery.toLowerCase()
+              const filtered = uploadedAssets.filter(a =>
+                a.token.toLowerCase().includes('@' + q) || a.kind.startsWith(q) || a.name.toLowerCase().includes(q)
+              )
+              if (filtered.length === 0) return null
+              const insertToken = (tok: string) => {
+                if (!mentionAnchor) return
+                const next = promptDraft.slice(0, mentionAnchor.start) + tok + ' ' + promptDraft.slice(mentionAnchor.end)
+                onPromptChange(next)
+                setMentionOpen(false)
+                setTimeout(() => {
+                  const ta = taRef.current
+                  if (!ta) return
+                  ta.focus()
+                  const pos = mentionAnchor.start + tok.length + 1
+                  ta.setSelectionRange(pos, pos)
+                }, 0)
+              }
+              return (
+                <div style={{
+                  position: 'absolute', top: 'calc(100% + 4px)', left: 12, right: 12, zIndex: 80,
+                  background: 'var(--bg)', border: '1px solid var(--line)',
+                  borderRadius: 'var(--r-md)', boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+                  padding: 6, maxHeight: 280, overflowY: 'auto',
+                }}>
+                  <div style={{ fontSize: 9, color: 'var(--ink-4)', fontWeight: 700, padding: '2px 6px', letterSpacing: '0.04em' }}>
+                    @ 자산 선택 — Esc 로 닫기
+                  </div>
+                  {filtered.map(a => (
+                    <button key={a.id}
+                      onClick={() => insertToken(a.token)}
+                      style={{
+                        width: '100%', padding: '6px 8px',
+                        background: 'transparent', border: 'none', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: 8, borderRadius: 'var(--r-sm)',
+                        color: 'var(--ink-2)',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-2)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      {a.kind === 'image' && <img src={a.url} alt="" style={{ width: 28, height: 28, borderRadius: 4, objectFit: 'cover' }} />}
+                      {a.kind === 'video' && <span style={{ width: 28, height: 28, display: 'grid', placeItems: 'center', background: 'var(--bg-3)', borderRadius: 4 }}><Video size={14} /></span>}
+                      {a.kind === 'audio' && <span style={{ width: 28, height: 28, display: 'grid', placeItems: 'center', background: 'var(--bg-3)', borderRadius: 4 }}><Music size={14} /></span>}
+                      <span className="mono" style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', minWidth: 60 }}>{a.token}</span>
+                      <span style={{ fontSize: 11, color: 'var(--ink-3)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>{a.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )
+            })()}
             {/* @토큰 매핑 인디케이터 — 프롬프트의 @image1 / @video2 등이 실제 업로드된 자산과 매칭되는지 표시 */}
             {(() => {
               const tokens = Array.from(new Set(
@@ -1088,140 +1216,83 @@ function PopupChip({
   )
 }
 
-// ── EndFrameSlot — End frame 별도 업로드 슬롯 ──
-function EndFrameSlot({
-  endFrameUrl,
-  onChange,
-}: {
-  endFrameUrl: string | null
-  onChange: (url: string | null) => void
-}) {
-  const inputRef = useRef<HTMLInputElement | null>(null)
-  async function pick(file: File | null) {
-    if (!file) return
-    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
-      alert('이미지 또는 영상 파일만 가능해요')
-      return
-    }
-    try {
-      const dataUrl = await fileToFrameOrDataUrl(file)
-      onChange(dataUrl)
-    } catch (err) {
-      alert('프레임 추출 실패: ' + (err instanceof Error ? err.message : String(err)))
-    }
+function popupItem(active: boolean): React.CSSProperties {
+  return {
+    width: '100%', padding: '8px 12px',
+    background: active ? 'var(--accent-soft)' : 'transparent',
+    color: active ? 'var(--accent)' : 'var(--ink-2)',
+    border: 'none', borderRadius: 'var(--r-sm)',
+    fontSize: 12, fontWeight: active ? 600 : 500,
+    textAlign: 'left', cursor: 'pointer',
   }
-  return (
-    <div
-      onDragOver={e => e.preventDefault()}
-      onDrop={e => { e.preventDefault(); pick(e.dataTransfer.files?.[0] ?? null) }}
-      onClick={() => inputRef.current?.click()}
-      style={{
-        border: `1.5px dashed ${endFrameUrl ? 'var(--accent-line)' : 'var(--line-strong)'}`,
-        borderRadius: 14,
-        padding: endFrameUrl ? 8 : '20px 16px',
-        background: endFrameUrl ? 'var(--bg)' : 'var(--bg-2)',
-        cursor: 'pointer',
-        display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
-        gap: 6, position: 'relative',
-      }}>
-      <input ref={inputRef} type="file" accept="image/*,video/*" hidden
-        onChange={e => { pick(e.target.files?.[0] ?? null); if (e.target) e.target.value = '' }} />
-      {endFrameUrl ? (
-        <>
-          {endFrameUrl.startsWith('data:video') || /\.(mp4|webm|mov)(\?|$)/i.test(endFrameUrl)
-            ? <video src={endFrameUrl} muted controls style={{ width: '100%', maxHeight: 130, objectFit: 'contain', borderRadius: 10, background: 'var(--bg-3)' }} />
-            : <img src={endFrameUrl} alt="" style={{ width: '100%', maxHeight: 130, objectFit: 'contain', borderRadius: 10, background: 'var(--bg-3)' }} />}
-          <button
-            onClick={e => { e.stopPropagation(); onChange(null) }}
-            style={{
-              position: 'absolute', top: 4, right: 4,
-              width: 22, height: 22, padding: 0, borderRadius: 999,
-              background: 'rgba(0,0,0,0.6)', color: '#fff',
-              border: 'none', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-            title="끝 프레임 제거"
-          ><X size={12} /></button>
-          <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>
-            End Frame (영상 끝)
-          </span>
-        </>
-      ) : (
-        <>
-          <div style={{
-            width: 28, height: 28, borderRadius: 999,
-            background: 'var(--bg-3)', color: 'var(--ink-4)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <ImageIcon size={13} />
-          </div>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-3)' }}>End Frame (선택)</div>
-            <div style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 2 }}>영상 끝 프레임 — Seedance/Kling 지원</div>
-          </div>
-        </>
-      )}
-    </div>
-  )
+}
+
+const iconBubble: React.CSSProperties = {
+  width: 22, height: 22, borderRadius: 999,
+  background: 'var(--bg-3)', color: 'var(--ink-3)',
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+}
+
+const initialBubble: React.CSSProperties = {
+  width: 22, height: 22, borderRadius: 999,
+  background: 'var(--accent)', color: '#fff',
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  fontWeight: 700, fontSize: 11,
+}
+
+function rightTabBtn(active: boolean): React.CSSProperties {
+  return {
+    padding: '6px 10px', borderRadius: 'var(--r-md)',
+    background: active ? 'var(--bg-2)' : 'transparent',
+    color: active ? 'var(--ink)' : 'var(--ink-3)',
+    border: 'none', cursor: 'pointer',
+    fontSize: 12, fontWeight: active ? 600 : 500,
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+  }
 }
 
 
-// ── Edit Video 탭 — 프로젝트의 영상 결과 picker ──
+// ── EditVideoPanel ─────────────────────────────────────────────────
 function EditVideoPanel({
   recentOutputs, onPickVideo,
 }: {
-  recentOutputs: RecentItem[]
+  recentOutputs: Array<{ id: string; url: string | null; prompt?: string; engine?: string; created_at: string; attempt_id: string }>
   onPickVideo: (url: string) => void
 }) {
   const videos = recentOutputs.filter(o => !!o.url).slice(0, 30)
+  if (videos.length === 0) {
+    return (
+      <div style={{ padding: 30, textAlign: "center", color: "var(--ink-5)", fontSize: 12 }}>
+        아직 생성된 영상이 없어요.
+        <div style={{ marginTop: 6, fontSize: 11 }}>Create 탭에서 먼저 한 영상을 만들어보세요.</div>
+      </div>
+    )
+  }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', letterSpacing: '0.04em' }}>
-        영상 편집 — 기존 결과 선택
+    <div>
+      <div style={{ fontSize: 10, fontWeight: 700, color: "var(--ink-4)", letterSpacing: "0.04em", marginBottom: 6 }}>
+        그래더하거나 리믹스할 영상 선택
       </div>
-      <div style={{ fontSize: 11, color: 'var(--ink-4)', lineHeight: 1.5 }}>
-        편집할 영상을 클릭하면 첫 프레임이 소스로 들어가요. Create 탭에서 새 프롬프트로 변형/리믹스하세요.
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 }}>
+        {videos.map(v => (
+          <button key={v.id}
+            onClick={() => v.url && onPickVideo(v.url)}
+            style={{
+              padding: 0, border: "1px solid var(--line)", borderRadius: "var(--r-md)",
+              overflow: "hidden", background: "var(--bg-2)", cursor: "pointer",
+              aspectRatio: "16/9",
+            }}
+            title={v.prompt ?? ""}
+          >
+            <video src={v.url ?? undefined} muted preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          </button>
+        ))}
       </div>
-      {videos.length === 0 ? (
-        <div style={{
-          padding: 30, textAlign: 'center', color: 'var(--ink-5)', fontSize: 12,
-          background: 'var(--bg-2)', borderRadius: 12, border: '1px dashed var(--line)',
-        }}>
-          편집할 영상이 없어요. 먼저 Create 탭에서 영상을 생성하세요.
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-          {videos.map(v => (
-            <button key={v.id}
-              onClick={() => v.url && onPickVideo(v.url)}
-              style={{
-                padding: 0, border: '1px solid var(--line)',
-                borderRadius: 10, overflow: 'hidden',
-                aspectRatio: '16/9', background: 'var(--bg-2)',
-                cursor: 'pointer', position: 'relative',
-              }}
-              title={v.prompt ?? ''}
-            >
-              <video src={v.url ?? ''} muted playsInline preload="metadata"
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              {v.engine && (
-                <span style={{
-                  position: 'absolute', bottom: 4, left: 4,
-                  padding: '1px 6px', borderRadius: 4,
-                  fontSize: 9, fontWeight: 600,
-                  background: 'rgba(0,0,0,0.65)', color: '#fff',
-                }}>{v.engine}</span>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   )
 }
 
-// ── Motion Control 탭 — 카메라/모션 프리셋 (클릭 시 프롬프트에 토큰 주입) ──
+// ── MotionControlPanel ─────────────────────────────────────────────
 function MotionControlPanel({
   promptDraft, onAppend,
 }: {
@@ -1229,46 +1300,141 @@ function MotionControlPanel({
   onAppend: (token: string) => void
 }) {
   const sections = [
-    { title: '카메라 무브', tokens: [
-      'slow dolly in', 'slow dolly out', 'tracking shot left to right', 'tracking shot right to left',
-      'crane up', 'crane down', 'handheld with subtle shake', 'gimbal smooth glide',
-      'orbital 360 rotation', 'whip pan', 'tilt up', 'tilt down',
+    { title: "카메라 무브", tokens: [
+      "slow dolly in", "slow dolly out", "tracking shot left to right", "tracking shot right to left",
+      "crane up", "crane down", "handheld with subtle shake", "gimbal smooth glide",
+      "orbital 360 rotation", "whip pan", "tilt up", "tilt down",
     ]},
-    { title: '프레이밍', tokens: [
-      'extreme close-up', 'close-up', 'medium close-up', 'medium shot',
-      'medium wide', 'wide shot', 'establishing shot', 'over-the-shoulder', 'top-down birds-eye',
+    { title: "프레이밍", tokens: [
+      "extreme close-up", "close-up", "medium close-up", "medium shot",
+      "medium wide", "wide shot", "establishing shot", "over-the-shoulder", "top-down birds-eye",
     ]},
-    { title: '렌즈/포커스', tokens: [
-      '24mm wide', '35mm', '50mm portrait', '85mm telephoto', 'anamorphic',
-      'shallow depth of field f/1.4', 'rack focus', 'macro lens',
+    { title: "렌즈/포커스", tokens: [
+      "24mm wide", "35mm", "50mm portrait", "85mm telephoto", "anamorphic",
+      "shallow depth of field f/1.4", "rack focus", "macro lens",
     ]},
-    { title: '속도/시간', tokens: [
-      'slow motion', 'time-lapse', 'hyper-lapse', 'natural pace',
-      'freeze frame', 'cinematic 24fps look',
+    { title: "속도/시간", tokens: [
+      "slow motion", "time-lapse", "hyper-lapse", "natural pace",
+      "freeze frame", "cinematic 24fps look",
     ]},
   ]
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {sections.map(s => (
         <div key={s.title}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink-4)', letterSpacing: '0.04em', marginBottom: 4 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "var(--ink-4)", letterSpacing: "0.04em", marginBottom: 4 }}>
             {s.title}
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            {s.tokens.map(t => (
-              <button key={t}
-                onClick={() => onAppend(t)}
-                style={{
-                  padding: '4px 8px', borderRadius: 999,
-                  background: 'var(--bg-2)', color: 'var(--ink-2)',
-                  border: '1px solid var(--line)',
-                  fontSize: 10, fontWeight: 500, cursor: 'pointer',
-                }}
-              >+ {t}</button>
-            ))}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {s.tokens.map(t => {
+              const has = promptDraft.toLowerCase().includes(t.toLowerCase())
+              return (
+                <button key={t}
+                  onClick={() => onAppend(t)}
+                  style={{
+                    padding: "4px 8px", borderRadius: 999,
+                    background: has ? "var(--accent-soft)" : "var(--bg-2)",
+                    color: has ? "var(--accent)" : "var(--ink-2)",
+                    border: "1px solid " + (has ? "var(--accent-line)" : "var(--line)"),
+                    fontSize: 10, fontWeight: 500, cursor: "pointer",
+                  }}
+                >+ {t}</button>
+              )
+            })}
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+// ── PresetModal ────────────────────────────────────────────────────
+function PresetModal({ onClose, onApply }: { onClose: () => void; onApply: (text: string) => void }) {
+  const cats = [
+    { title: "톤/그레이드", presets: [
+      "35mm film look, warm amber color grade",
+      "cool teal-and-orange cinematic grade",
+      "desaturated documentary look",
+      "high-contrast noir black and white",
+      "pastel dreamy palette",
+      "neon cyberpunk magenta-cyan",
+    ]},
+    { title: "조명", presets: [
+      "soft window light from camera left",
+      "golden hour backlight",
+      "harsh midday sun",
+      "rim light separating subject from background",
+      "candlelight warm ambient",
+      "practical light from neon signs",
+      "blue hour exterior twilight",
+    ]},
+    { title: "분위기", presets: [
+      "intimate, contemplative, slow rhythm",
+      "tense thriller atmosphere",
+      "whimsical, joyful, light-hearted",
+      "eerie, unsettling, dreamlike",
+      "epic, grand scale",
+      "minimalist, restrained",
+    ]},
+    { title: "카메라", presets: [
+      "static eye-level shot, cinematic 35mm",
+      "slow tracking shot from behind subject",
+      "handheld documentary style",
+      "gimbal smooth glide circling subject",
+      "crane shot rising up",
+      "over-the-shoulder dialogue framing",
+    ]},
+  ]
+  return (
+    <div onClick={onClose} style={{
+      position: "fixed", inset: 0, zIndex: 200,
+      background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: "clamp(12px, 3vw, 32px)",
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        width: "100%", maxWidth: 880, maxHeight: "calc(100vh - 48px)",
+        background: "var(--bg)", border: "1px solid var(--line)",
+        borderRadius: "var(--r-md)", overflow: "hidden",
+        display: "flex", flexDirection: "column",
+      }}>
+        <div style={{
+          padding: "12px 16px", borderBottom: "1px solid var(--line)",
+          display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap",
+        }}>
+          <Sparkles size={14} style={{ color: "var(--accent)" }} />
+          <span style={{ fontSize: 13, fontWeight: 700 }}>Edit Presets</span>
+          <span style={{ fontSize: 11, color: "var(--ink-4)", minWidth: 0, flex: "1 1 200px" }}>
+            시네마틱 무드/스타일 — 클릭하여 프롬프트에 추가
+          </span>
+          <button onClick={onClose} className="btn" style={{ padding: 6 }}>
+            <X size={14} />
+          </button>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "clamp(12px, 2vw, 20px)", display: "flex", flexDirection: "column", gap: 16 }}>
+          {cats.map(c => (
+            <div key={c.title}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-3)", letterSpacing: "0.04em", marginBottom: 6 }}>
+                {c.title}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 200px), 1fr))", gap: 6 }}>
+                {c.presets.map(p => (
+                  <button key={p}
+                    onClick={() => onApply(p)}
+                    style={{
+                      padding: "8px 12px", borderRadius: 8,
+                      background: "var(--bg-2)", color: "var(--ink-2)",
+                      border: "1px solid var(--line)",
+                      fontSize: 11, textAlign: "left",
+                      cursor: "pointer", lineHeight: 1.5,
+                    }}
+                  >{p}</button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
