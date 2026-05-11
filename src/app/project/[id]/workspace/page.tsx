@@ -1347,10 +1347,10 @@ export default function WorkspacePage() {
               const explicitSrcId = selectedIds[0]
               const explicitSrc = explicitSrcId ? filteredCandidates.find(o => o.id === explicitSrcId) : null
               const isR2VMode = genType === 'i2v' && genEngine === 'seedance-2' && seedanceRefs.length > 0
-              // 영상도 소스로 허용 — Start Frame 업로드(영상 포함) 우선 → explicit 선택(이미지/영상) → R2V
+              // 영상도 소스로 허용 — 영상 선택 시 Seedance면 reference_video로, Kling이면 첫프레임 추출
               const hasUploadedStart = !!genStartFrameUrl
               if (genType === 'i2v' && !hasUploadedStart && !explicitSrc?.url && !isR2VMode) {
-                alert('I2V 영상 생성에는 소스(이미지 또는 영상)가 필요해요.\n• 베이스 에셋 위 "+ Start Frame" 버튼으로 직접 업로드\n• 또는 좌측 결과에서 카드 클릭으로 선택\n• 또는 Seedance + @ 참조로 R2V 생성')
+                alert('I2V 영상 생성에는 소스(이미지 또는 영상)가 필요해요.\n• 베이스 에셋 위 "+ Start Frame" 버튼으로 직접 업로드\n• 또는 좌측 결과에서 카드 클릭으로 선택 (영상 클릭 시 Seedance는 참고영상으로 사용)\n• 또는 Seedance + @ 참조로 R2V 생성')
                 return
               }
 
@@ -1364,15 +1364,24 @@ export default function WorkspacePage() {
                 ? filteredCandidates.find(o => o.id === selectedIds[0])
                 : null
               let sourceUrlForI2V: string | null = explicitSource?.url ?? null
-              // 영상이 소스로 선택된 경우 — 클라이언트에서 첫 프레임을 JPEG로 추출 (Seedance/Kling는 image만)
-              if (genType === 'i2v' && sourceUrlForI2V && explicitSource && (explicitSource.type === 'i2v' || explicitSource.type === 'lipsync')) {
-                try {
-                  const { extractVideoFrame } = await import('@/lib/videoFrame')
-                  sourceUrlForI2V = await extractVideoFrame(sourceUrlForI2V, { time: 0 })
-                } catch (err) {
-                  alert('영상 첫 프레임 추출 실패: ' + (err instanceof Error ? err.message : String(err)) + '\n(영상 CORS 차단 또는 코덱 미지원)')
-                  setGenerating(false)
-                  return
+              // 영상이 소스로 선택된 경우 분기:
+              //  • Seedance — 영상 그대로 reference_video 모드(v2v) 로 전송
+              //  • Kling 등 — 영상을 첫 프레임 추출해서 image 로 변환 (Kling은 video ref 미지원)
+              let videoRefForV2V: string | null = null
+              const sourceIsVideo = !!explicitSource && (explicitSource.type === 'i2v' || explicitSource.type === 'lipsync')
+              if (genType === 'i2v' && sourceUrlForI2V && sourceIsVideo) {
+                if (genEngine === 'seedance-2' || genEngine === 'seedance') {
+                  videoRefForV2V = sourceUrlForI2V
+                  sourceUrlForI2V = null  // image 자리는 비움 — 서버가 v2v 모드로 라우팅
+                } else {
+                  try {
+                    const { extractVideoFrame } = await import('@/lib/videoFrame')
+                    sourceUrlForI2V = await extractVideoFrame(sourceUrlForI2V, { time: 0 })
+                  } catch (err) {
+                    alert('영상 첫 프레임 추출 실패: ' + (err instanceof Error ? err.message : String(err)) + '\n(영상 CORS 차단 또는 코덱 미지원)')
+                    setGenerating(false)
+                    return
+                  }
                 }
               }
               const ownerSceneId = active.id
@@ -1428,7 +1437,9 @@ export default function WorkspacePage() {
                     ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, projectId, sceneId: active.id, aspectRatio: genRatio, referenceImageUrls: refUrls.length > 0 ? refUrls : undefined }
                     : isR2VMode
                       ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, mode: 'r2v', referenceImageUrls: r2vRefUrls, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution }
-                      : { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, sourceImageUrl: (genStartFrameUrl ?? sourceUrlForI2V), endFrameUrl: genEndFrameUrl ?? undefined, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution }
+                      : videoRefForV2V
+                        ? { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, mode: 'v2v', referenceVideoUrl: videoRefForV2V, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution }
+                        : { attemptId: attempt.id, prompt: fullPrompt, engine: genEngine, sourceImageUrl: (genStartFrameUrl ?? sourceUrlForI2V), endFrameUrl: genEndFrameUrl ?? undefined, projectId, sceneId: active.id, duration: genDuration, aspectRatio: genRatio, resolution: genResolution }
                   console.log('[generate] 요청', { url, body: { ...body, prompt: (body as any).prompt?.slice(0, 80) + '...' } })
                   const r = await fetch(url, {
                     method: 'POST',

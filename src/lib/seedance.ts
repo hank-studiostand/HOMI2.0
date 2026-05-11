@@ -129,9 +129,9 @@ function buildExtraParams(p: SeedanceParams): Partial<CreateTaskBody> {
   return out
 }
 
-// ── T2V (텍스트만) — 레퍼런스 이미지 옵션으로 추가 가능 (R2V) ──────
+// ── T2V (텍스트만) — 레퍼런스 이미지/영상 옵션으로 추가 가능 (R2V / V2V) ──────
 export async function generateSeedanceT2V(
-  params: SeedanceParams & { referenceImageUrls?: string[] },
+  params: SeedanceParams & { referenceImageUrls?: string[]; referenceVideoUrl?: string },
 ): Promise<string> {
   const model = process.env.SEEDANCE_MODEL_T2V || DEFAULT_MODEL_T2V
   const content: ContentPart[] = [{ type: 'text', text: params.prompt }]
@@ -139,6 +139,10 @@ export async function generateSeedanceT2V(
     for (const url of params.referenceImageUrls.slice(0, 4)) {
       content.push({ type: 'image_url', image_url: { url }, role: 'reference_image' })
     }
+  }
+  if (params.referenceVideoUrl) {
+    content.push({ type: 'video_url', video_url: { url: params.referenceVideoUrl }, role: 'reference_video' })
+    console.log(`[seedance] T2V with reference_video: ${params.referenceVideoUrl.slice(0, 80)}...`)
   }
   const taskId = await createTask({
     model,
