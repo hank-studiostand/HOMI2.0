@@ -1410,3 +1410,76 @@ function PresetModal({ onClose, onApply }: { onClose: () => void; onApply: (text
     </div>
   )
 }
+
+
+// ── EndFrameSlot — 영상 끝 프레임 슬롯 (Seedance last_frame / Kling image_tail) ──
+function EndFrameSlot({
+  endFrameUrl, onChange,
+}: {
+  endFrameUrl: string | null
+  onChange: (next: string | null) => void
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  async function pick(file: File | null) {
+    if (!file) return
+    if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) {
+      alert("이미지 또는 영상 파일만 가능해요")
+      return
+    }
+    try {
+      const dataUrl = await fileToFrameOrDataUrl(file)
+      onChange(dataUrl)
+    } catch (err) {
+      alert("프레임 추출 실패: " + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+  return (
+    <div
+      onDragOver={e => e.preventDefault()}
+      onDrop={e => { e.preventDefault(); pick(e.dataTransfer.files?.[0] ?? null) }}
+      onClick={() => inputRef.current?.click()}
+      style={{
+        border: `1.5px dashed ${endFrameUrl ? "var(--accent-line)" : "var(--line-strong)"}`,
+        borderRadius: 14,
+        padding: endFrameUrl ? 6 : "16px 10px",
+        background: endFrameUrl ? "var(--bg)" : "var(--bg-2)",
+        cursor: "pointer",
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        gap: 6, position: "relative", minHeight: 110,
+      }}>
+      <input ref={inputRef} type="file" accept="image/*,video/*" hidden
+        onChange={e => { pick(e.target.files?.[0] ?? null); if (e.target) e.target.value = "" }} />
+      {endFrameUrl ? (
+        <>
+          {endFrameUrl.startsWith("data:video") || /\.(mp4|webm|mov)(\?|$)/i.test(endFrameUrl)
+            ? <video src={endFrameUrl} muted controls style={{ width: "100%", maxHeight: 110, objectFit: "contain", borderRadius: 8, background: "var(--bg-3)" }} />
+            : <img src={endFrameUrl} alt="" style={{ width: "100%", maxHeight: 110, objectFit: "contain", borderRadius: 8, background: "var(--bg-3)" }} />}
+          <button
+            onClick={e => { e.stopPropagation(); onChange(null) }}
+            style={{
+              position: "absolute", top: 4, right: 4,
+              width: 20, height: 20, padding: 0, borderRadius: 999,
+              background: "rgba(0,0,0,0.6)", color: "#fff",
+              border: "none", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+            title="제거"
+          ><X size={11} /></button>
+          <span style={{ fontSize: 9, color: "var(--ink-4)", fontWeight: 600 }}>End</span>
+        </>
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 3 }}>
+            <span style={iconBubble}><ImageIcon size={12} /></span>
+            <span style={iconBubble}><Video size={12} /></span>
+          </div>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)" }}>+ End Frame</div>
+            <div style={{ fontSize: 9, color: "var(--ink-4)", marginTop: 1 }}>영상 끝 (선택)</div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
