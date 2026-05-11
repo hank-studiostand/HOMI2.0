@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import crypto from 'crypto'
 import { generateSeedanceT2V } from '@/lib/seedance'
+import { markAttemptFailed } from '@/lib/attemptStatus'
 
 // Seedance 영상 폴링 길이 (15s 영상 ~ 3분) — Vercel Pro maxDuration 300s
 export const runtime = 'nodejs'
@@ -138,14 +139,14 @@ export async function POST(req: NextRequest) {
       }
       await supabase.from('prompt_attempts').update({ status: 'done' }).eq('id', attemptId)
     } else {
-      await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attemptId)
+      await markAttemptFailed(supabase, attemptId, '영상 URL이 반환되지 않았어요. 엔진 응답이 비어있습니다.')
     }
 
     return NextResponse.json({ success: !!videoUrl, engine, model: modelName })
   } catch (err) {
     console.error('[T2V] generate error:', err)
-    await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attemptId)
     const msg = err instanceof Error ? err.message : String(err)
+    await markAttemptFailed(supabase, attemptId, msg)
     return NextResponse.json({ error: 'T2V 생성 실패: ' + msg }, { status: 500 })
   }
 }

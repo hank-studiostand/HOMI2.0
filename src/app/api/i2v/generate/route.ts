@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import crypto from 'crypto'
 import { generateSeedanceI2V, generateSeedanceT2V } from '@/lib/seedance'
+import { markAttemptFailed } from '@/lib/attemptStatus'
 
 // Seedance 15초 영상은 폴링이 2~4분 걸려서 Vercel 기본(10s/60s) 안에 안 끝남.
 // Pro plan 최대치 300s로 설정.
@@ -133,27 +134,27 @@ export async function POST(req: NextRequest) {
 
   // 기본 검증
   if (!prompt?.trim()) {
-    await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attemptId)
+    await markAttemptFailed(supabase, attemptId, 'prompt is required')
     return NextResponse.json({ error: 'prompt is required' }, { status: 400 })
   }
   const isR2V = mode === 'r2v'
   const isV2V = mode === 'v2v' || !!referenceVideoUrl
   if (!isR2V && !isV2V && !sourceImageUrl) {
-    await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attemptId)
+    await markAttemptFailed(supabase, attemptId, '시작 이미지(start frame)가 없어요. mode=r2v 또는 mode=v2v 모드로 전환해주세요.')
     return NextResponse.json({ error: 'sourceImageUrl is required (또는 mode=r2v / v2v 전달)' }, { status: 400 })
   }
   if (isR2V) {
     if (engine !== 'seedance-2') {
-      await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attemptId)
+      await markAttemptFailed(supabase, attemptId, 'R2V (참고 이미지) 모드는 Seedance 2 엔진만 지원합니다.')
       return NextResponse.json({ error: 'R2V mode is only supported on engine=seedance-2' }, { status: 400 })
     }
     if (!Array.isArray(referenceImageUrls) || referenceImageUrls.length === 0) {
-      await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attemptId)
+      await markAttemptFailed(supabase, attemptId, 'R2V 모드는 참고 이미지가 1장 이상 필요합니다.')
       return NextResponse.json({ error: 'r2v requires referenceImageUrls (1+)' }, { status: 400 })
     }
   }
   if (isV2V && engine !== 'seedance-2' && engine !== 'seedance') {
-    await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attemptId)
+    await markAttemptFailed(supabase, attemptId, 'V2V (영상 참고) 모드는 Seedance 엔진만 지원합니다.')
     return NextResponse.json({ error: 'V2V (영상 참고) 모드는 Seedance 엔진만 지원해요. 다른 엔진은 자동으로 첫 프레임으로 변환됩니다.' }, { status: 400 })
   }
 
@@ -234,8 +235,8 @@ export async function POST(req: NextRequest) {
 
   } catch (err) {
     console.error('[I2V] generate error:', err)
-    await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attemptId)
     const msg = err instanceof Error ? err.message : String(err)
+    await markAttemptFailed(supabase, attemptId, msg)
     return NextResponse.json({ error: 'I2V 생성 실패: ' + msg }, { status: 500 })
   }
 }

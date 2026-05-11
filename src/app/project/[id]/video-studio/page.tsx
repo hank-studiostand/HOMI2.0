@@ -9,11 +9,18 @@ import VideoStudio from '@/components/workspace/VideoStudio'
 import { ChevronDown } from 'lucide-react'
 
 interface SceneRow { id: string; scene_number: string; title: string; content?: string }
-interface AttemptMeta { id: string; prompt: string; engine: string }
+interface AttemptMeta {
+  id: string; prompt: string; engine: string
+  status?: string                           // generating / done / failed
+  metadata?: Record<string, any> | null     // mode, duration, ratio, failureReason 등
+}
 interface OutputRow {
   id: string; attempt_id: string; scene_id: string
   url: string | null; archived: boolean
   type: string; engine: string; created_at: string
+  status?: string                           // attempt.status 미러
+  failureReason?: string | null             // metadata.failureReason 노출
+  metadata?: Record<string, any> | null     // attempt.metadata 그대로
 }
 interface RootAssetLite {
   id: string; name: string; category: string
@@ -138,30 +145,54 @@ export default function VideoStudioPage() {
       if (!mounted) return
       let rows: any[] = []
       if (tryStudio.error) {
-        // 폴백 — metadata 컬럼 미적용
+        // 폴백 — metadata/project_id 컬럼 미적용 환경 (마이그레이션 미적용)
         const fb = await supabase
           .from('prompt_attempts')
           .select('id, prompt, engine, scene_id, type, status, created_at, outputs:attempt_outputs(id, archived, asset:assets(url, type, name), created_at)')
           .in('type', ['i2v'])
           .order('created_at', { ascending: false })
           .limit(80)
-        rows = fb.data ?? []
+        rows = (fb.data ?? []).map((r: any) => ({ ...r, metadata: null, project_id: null }))
       } else {
         rows = tryStudio.data ?? []
       }
       const meta: AttemptMeta[] = []
       const flat: OutputRow[] = []
       for (const a of rows) {
-        meta.push({ id: a.id, prompt: a.prompt ?? '', engine: a.engine })
-        for (const o of (a.outputs ?? [])) {
-          flat.push({
-            id: o.id, attempt_id: a.id, scene_id: a.scene_id,
-            url: o.asset?.url ?? null,
-            archived: o.archived ?? false,
-            type: o.asset?.type ?? 'i2v',
-            engine: a.engine,
-            created_at: o.created_at ?? a.created_at,
-          })
+        const aMetadata = (a.metadata && typeof a.metadata === 'object') ? a.metadata as Record<string, any> : null
+        const aFailReason: string | null = aMetadata?.failureReason ?? null
+        meta.push({
+          id: a.id, prompt: a.prompt ?? '', engine: a.engine,
+          status: a.status, metadata: aMetadata,
+        })
+        const outputs = a.outputs ?? []
+        if (outputs.length === 0) {
+          // 출력이 없으면 attempt 자체를 row 로 emit (실패/generating 카드용)
+          if (a.status === 'failed' || a.status === 'generating') {
+            flat.push({
+              id: `attempt:${a.id}`, attempt_id: a.id, scene_id: a.scene_id,
+              url: null, archived: false,
+              type: 'i2v', engine: a.engine,
+              created_at: a.created_at,
+              status: a.status,
+              failureReason: aFailReason,
+              metadata: aMetadata,
+            })
+          }
+        } else {
+          for (const o of outputs) {
+            flat.push({
+              id: o.id, attempt_id: a.id, scene_id: a.scene_id,
+              url: o.asset?.url ?? null,
+              archived: o.archived ?? false,
+              type: o.asset?.type ?? 'i2v',
+              engine: a.engine,
+              created_at: o.created_at ?? a.created_at,
+              status: a.status,
+              failureReason: aFailReason,
+              metadata: aMetadata,
+            })
+          }
         }
       }
       setAttempts(meta)
@@ -243,6 +274,18 @@ export default function VideoStudioPage() {
             }
 
       void (async () => {
+        async function clientMarkFailed(reason: string) {
+          try {
+            const { data: cur } = await supabase
+              .from('prompt_attempts').select('metadata').eq('id', attempt.id).single()
+            const prev = (cur?.metadata && typeof cur.metadata === 'object') ? cur.metadata : {}
+            await supabase.from('prompt_attempts')
+              .update({ status: 'failed', metadata: { ...prev, failureReason: String(reason).slice(0, 500) } })
+              .eq('id', attempt.id)
+          } catch {
+            await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attempt.id)
+          }
+        }
         try {
           const r = await fetch(url, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -251,12 +294,12 @@ export default function VideoStudioPage() {
           if (!r.ok) {
             const errText = await r.text()
             console.error('[video-studio] 생성 실패', r.status, errText.slice(0, 300))
-            alert('영상 생성 실패 (' + r.status + '): ' + errText.slice(0, 200))
-            await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attempt.id)
-            return
+            // 서버 측에서 이미 markAttemptFailed 로 metadata 머지함 — 클라는 fallback 만
+            await clientMarkFailed(`HTTP ${r.status}: ${errText.slice(0, 300)}`)
           }
         } catch (e) {
           console.error('[video-studio] 백그라운드 에러', e)
+          await clientMarkFailed(e instanceof Error ? e.message : String(e))
         }
       })()
     } finally {
@@ -292,12 +335,21 @@ export default function VideoStudioPage() {
           onRefsChange={setRefs}
           rootAssets={rootAssets}
           recentOutputs={outputs
-            .filter(o => o.url && !o.archived && (o.type === 'i2v' || o.type === 't2v' || o.type === 'lipsync'))
+            .filter(o => {
+              // 성공 — url 있고 archived 아님 + 영상 타입
+              if (o.url && !o.archived && (o.type === 'i2v' || o.type === 't2v' || o.type === 'lipsync')) return true
+              // 실패/진행중 — url 없어도 카드 노출
+              if (o.status === 'failed' || o.status === 'generating') return true
+              return false
+            })
             .slice(0, 60)
             .map(o => ({
               id: o.id, url: o.url,
               prompt: attempts.find(a => a.id === o.attempt_id)?.prompt,
               engine: o.engine, created_at: o.created_at, attempt_id: o.attempt_id,
+              status: o.status,
+              failureReason: o.failureReason ?? null,
+              metadata: o.metadata ?? null,
             }))}
           audioOn={audioOn}
           onAudioToggle={setAudioOn}
