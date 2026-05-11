@@ -120,6 +120,8 @@ export default function AssetUploadButton({
 
       <button
         onClick={() => fileRef.current?.click()}
+        onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }}
+        onDrop={e => { e.preventDefault(); if (e.dataTransfer.files && e.dataTransfer.files.length > 0) void handleFiles(e.dataTransfer.files) }}
         disabled={busy}
         style={{
           padding: compact ? '6px 10px' : '24px 16px',

@@ -88,6 +88,28 @@ export default function VideoStudioPage() {
   const setAudioOn = (v: boolean) => { _setAudioOn(v); persist({ audioOn: v }) }
   const [generating, setGenerating] = useState(false)
   const [optimizing, setOptimizing] = useState(false)
+  const [lightboxOutputId, setLightboxOutputId] = useState<string | null>(null)
+
+  // 큐 진행 = state 또는 DB attempt 중 generating 상태 — Realtime 으로 자동 갱신
+  const liveGenerating = useMemo(() => {
+    if (generating) return true
+    return attempts.some(a => a.status === 'generating')
+  }, [generating, attempts])
+
+  // 실패한 attempt 재시도
+  async function runRetry(attemptId: string) {
+    const a = attempts.find(x => x.id === attemptId)
+    if (!a) { alert('재시도할 attempt 을 찾을 수 없어요.'); return }
+    if (a.prompt) setPromptDraft(a.prompt)
+    // 메타데이터 복원 — duration/ratio/resolution
+    const m = a.metadata ?? {}
+    if (typeof m.duration === 'number') setDuration(m.duration)
+    if (typeof m.ratio === 'string') setRatio(m.ratio)
+    if (m.resolution === '480p' || m.resolution === '720p' || m.resolution === '1080p') setResolution(m.resolution)
+    // 곧바로 generate 트리거 (sessionStorage 반영 후 다음 tick)
+    await new Promise(r => setTimeout(r, 100))
+    void runGenerate()
+  }
 
   async function runOptimize() {
     const draft = promptDraft.trim()
@@ -219,8 +241,13 @@ export default function VideoStudioPage() {
     const draft = promptDraft.trim()
     if (!draft) { alert('프롬프트를 입력해주세요.'); return }
 
-    const isR2V = engine === 'seedance-2' && refs.length > 0
-    const useT2V = !sourceImageUrl && refs.length === 0
+    // 업로드된 이미지 element 도 reference 로 함께 보냄
+    const uploadedImgPreview = uploadedAssets.filter(a => a.kind === 'image' && a.url).length
+    const hasAnyImgRef = refs.length > 0 || uploadedImgPreview > 0
+    // R2V 가능 조건: Seedance + (rootAsset refs 또는 업로드 이미지 elements) 가 1+
+    const isR2V = engine === 'seedance-2' && hasAnyImgRef && !sourceImageUrl
+    // T2V — startFrame 없고 어떤 reference 도 없을 때만
+    const useT2V = !sourceImageUrl && !hasAnyImgRef
     const studioMode: 't2v' | 'r2v' | 'i2v' = useT2V ? 't2v' : isR2V ? 'r2v' : 'i2v'
 
     setGenerating(true)
@@ -238,6 +265,13 @@ export default function VideoStudioPage() {
             hasStartFrame: !!sourceImageUrl,
             hasEndFrame:   !!endFrameUrl,
             refCount: refs.length,
+            // 결과 라이트박스에서 어떤 elements 가 쓰였는지 표시하기 위해 저장
+            elements: uploadedAssets.map(a => ({
+              id: a.id, url: a.url, name: a.name, kind: a.kind, token: a.token,
+            })),
+            refs: refs.map(r => ({
+              token: r.token, name: r.name, url: r.url, category: r.category,
+            })),
           },
         })
         .select().single()
@@ -307,6 +341,15 @@ export default function VideoStudioPage() {
     }
   }
 
+  // Lightbox 데이터 — 클릭한 output 의 attempt 정보
+  const lightboxData = useMemo(() => {
+    if (!lightboxOutputId) return null
+    const o = outputs.find(x => x.id === lightboxOutputId)
+    if (!o) return null
+    const a = attempts.find(x => x.id === o.attempt_id)
+    return { output: o, attempt: a ?? null }
+  }, [lightboxOutputId, outputs, attempts])
+
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ flex: 1, overflow: 'hidden' }}>
@@ -323,8 +366,10 @@ export default function VideoStudioPage() {
           onRatioChange={setRatio}
           resolution={resolution}
           onResolutionChange={setResolution}
-          generating={generating}
+          generating={liveGenerating}
           onGenerate={runGenerate}
+          onZoomOutput={(id) => setLightboxOutputId(id)}
+          onRetryAttempt={runRetry}
           optimizing={optimizing}
           onOptimize={runOptimize}
           sourceImageUrl={sourceImageUrl}
@@ -357,6 +402,122 @@ export default function VideoStudioPage() {
           onUploadedAssetsChange={setUploadedAssets}
         />
       </div>
+
+      {/* Lightbox — 결과 클릭 시 영상 + 프롬프트 + Elements 표시 */}
+      {lightboxData?.output?.url && (
+        <div onClick={() => setLightboxOutputId(null)} style={{
+          position: 'fixed', inset: 0, zIndex: 300,
+          background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 'clamp(16px, 4vw, 48px)',
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(280px, 1fr)',
+            gap: 16, width: '100%', maxWidth: 1400, maxHeight: 'calc(100vh - 80px)',
+          }}>
+            {/* 영상 */}
+            <div style={{
+              background: '#000', borderRadius: 12, overflow: 'hidden',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              minHeight: 300,
+            }}>
+              <video src={lightboxData.output.url} controls autoPlay loop
+                style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 120px)', width: 'auto', height: 'auto' }} />
+            </div>
+            {/* 프롬프트 + Elements */}
+            <div style={{
+              background: 'var(--bg)', borderRadius: 12,
+              border: '1px solid var(--line)',
+              padding: 18, overflowY: 'auto',
+              display: 'flex', flexDirection: 'column', gap: 16,
+              maxHeight: 'calc(100vh - 80px)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.05em' }}>
+                  {(lightboxData.attempt?.engine ?? 'video').toUpperCase()}
+                </span>
+                <span style={{ flex: 1 }} />
+                <button onClick={() => setLightboxOutputId(null)} style={{
+                  padding: 6, background: 'var(--bg-2)', border: '1px solid var(--line)',
+                  borderRadius: 999, color: 'var(--ink-3)', cursor: 'pointer', fontSize: 11,
+                }}>닫기 ×</button>
+              </div>
+
+              {/* 프롬프트 */}
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink-4)', letterSpacing: '0.05em', marginBottom: 6 }}>
+                  PROMPT
+                </div>
+                <div style={{
+                  fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.6,
+                  background: 'var(--bg-2)', border: '1px solid var(--line)',
+                  borderRadius: 8, padding: 10, whiteSpace: 'pre-wrap',
+                  maxHeight: 240, overflowY: 'auto',
+                }}>
+                  {lightboxData.attempt?.prompt || '(프롬프트 정보 없음)'}
+                </div>
+              </div>
+
+              {/* Elements */}
+              {((lightboxData.attempt?.metadata as any)?.elements?.length > 0 || (lightboxData.attempt?.metadata as any)?.refs?.length > 0) && (
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink-4)', letterSpacing: '0.05em', marginBottom: 6 }}>
+                    ELEMENTS · REFS
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gap: 6 }}>
+                    {((lightboxData.attempt?.metadata as any)?.elements ?? []).map((el: any) => (
+                      <div key={'el-' + el.id} title={`${el.token} · ${el.name}`} style={{
+                        aspectRatio: '1', borderRadius: 8,
+                        background: 'var(--bg-2)', border: '1px solid var(--line)',
+                        overflow: 'hidden', position: 'relative',
+                      }}>
+                        {el.kind === 'image' && el.url && <img src={el.url} alt='' style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                        {el.kind === 'video' && el.url && <video src={el.url} muted preload='metadata' style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                        <span style={{
+                          position: 'absolute', bottom: 2, left: 2, right: 2,
+                          fontSize: 9, color: '#fff',
+                          background: 'rgba(0,0,0,0.7)', padding: '1px 4px',
+                          borderRadius: 4, textAlign: 'center',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>{el.token}</span>
+                      </div>
+                    ))}
+                    {((lightboxData.attempt?.metadata as any)?.refs ?? []).map((rf: any, i: number) => (
+                      <div key={'rf-' + i} title={`${rf.token} · ${rf.name}`} style={{
+                        aspectRatio: '1', borderRadius: 8,
+                        background: 'var(--bg-2)', border: '1px dashed var(--accent-line)',
+                        overflow: 'hidden', position: 'relative',
+                      }}>
+                        {rf.url && <img src={rf.url} alt='' style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                        <span style={{
+                          position: 'absolute', bottom: 2, left: 2, right: 2,
+                          fontSize: 9, color: '#fff',
+                          background: 'rgba(0,0,0,0.7)', padding: '1px 4px',
+                          borderRadius: 4, textAlign: 'center',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>{rf.token}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 메타 */}
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink-4)', letterSpacing: '0.05em', marginBottom: 6 }}>
+                  META
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.7 }}>
+                  {(lightboxData.attempt?.metadata as any)?.mode && <div>mode: <b>{(lightboxData.attempt?.metadata as any).mode}</b></div>}
+                  {(lightboxData.attempt?.metadata as any)?.duration && <div>duration: <b>{(lightboxData.attempt?.metadata as any).duration}s</b></div>}
+                  {(lightboxData.attempt?.metadata as any)?.ratio && <div>ratio: <b>{(lightboxData.attempt?.metadata as any).ratio}</b></div>}
+                  {(lightboxData.attempt?.metadata as any)?.resolution && <div>resolution: <b>{(lightboxData.attempt?.metadata as any).resolution}</b></div>}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -75,6 +75,7 @@ export default function VideoStudio({
   rootAssets,
   recentOutputs,
   onZoomOutput,
+  onRetryAttempt,
   audioOn,
   onAudioToggle,
   optimizing,
@@ -105,6 +106,7 @@ export default function VideoStudio({
   rootAssets: RootAssetLite[]
   recentOutputs: RecentItem[]
   onZoomOutput?: (id: string) => void
+  onRetryAttempt?: (attemptId: string) => void
   audioOn: boolean
   onAudioToggle: (next: boolean) => void
   optimizing?: boolean
@@ -984,6 +986,7 @@ export default function VideoStudio({
             <HistoryContent
               items={recentOutputs}
               onZoom={onZoomOutput}
+              onRetry={onRetryAttempt}
               generating={generating}
               currentPrompt={promptDraft}
               uploadedAssets={uploadedAssets}
@@ -1060,11 +1063,12 @@ function GuideContent() {
 }
 
 function HistoryContent({
-  items, onZoom, generating, currentPrompt, uploadedAssets,
+  items, onZoom, onRetry, generating, currentPrompt, uploadedAssets,
   currentEngine, currentDuration, currentRatio, currentResolution, onCancelGenerating,
 }: {
   items: RecentItem[]
   onZoom?: (id: string) => void
+  onRetry?: (attemptId: string) => void
   generating?: boolean
   currentPrompt?: string
   uploadedAssets?: Array<{ id: string; url: string; name: string; kind: 'image' | 'video' | 'audio'; token: string }>
@@ -1227,6 +1231,19 @@ function HistoryContent({
               {f.prompt && (
                 <div style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {f.prompt}
+                </div>
+              )}
+              {onRetry && f.attempt_id && (
+                <div style={{ marginTop: 8 }}>
+                  <button onClick={() => onRetry(f.attempt_id!)}
+                    style={{
+                      padding: '6px 12px', borderRadius: 999,
+                      background: 'var(--accent)', color: '#fff',
+                      border: 'none', fontSize: 11, fontWeight: 700,
+                      cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
+                    }}>
+                    ↻ 다시 시도
+                  </button>
                 </div>
               )}
             </div>
@@ -1587,16 +1604,17 @@ function PresetModal({ onClose, onApply }: { onClose: () => void; onApply: (text
               <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-3)", letterSpacing: "0.04em", marginBottom: 6 }}>
                 {c.title}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 200px), 1fr))", gap: 6 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 240px), 1fr))", gap: 10 }}>
                 {c.presets.map(p => (
                   <button key={p}
                     onClick={() => onApply(p)}
                     style={{
-                      padding: "8px 12px", borderRadius: 8,
+                      padding: "14px 16px", borderRadius: 10,
                       background: "var(--bg-2)", color: "var(--ink-2)",
                       border: "1px solid var(--line)",
-                      fontSize: 11, textAlign: "left",
+                      fontSize: 13, fontWeight: 500, textAlign: "left",
                       cursor: "pointer", lineHeight: 1.5,
+                      minHeight: 60,
                     }}
                   >{p}</button>
                 ))}
