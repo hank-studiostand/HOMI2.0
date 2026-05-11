@@ -359,27 +359,27 @@ export default function VideoStudio({
             )}
           </div>
 
-          {/* SEEDANCE PRESETS 카드 — 작게, Edit 버튼 */}
+          {/* SEEDANCE PRESETS 카드 — 키워서 시인성 향상 */}
           <div style={{
             position: 'relative',
-            borderRadius: 10, overflow: 'hidden',
+            borderRadius: 12, overflow: 'hidden',
             background: 'linear-gradient(135deg, var(--accent-soft) 0%, rgba(250,250,250,0.4) 100%)',
             border: '1px solid var(--accent-line)',
-            padding: '8px 10px',
-            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '14px 16px',
+            display: 'flex', alignItems: 'center', gap: 12,
           }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', color: 'var(--accent)' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.03em', color: 'var(--accent)' }}>
                 {engine === 'seedance-2' ? 'SEEDANCE PRESETS' : engine === 'kling3-omni' ? 'KLING 3.0 OMNI PRESETS' : 'KLING 3.0 PRESETS'}
               </div>
-              <div style={{ fontSize: 9, color: 'var(--ink-4)', marginTop: 1 }}>
+              <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 3 }}>
                 엔진별 베스트 프롬프트 프리셋
               </div>
             </div>
             <button
               onClick={() => setPresetModalOpen(true)}
               className="btn"
-              style={{ padding: '4px 10px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
+              style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
               title="프롬프트 프리셋 편집">
               Edit
             </button>
@@ -632,7 +632,7 @@ export default function VideoStudio({
               }}
               onKeyDown={e => {
                 if (e.key === 'Escape') { setMentionOpen(false); return }
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void onGenerate() }
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); setRightTab('history'); void onGenerate() }
               }}
               placeholder="장면을 자세히 묘사하세요. @로 자산 참조 가능 · 이미지 ctrl+v로 붙여넣기"
               rows={3}
@@ -930,7 +930,7 @@ export default function VideoStudio({
             </button>
           )}
           <button
-            onClick={() => void onGenerate()}
+            onClick={() => { setRightTab('history'); void onGenerate() }}
             disabled={generating || !promptDraft.trim()}
             style={{
               width: '100%', padding: '14px 18px',
@@ -1259,14 +1259,108 @@ function HistoryContent({
           </div>
         )}
 
-        {/* 성공 결과 — List(1열 큰 카드) 또는 Grid(다열) */}
-        {succeeded.length > 0 && (
+        {/* 최신 결과 — 대형 feature 카드 (영상 + 프롬프트/elements/meta 우측 패널) */}
+        {!showProgress && succeeded.length > 0 && (() => {
+          const top = succeeded[0]
+          const meta = (top.metadata && typeof top.metadata === 'object') ? top.metadata as any : null
+          const elements: any[] = Array.isArray(meta?.elements) ? meta.elements : []
+          const refsArr: any[] = Array.isArray(meta?.refs) ? meta.refs : []
+          return (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: viewMode === 'list' ? '1.4fr 1fr' : '1fr',
+              gap: 12,
+              border: '1px solid var(--line-strong)',
+              background: 'var(--bg-1)',
+              borderRadius: 14, padding: 12,
+            }}>
+              {/* 영상 */}
+              <button onClick={() => top.url && onZoom?.(top.id)}
+                style={{
+                  padding: 0, border: '1px solid var(--line)', borderRadius: 'var(--r-md)',
+                  overflow: 'hidden', aspectRatio: '16/9',
+                  background: 'var(--bg-3)', cursor: 'pointer', position: 'relative',
+                }}
+                title="클릭 = 확대 보기">
+                {top.url ? (
+                  <video src={top.url} muted autoPlay loop playsInline preload="metadata"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <div style={{
+                    width: '100%', height: '100%',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: 'var(--ink-5)', fontSize: 12,
+                  }}>로딩 중</div>
+                )}
+                {top.engine && (
+                  <span style={{
+                    position: 'absolute', top: 8, left: 8,
+                    padding: '3px 10px', borderRadius: 999,
+                    fontSize: 10, fontWeight: 700,
+                    background: 'rgba(0,0,0,0.7)', color: '#fff',
+                  }}>{top.engine}</span>
+                )}
+              </button>
+              {/* 메타 패널 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Sparkles size={11} style={{ color: 'var(--accent)' }} />
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink-3)', letterSpacing: '0.04em' }}>
+                    {(top.engine ?? 'video').toUpperCase()}
+                  </span>
+                  <span style={{ flex: 1 }} />
+                  <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>
+                    {meta?.resolution ?? ''} {meta?.duration ? '· ' + meta.duration + 's' : ''} {meta?.ratio ? '· ' + meta.ratio : ''}
+                  </span>
+                </div>
+                {top.prompt && (
+                  <div style={{
+                    fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.5,
+                    maxHeight: 200, overflowY: 'auto',
+                    background: 'var(--bg-2)', padding: 8, borderRadius: 'var(--r-sm)',
+                    whiteSpace: 'pre-wrap',
+                  }}>{top.prompt}</div>
+                )}
+                {(elements.length > 0 || refsArr.length > 0) && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {elements.slice(0, 12).map((el: any) => (
+                      <span key={'el-' + el.id} title={(el.token ?? '') + ' · ' + (el.name ?? '')}
+                        style={{
+                          width: 36, height: 36, borderRadius: 'var(--r-sm)',
+                          overflow: 'hidden', background: 'var(--bg-3)',
+                          border: '1px solid var(--accent-line)',
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                        {el.kind === 'image' && el.url && <img src={el.url} alt='' style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                        {el.kind === 'video' && el.url && <video src={el.url} muted preload='metadata' style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                        {el.kind === 'audio' && <Music size={14} />}
+                      </span>
+                    ))}
+                    {refsArr.slice(0, 8).map((rf: any, i: number) => (
+                      <span key={'rf-' + i} title={(rf.token ?? '') + ' · ' + (rf.name ?? '')}
+                        style={{
+                          width: 36, height: 36, borderRadius: 'var(--r-sm)',
+                          overflow: 'hidden', background: 'var(--bg-3)',
+                          border: '1px dashed var(--accent-line)',
+                        }}>
+                        {rf.url && <img src={rf.url} alt='' style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* 이전 결과들 — 그리드 (첫 항목 제외) */}
+        {succeeded.length > 1 && (
           <div style={{
             display: 'grid',
             gridTemplateColumns: `repeat(auto-fill, minmax(${cardMinW}px, 1fr))`,
             gap: 12,
           }}>
-            {succeeded.map(o => (
+            {succeeded.slice(1).map(o => (
               <button key={o.id}
                 onClick={() => o.url && onZoom?.(o.id)}
                 style={{
