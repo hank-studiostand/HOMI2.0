@@ -279,8 +279,10 @@ svg, img, video { transition: none !important; }
 
 /* ── 워크스페이스 3패널 반응형 ─────────────────────────── */
 .workspace-grid { grid-template-columns: 320px 1fr 340px; }
+.workspace-grid[data-comments-collapsed="true"] { grid-template-columns: 320px 1fr 40px; }
 @media (max-width: 1280px) {
   .workspace-grid { grid-template-columns: 280px 1fr 300px; }
+  .workspace-grid[data-comments-collapsed="true"] { grid-template-columns: 280px 1fr 40px; }
 }
 @media (max-width: 1024px) {
   .workspace-grid {

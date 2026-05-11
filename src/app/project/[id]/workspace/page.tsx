@@ -112,6 +112,17 @@ export default function WorkspacePage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   // 베이스 이미지 라이브러리 픽커 (I2V 모드 — 프로젝트 전체 베이스 이미지에서 소스 선택)
   const [libPickerOpen, setLibPickerOpen] = useState(false)
+  const [commentsCollapsed, setCommentsCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    try { return window.localStorage.getItem('workspace:commentsCollapsed') === '1' } catch { return false }
+  })
+  function toggleCommentsCollapsed() {
+    setCommentsCollapsed(v => {
+      const next = !v
+      try { window.localStorage.setItem('workspace:commentsCollapsed', next ? '1' : '0') } catch {}
+      return next
+    })
+  }
   // I2V end frame (Seedance last_frame / Kling image_tail)
   const [genEndFrameUrl, setGenEndFrameUrl] = useState<string | null>(null)
   const endFrameInputRef = useRef<HTMLInputElement | null>(null)
@@ -716,7 +727,7 @@ export default function WorkspacePage() {
   }
 
   return (
-    <div className="workspace-grid h-full grid overflow-hidden">
+    <div className="workspace-grid h-full grid overflow-hidden" data-comments-collapsed={commentsCollapsed ? 'true' : 'false'}>
       {/* LEFT — Shot Brief */}
       <aside style={{ borderRight: '1px solid var(--line)', overflow: 'auto', background: 'var(--bg-1)' }}>
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
@@ -1666,15 +1677,45 @@ export default function WorkspacePage() {
         )}
       </main>
 
-      {/* RIGHT — Comments */}
-      <aside style={{ borderLeft: '1px solid var(--line)', display: 'flex', flexDirection: 'column', background: 'var(--bg-1)' }}>
+      {/* RIGHT — Comments (collapsible) */}
+      <aside style={{ borderLeft: '1px solid var(--line)', display: 'flex', flexDirection: 'column', background: 'var(--bg-1)', overflow: 'hidden' }}>
+        {commentsCollapsed ? (
+          <button
+            onClick={toggleCommentsCollapsed}
+            title="코멘트 펼치기"
+            style={{
+              width: '100%', flex: 1, padding: '12px 0',
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', gap: 8,
+              color: 'var(--ink-3)',
+            }}
+          >
+            <ChevronLeft size={14} />
+            <MessageCircle size={14} style={{ color: 'var(--accent)' }} />
+            <span style={{
+              fontSize: 10, fontWeight: 700, color: 'var(--ink-3)',
+              writingMode: 'vertical-rl', textOrientation: 'mixed', letterSpacing: '0.1em',
+            }}>코멘트 {comments.length}</span>
+          </button>
+        ) : (
         <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--line)' }} className="flex items-center gap-2">
           <MessageCircle size={13} style={{ color: 'var(--accent)' }} />
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>코멘트</span>
           <span style={{ flex: 1 }} />
           <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>{comments.length}</span>
-        </div>
+          <button
+            onClick={toggleCommentsCollapsed}
+            title="코멘트 접기"
+            style={{
+              padding: 4, background: 'transparent', border: 'none', cursor: 'pointer',
+              color: 'var(--ink-4)', display: 'inline-flex', alignItems: 'center',
+            }}
+          >
+            <ChevronRight size={13} />
+          </button>
+        </div>)}
 
+        {!commentsCollapsed && (<>
         <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
           {comments.length === 0 ? (
             <div className="empty" style={{ padding: 16, fontSize: 12 }}>아직 코멘트가 없어요</div>
@@ -1730,6 +1771,7 @@ export default function WorkspacePage() {
             <Send size={13} />
           </button>
         </div>
+        </>)}
       </aside>
 
       {/* Decision modal */}
@@ -4686,7 +4728,7 @@ function EnginePresetModal({
           })}
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 18 }}>
-          <div className="field-label">규칙 (자유 입력 — 영문/한글 모두 OK)</div>
+          <div className="field-label">규칙 (자유 입력)</div>
           <textarea
             value={draft}
             onChange={e => setDraft(e.target.value)}
@@ -4700,19 +4742,9 @@ function EnginePresetModal({
               fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
             }}
           />
-          <p style={{ marginTop: 8, fontSize: 11, color: 'var(--ink-4)' }}>
-            저장하면 이 엔진을 선택했을 때 프롬프트 최적화 호출에 자동으로 적용됩니다.
-            (브라우저 localStorage에 보관)
-          </p>
         </div>
         <div style={{ padding: '12px 18px', borderTop: '1px solid var(--line)', display: 'flex', gap: 8, justifyContent: 'space-between' }}>
-          <button
-            onClick={handleReset}
-            className="btn"
-            title="이 엔진 프리셋 비우기"
-          >
-            초기화
-          </button>
+          <button onClick={handleReset} className="btn">초기화</button>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={onClose} className="btn">취소</button>
             <button onClick={handleSave} className="btn primary">

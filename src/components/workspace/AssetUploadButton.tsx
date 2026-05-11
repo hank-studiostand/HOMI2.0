@@ -27,6 +27,8 @@ interface Props {
   recent?: UploadedAsset[]
   // 컴팩트 모드 (좁은 패널용 — 라벨 없음)
   compact?: boolean
+  // 내부 썸네일 그리드 숨김 (부모가 Elements 같은 자체 UI로 보여줄 때)
+  hideRecentGrid?: boolean
 }
 
 function detectKind(file: File): AssetKind | null {
@@ -42,7 +44,7 @@ function sanitize(name: string): string {
 }
 
 export default function AssetUploadButton({
-  projectId, sceneId = null, onUploaded, recent = [], compact = false,
+  projectId, sceneId = null, onUploaded, recent = [], compact = false, hideRecentGrid = false,
 }: Props) {
   const supabase = createClient()
   const fileRef = useRef<HTMLInputElement | null>(null)
@@ -152,8 +154,8 @@ export default function AssetUploadButton({
         </div>
       )}
 
-      {/* 업로드 히스토리 (이번 세션) */}
-      {items.length > 0 && (
+            {/* 업로드 히스토리 (이번 세션) — 부모가 자체 UI 사용 시 숨김 */}
+      {!hideRecentGrid && items.length > 0 && (
         <div style={{
           display: 'grid',
           gridTemplateColumns: compact ? 'repeat(3, 1fr)' : 'repeat(auto-fill, minmax(72px, 1fr))',

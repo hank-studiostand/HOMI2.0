@@ -215,6 +215,12 @@ export async function generateSeedanceI2V(
     ? await urlToBase64DataUrl(params.endImageUrl, 'end_frame')
     : null
 
+  // Start/End가 동일한 입력이면 명백한 사용자 실수이므로 경고
+  if (endRef && startRef === endRef) {
+    console.warn('[seedance] start_frame === end_frame — 사용자가 같은 파일을 두 번 업로드한 것으로 보임')
+  }
+  console.log(`[seedance] I2V model=${model}  start=${startRef.slice(0, 40)}... end=${endRef ? endRef.slice(0, 40) + '...' : 'none'}`)
+
   const content: ContentPart[] = [
     { type: 'text', text: params.prompt },
     { type: 'image_url', image_url: { url: startRef }, role: 'first_frame' },

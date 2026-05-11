@@ -336,9 +336,10 @@ export default function VideoStudio({
             projectId={projectId}
             sceneId={sceneId}
             compact
+            hideRecentGrid
             onUploaded={(asset) => {
               setUploadedAssets(prev => {
-                // kind별 자동 넘버링 — image1, video1, audio1
+                // kind별 자동 넘버링 — image1, video1, audio1 (현재 길이 + 1)
                 const sameKind = prev.filter(p => p.kind === asset.kind)
                 const n = sameKind.length + 1
                 const token = `@${asset.kind}${n}`
@@ -347,49 +348,87 @@ export default function VideoStudio({
             }}
           />
 
-          {/* 업로드 에셋 토큰 strip — 클릭 시 프롬프트에 @image1 식 토큰 삽입 */}
+          {/* Elements — 업로드 에셋: 썸네일+토큰 카드, 클릭 시 프롬프트에 @imageN 삽입, ✕ 시 자동 재넘버링 */}
           {uploadedAssets.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, paddingTop: 4 }}>
-              <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--ink-4)', letterSpacing: '0.04em', alignSelf: 'center' }}>
-                ELEMENTS
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 2 }}>
+              <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--ink-4)', letterSpacing: '0.05em' }}>
+                ELEMENTS · 클릭하면 프롬프트에 @토큰이 삽입됩니다
               </span>
-              {uploadedAssets.map(a => (
-                <button
-                  key={a.id}
-                  onClick={() => {
-                    const ta = taRef.current
-                    if (!ta) {
-                      onPromptChange((promptDraft + ' ' + a.token).trim())
-                      return
-                    }
-                    const start = ta.selectionStart ?? promptDraft.length
-                    const end   = ta.selectionEnd ?? start
-                    const next = promptDraft.slice(0, start) + a.token + ' ' + promptDraft.slice(end)
-                    onPromptChange(next)
-                    setTimeout(() => {
-                      ta.focus()
-                      const pos = start + a.token.length + 1
-                      ta.setSelectionRange(pos, pos)
-                    }, 0)
-                  }}
-                  title={`${a.name} 클릭 시 프롬프트에 ${a.token} 삽입`}
-                  style={{
-                    padding: '4px 8px', borderRadius: 999,
-                    fontSize: 11, fontWeight: 600,
-                    background: 'var(--accent-soft)', color: 'var(--accent)',
-                    border: '1px solid var(--accent-line)',
-                    display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer',
-                  }}
-                >
-                  {a.kind === 'image' ? <ImageIcon size={10} /> : a.kind === 'video' ? <Video size={10} /> : <Music size={10} />}
-                  {a.token}
-                  <span
-                    onClick={(e) => { e.stopPropagation(); setUploadedAssets(prev => prev.filter(p => p.id !== a.id)) }}
-                    style={{ marginLeft: 4, padding: '0 2px', cursor: 'pointer', opacity: 0.6 }}
-                    title="제거"
-                  >×</span>
-                </button>
-              ))}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))',
+                gap: 6,
+              }}>
+                {uploadedAssets.map(a => (
+                  <div key={a.id} style={{ position: 'relative' }}>
+                    <button
+                      onClick={() => {
+                        const ta = taRef.current
+                        if (!ta) {
+                          onPromptChange((promptDraft + ' ' + a.token).trim())
+                          return
+                        }
+                        const start = ta.selectionStart ?? promptDraft.length
+                        const end   = ta.selectionEnd ?? start
+                        const next = promptDraft.slice(0, start) + a.token + ' ' + promptDraft.slice(end)
+                        onPromptChange(next)
+                        setTimeout(() => {
+                          ta.focus()
+                          const pos = start + a.token.length + 1
+                          ta.setSelectionRange(pos, pos)
+                        }, 0)
+                      }}
+                      title={`${a.name} — 클릭하면 프롬프트에 ${a.token} 삽입`}
+                      style={{
+                        width: '100%', aspectRatio: '1/1', padding: 0, overflow: 'hidden',
+                        borderRadius: 'var(--r-md)',
+                        background: 'var(--bg-3)',
+                        border: '1px solid var(--accent-line)',
+                        cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        position: 'relative',
+                      }}
+                    >
+                      {a.kind === 'image' && <img src={a.url} alt={a.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                      {a.kind === 'video' && <video src={a.url} muted preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                      {a.kind === 'audio' && <Music size={22} style={{ color: 'var(--accent)' }} />}
+                      {/* token 배지 */}
+                      <span style={{
+                        position: 'absolute', left: 4, bottom: 4,
+                        padding: '1px 5px', borderRadius: 4,
+                        background: 'rgba(0,0,0,0.7)', color: '#fff',
+                        fontSize: 9, fontWeight: 700,
+                        fontFamily: 'var(--font-mono)',
+                      }}>{a.token}</span>
+                    </button>
+                    {/* 삭제 ✕ — 클릭 시 해당 자산 제거 + 같은 kind 안에서 토큰 재넘버링 */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setUploadedAssets(prev => {
+                          const next = prev.filter(p => p.id !== a.id)
+                          // kind별 카운터 리셋 후 재할당 (image1, image2... 빈 자리 채움)
+                          const counters: Record<string, number> = {}
+                          return next.map(p => {
+                            counters[p.kind] = (counters[p.kind] ?? 0) + 1
+                            return { ...p, token: `@${p.kind}${counters[p.kind]}` }
+                          })
+                        })
+                      }}
+                      title="제거"
+                      style={{
+                        position: 'absolute', top: 3, right: 3,
+                        width: 18, height: 18, padding: 0, borderRadius: 999,
+                        background: 'rgba(0,0,0,0.7)', color: '#fff',
+                        border: 'none', cursor: 'pointer',
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -1182,33 +1221,35 @@ function PresetModal({ onClose, onApply }: { onClose: () => void; onApply: (text
     <div onClick={onClose} style={{
       position: 'fixed', inset: 0, zIndex: 200,
       background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: 'clamp(12px, 3vw, 32px)',
     }}>
       <div onClick={e => e.stopPropagation()} style={{
-        width: 'min(820px, 100%)', maxHeight: '88vh',
+        width: '100%', maxWidth: 880, maxHeight: 'calc(100vh - 48px)',
         background: 'var(--bg)', border: '1px solid var(--line)',
         borderRadius: 'var(--r-md)', overflow: 'hidden',
         display: 'flex', flexDirection: 'column',
       }}>
         <div style={{
-          padding: '14px 18px', borderBottom: '1px solid var(--line)',
-          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '12px 16px', borderBottom: '1px solid var(--line)',
+          display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap',
         }}>
           <Sparkles size={14} style={{ color: 'var(--accent)' }} />
           <span style={{ fontSize: 13, fontWeight: 700 }}>Discover Presets</span>
-          <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>시네마틱 무드/스타일 — 클릭하여 프롬프트에 추가</span>
-          <span style={{ flex: 1 }} />
+          <span style={{ fontSize: 11, color: 'var(--ink-4)', minWidth: 0, flex: '1 1 200px' }}>
+            시네마틱 무드와 스타일
+          </span>
           <button onClick={onClose} className="btn" style={{ padding: 6 }}>
             <X size={14} />
           </button>
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: 18, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 'clamp(12px, 2vw, 20px)', display: 'flex', flexDirection: 'column', gap: 16 }}>
           {cats.map(c => (
             <div key={c.title}>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', letterSpacing: '0.04em', marginBottom: 6 }}>
                 {c.title}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 6 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 200px), 1fr))', gap: 6 }}>
                 {c.presets.map(p => (
                   <button key={p}
                     onClick={() => onApply(p)}
@@ -1219,8 +1260,6 @@ function PresetModal({ onClose, onApply }: { onClose: () => void; onApply: (text
                       fontSize: 11, textAlign: 'left',
                       cursor: 'pointer', lineHeight: 1.5,
                     }}
-                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg-3)'}
-                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg-2)'}
                   >{p}</button>
                 ))}
               </div>
