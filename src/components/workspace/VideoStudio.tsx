@@ -240,102 +240,142 @@ export default function VideoStudio({
             />
           )}
           {tab === 'create' && (<>
-          {/* DISCOVER PRESETS 카드 */}
+          {/* Model */}
+          <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink-4)', letterSpacing: '0.04em', marginBottom: 4 }}>
+              Model
+            </div>
+            <button onClick={() => setModelOpen(o => !o)}
+              style={{
+                width: '100%', padding: '10px 12px',
+                background: 'var(--bg-2)', border: '1px solid var(--line)',
+                borderRadius: 12,
+                display: 'flex', alignItems: 'center', gap: 8,
+                fontSize: 13, fontWeight: 600, color: 'var(--ink)',
+                cursor: 'pointer',
+              }}>
+              <span>{currentModel.label}</span>
+              <span style={{
+                marginLeft: 6, display: 'inline-flex', alignItems: 'center', gap: 1,
+              }}>
+                <span style={{ width: 3, height: 8, background: 'var(--accent)', borderRadius: 1 }} />
+                <span style={{ width: 3, height: 12, background: 'var(--accent)', borderRadius: 1 }} />
+                <span style={{ width: 3, height: 6, background: 'var(--accent)', borderRadius: 1 }} />
+              </span>
+              <span style={{ flex: 1 }} />
+              <ChevronDown size={14} style={{ color: 'var(--ink-4)' }} />
+            </button>
+            {modelOpen && (
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
+                background: 'var(--bg)', border: '1px solid var(--line)',
+                borderRadius: 'var(--r-md)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                padding: 4, zIndex: 50,
+              }}>
+                {MODELS.map(m => (
+                  <button key={m.value}
+                    onClick={() => { onEngineChange(m.value); setModelOpen(false) }}
+                    style={popupItem(m.value === engine)}>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* SEEDANCE PRESETS 카드 — 작게, Edit 버튼 */}
           <div style={{
             position: 'relative',
-            borderRadius: 14, overflow: 'hidden',
+            borderRadius: 10, overflow: 'hidden',
             background: 'linear-gradient(135deg, var(--accent-soft) 0%, rgba(250,250,250,0.4) 100%)',
             border: '1px solid var(--accent-line)',
-            padding: '14px 16px',
-            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '8px 10px',
+            display: 'flex', alignItems: 'center', gap: 8,
           }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: '0.02em', color: 'var(--accent)' }}>
-                DISCOVER PRESETS
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', color: 'var(--accent)' }}>
+                {engine === 'seedance-2' ? 'SEEDANCE PRESETS' : engine === 'kling3-omni' ? 'KLING 3.0 OMNI PRESETS' : 'KLING 3.0 PRESETS'}
               </div>
-              <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>
-                Seedance 2.0
+              <div style={{ fontSize: 9, color: 'var(--ink-4)', marginTop: 1 }}>
+                엔진별 베스트 프롬프트 프리셋
               </div>
             </div>
             <button
               onClick={() => setPresetModalOpen(true)}
-              className="btn primary"
-              style={{ padding: '5px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
-              title="시네마틱 프리셋 — 클릭하면 프롬프트에 자동 주입">
-              Explore
+              className="btn"
+              style={{ padding: '4px 10px', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
+              title="프롬프트 프리셋 편집">
+              Edit
             </button>
           </div>
 
-          {/* 미디어 업로드 */}
-          <div
-            onDragOver={e => e.preventDefault()}
-            onDrop={e => {
-              e.preventDefault()
-              const file = e.dataTransfer.files?.[0]
-              if (file) void onFilePicked(file)
-            }}
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              border: `1.5px dashed ${sourceImageUrl ? 'var(--accent-line)' : 'var(--line-strong)'}`,
-              borderRadius: 14,
-              padding: sourceImageUrl ? 8 : '24px 16px',
-              background: sourceImageUrl ? 'var(--bg)' : 'var(--bg-2)',
-              cursor: 'pointer',
-              display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center',
-              gap: 8, position: 'relative',
-            }}
-          >
-            <input ref={fileInputRef} type="file" accept="image/*,video/*" hidden
-              onChange={e => { const f = e.target.files?.[0]; void onFilePicked(f ?? null) }} />
-            {sourceImageUrl ? (
-              <>
-                {sourceImageUrl.startsWith('data:video') || /\.(mp4|webm|mov)(\?|$)/i.test(sourceImageUrl)
-                  ? <video src={sourceImageUrl} muted controls style={{ width: '100%', maxHeight: 160, objectFit: 'contain', borderRadius: 10, background: 'var(--bg-3)' }} />
-                  : <img src={sourceImageUrl} alt="" style={{ width: '100%', maxHeight: 160, objectFit: 'contain', borderRadius: 10, background: 'var(--bg-3)' }} />}
-                <button
-                  onClick={e => { e.stopPropagation(); onSourceImageChange(null) }}
-                  style={{
-                    position: 'absolute', top: 4, right: 4,
-                    width: 22, height: 22, padding: 0, borderRadius: 999,
-                    background: 'rgba(0,0,0,0.6)', color: '#fff',
-                    border: 'none', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}
-                  title="이미지 제거"
-                ><X size={12} /></button>
-                <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>
-                  Start Frame (영상 시작)
-                </span>
-              </>
-            ) : (
-              <>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <span style={iconBubble}><ImageIcon size={14} /></span>
-                  <span style={iconBubble}><Video size={14} /></span>
-                  <span style={iconBubble}><Music size={14} /></span>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-2)' }}>Start Frame</div>
-                  <div style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 2 }}>영상 첫 프레임 (이미지)</div>
-                </div>
-              </>
+          {/* Start Frame + End Frame — 한 줄에 나란히 (반응형: 좁아지면 wrap) */}
+          <div style={{ display: 'grid', gridTemplateColumns: onEndFrameChange ? '1fr 1fr' : '1fr', gap: 8 }}>
+            <div
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => {
+                e.preventDefault()
+                const file = e.dataTransfer.files?.[0]
+                if (file) void onFilePicked(file)
+              }}
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                border: `1.5px dashed ${sourceImageUrl ? 'var(--accent-line)' : 'var(--line-strong)'}`,
+                borderRadius: 14,
+                padding: sourceImageUrl ? 6 : '16px 10px',
+                background: sourceImageUrl ? 'var(--bg)' : 'var(--bg-2)',
+                cursor: 'pointer',
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                gap: 6, position: 'relative', minHeight: 110,
+              }}
+            >
+              <input ref={fileInputRef} type="file" accept="image/*,video/*" hidden
+                onChange={e => { const f = e.target.files?.[0]; void onFilePicked(f ?? null) }} />
+              {sourceImageUrl ? (
+                <>
+                  {sourceImageUrl.startsWith('data:video') || /\.(mp4|webm|mov)(\?|$)/i.test(sourceImageUrl)
+                    ? <video src={sourceImageUrl} muted controls style={{ width: '100%', maxHeight: 110, objectFit: 'contain', borderRadius: 8, background: 'var(--bg-3)' }} />
+                    : <img src={sourceImageUrl} alt="" style={{ width: '100%', maxHeight: 110, objectFit: 'contain', borderRadius: 8, background: 'var(--bg-3)' }} />}
+                  <button
+                    onClick={e => { e.stopPropagation(); onSourceImageChange(null) }}
+                    style={{
+                      position: 'absolute', top: 4, right: 4,
+                      width: 20, height: 20, padding: 0, borderRadius: 999,
+                      background: 'rgba(0,0,0,0.6)', color: '#fff',
+                      border: 'none', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                    title="제거"
+                  ><X size={11} /></button>
+                  <span style={{ fontSize: 9, color: 'var(--ink-4)', fontWeight: 600 }}>Start</span>
+                </>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', gap: 3 }}>
+                    <span style={iconBubble}><ImageIcon size={12} /></span>
+                    <span style={iconBubble}><Video size={12} /></span>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-2)' }}>+ Start Frame</div>
+                    <div style={{ fontSize: 9, color: 'var(--ink-4)', marginTop: 1 }}>영상 시작</div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {onEndFrameChange && (
+              <EndFrameSlot
+                endFrameUrl={endFrameUrl ?? null}
+                onChange={onEndFrameChange}
+              />
             )}
           </div>
-
-          {/* End Frame 슬롯 — 옵션 (Seedance last_frame / Kling image_tail) */}
-          {onEndFrameChange && (
-            <EndFrameSlot
-              endFrameUrl={endFrameUrl ?? null}
-              onChange={onEndFrameChange}
-            />
-          )}
 
           {/* 일반 에셋 업로드 — 이미지/영상/음악 */}
           <AssetUploadButton
             projectId={projectId}
             sceneId={sceneId}
-            compact
             hideRecentGrid
             onUploaded={(asset) => {
               setUploadedAssets(prev => {
@@ -558,70 +598,6 @@ export default function VideoStudio({
             </div>
           </div>
 
-          {/* Model */}
-          <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink-4)', letterSpacing: '0.04em', marginBottom: 4 }}>
-              Model
-            </div>
-            <button onClick={() => setModelOpen(o => !o)}
-              style={{
-                width: '100%', padding: '10px 12px',
-                background: 'var(--bg-2)', border: '1px solid var(--line)',
-                borderRadius: 12,
-                display: 'flex', alignItems: 'center', gap: 8,
-                fontSize: 13, fontWeight: 600, color: 'var(--ink)',
-                cursor: 'pointer',
-              }}>
-              <span>{currentModel.label}</span>
-              <span style={{
-                marginLeft: 6, display: 'inline-flex', alignItems: 'center', gap: 1,
-              }}>
-                <span style={{ width: 3, height: 8, background: 'var(--accent)', borderRadius: 1 }} />
-                <span style={{ width: 3, height: 12, background: 'var(--accent)', borderRadius: 1 }} />
-                <span style={{ width: 3, height: 6, background: 'var(--accent)', borderRadius: 1 }} />
-              </span>
-              <span style={{ flex: 1 }} />
-              <ChevronDown size={14} style={{ color: 'var(--ink-4)' }} />
-            </button>
-            {modelOpen && (
-              <div style={{
-                position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
-                background: 'var(--bg)', border: '1px solid var(--line)',
-                borderRadius: 'var(--r-md)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-                padding: 4, zIndex: 50,
-              }}>
-                {MODELS.map(m => (
-                  <button key={m.value}
-                    onClick={() => { onEngineChange(m.value); setModelOpen(false) }}
-                    style={popupItem(m.value === engine)}>
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* 프롬프트 최적화 버튼 — 엔진별 best-practice 적용 */}
-          {onOptimize && (
-            <button
-              onClick={() => void onOptimize()}
-              disabled={!!optimizing}
-              title="현재 엔진에 맞게 프롬프트 최적화 (Seedance/Kling)"
-              style={{
-                padding: '8px 12px', borderRadius: 'var(--r-md)',
-                fontSize: 12, fontWeight: 600,
-                background: 'var(--accent-soft)',
-                color: 'var(--accent)',
-                border: '1px solid var(--accent-line)',
-                display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer',
-                opacity: optimizing ? 0.6 : 1,
-              }}
-            >
-              <Sparkles size={12} />
-              {optimizing ? '최적화중...' : '프롬프트 최적화'}
-            </button>
-          )}
-
           {/* Duration slider (3-15s) */}
           <div style={{
             padding: '8px 12px', background: 'var(--bg-2)',
@@ -679,13 +655,32 @@ export default function VideoStudio({
           </>)}
         </div>
 
-        {/* Generate 버튼 — 좌측 패널 하단 sticky */}
+        {/* Optimize + Generate — 좌측 패널 하단 sticky */}
         <div style={{
           padding: 12,
           borderTop: '1px solid var(--line)',
           background: 'var(--bg-1)',
           flexShrink: 0,
+          display: 'flex', flexDirection: 'column', gap: 8,
         }}>
+          {onOptimize && (
+            <button
+              onClick={() => void onOptimize()}
+              disabled={!!optimizing}
+              title="현재 엔진에 맞게 프롬프트 최적화"
+              style={{
+                width: '100%', padding: '8px 12px', borderRadius: 'var(--r-md)',
+                fontSize: 12, fontWeight: 600,
+                background: 'var(--accent-soft)', color: 'var(--accent)',
+                border: '1px solid var(--accent-line)',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer',
+                opacity: optimizing ? 0.6 : 1,
+              }}
+            >
+              <Sparkles size={12} />
+              {optimizing ? '최적화중...' : '프롬프트 최적화'}
+            </button>
+          )}
           <button
             onClick={() => void onGenerate()}
             disabled={generating || !promptDraft.trim()}
@@ -704,12 +699,6 @@ export default function VideoStudio({
           >
             <Sparkles size={15} />
             {generating ? '생성 중...' : 'Generate'}
-            <span style={{
-              padding: '2px 8px', borderRadius: 999,
-              background: 'rgba(255,255,255,0.22)', fontSize: 11,
-            }}>
-              {duration <= 5 ? 21 : duration <= 7 ? 30 : duration <= 10 ? 42 : 63}
-            </span>
           </button>
         </div>
       </aside>

@@ -461,7 +461,8 @@ export default function WorkspacePage() {
         o.scene_id === sceneId &&                                // 이 씬의 큐만
         !flat.some(f => f.attempt_id === o.attempt_id)           // 아직 outputs 없는 것만
       )
-      return [...flat, ...tempPlaceholders]
+      // 큐 placeholder 가 최상단에 오도록 — 새로 생성중인 결과가 위에 노출
+      return [...tempPlaceholders, ...flat]
     })
     setAttempts(meta)
     setSelectedIds(flat.length > 0 ? [flat[0].id] : [])

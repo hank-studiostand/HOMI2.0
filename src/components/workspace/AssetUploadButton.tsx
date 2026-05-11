@@ -122,21 +122,47 @@ export default function AssetUploadButton({
         onClick={() => fileRef.current?.click()}
         disabled={busy}
         style={{
-          padding: compact ? '6px 10px' : '10px 14px',
+          padding: compact ? '6px 10px' : '24px 16px',
           background: 'var(--bg-2)',
-          border: '1px dashed var(--line)',
-          borderRadius: 'var(--r-md)',
+          border: `1.5px dashed ${busy ? 'var(--accent-line)' : 'var(--line-strong)'}`,
+          borderRadius: compact ? 'var(--r-md)' : 14,
           color: 'var(--ink-2)',
-          fontSize: compact ? 11 : 12,
+          fontSize: compact ? 11 : 13,
           fontWeight: 600,
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8,
           cursor: busy ? 'wait' : 'pointer',
           opacity: busy ? 0.7 : 1,
+          minHeight: compact ? undefined : 110,
+          width: '100%',
         }}
         title="이미지·영상·음악 업로드 (Drag & Drop 시에는 페이지 위에 놓아주세요)"
       >
-        {busy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
-        <span>{compact ? '에셋 업로드' : '에셋 업로드 (이미지·영상·음악)'}</span>
+        {compact ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            {busy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+            에셋 업로드
+          </span>
+        ) : (
+          <>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <span style={{ width: 22, height: 22, borderRadius: 999, background: 'var(--bg-3)', color: 'var(--ink-3)', display: 'grid', placeItems: 'center' }}>
+                <ImageIcon size={12} />
+              </span>
+              <span style={{ width: 22, height: 22, borderRadius: 999, background: 'var(--bg-3)', color: 'var(--ink-3)', display: 'grid', placeItems: 'center' }}>
+                <Film size={12} />
+              </span>
+              <span style={{ width: 22, height: 22, borderRadius: 999, background: 'var(--bg-3)', color: 'var(--ink-3)', display: 'grid', placeItems: 'center' }}>
+                <Music size={12} />
+              </span>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-2)' }}>
+                {busy ? '업로드 중...' : '+ 에셋 업로드'}
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 2 }}>이미지 · 영상 · 음악</div>
+            </div>
+          </>
+        )}
       </button>
 
       {error && (
@@ -184,18 +210,6 @@ export default function AssetUploadButton({
               {it.kind === 'audio' && (
                 <Music size={20} style={{ color: 'var(--accent)' }} />
               )}
-              <div
-                style={{
-                  position: 'absolute', top: 3, left: 3,
-                  padding: '1px 4px', borderRadius: 4,
-                  background: 'rgba(0,0,0,0.65)', color: '#fff',
-                  fontSize: 8, fontWeight: 700, letterSpacing: '0.04em',
-                }}
-              >
-                {it.kind === 'image' ? <ImageIcon size={8} /> :
-                 it.kind === 'video' ? <Film size={8} /> :
-                 <Music size={8} />}
-              </div>
             </div>
           ))}
         </div>
