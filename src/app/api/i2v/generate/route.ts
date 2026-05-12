@@ -24,6 +24,49 @@ function generateKlingJWT(apiKey: string, apiSecret: string): string {
   return `${header}.${payload}.${sig}`
 }
 
+// ── Kling 모델명 매핑 — Kling 공식 API model_name 형식 ──
+// API 가 받는 정확한 model_name: kling-v1, kling-v1-5, kling-v1-6, kling-v2-master, kling-v2-1-master
+// 코드 1201 "model is not supported" 방지
+function mapKlingModelName(engine: string): string {
+  switch (engine) {
+    case 'kling3-omni': return 'kling-v2-1-master'  // 최신 Kling 2.1 (Omni 별도 모델 없음 — 통합 사용)
+    case 'kling3':      return 'kling-v2-1-master'  // 최신 Kling 2.1
+    case 'kling2':      return 'kling-v2-master'    // Kling 2.0
+    case 'kling1-6':
+    case 'kling-1-6':
+    case 'kling':       return 'kling-v1-6'         // Kling 1.6
+    default:            return 'kling-v1-6'
+  }
+}
+
+// ── Kling 에러 코드 → 한국어 메시지 ──
+function formatKlingError(status: number, body: string): string {
+  try {
+    const j = JSON.parse(body)
+    const code = j.code
+    const msg = j.message ?? body
+    const map: Record<number, string> = {
+      1000: '인증 실패 — API 키를 확인해주세요.',
+      1001: '인증 만료 — JWT 토큰을 갱신해주세요.',
+      1101: '요청 형식 오류 — 파라미터를 확인해주세요.',
+      1102: '필수 파라미터 누락.',
+      1103: '파라미터 값이 허용 범위를 벗어남.',
+      1201: 'Kling 모델을 지원하지 않습니다 — 다른 엔진(Seedance 등)을 사용하거나 관리자에게 문의해주세요.',
+      1202: '이미지 형식 오류 — JPG/PNG 권장.',
+      1203: '이미지가 너무 크거나 작음 (해상도/용량).',
+      1301: '컨텐츠 안전 검열 — 프롬프트나 이미지에 부적절한 내용이 포함되어 있어요.',
+      1401: '계정 잔액 부족.',
+      1402: '월 한도 초과.',
+      1501: '동시 작업 한도 초과 — 잠시 후 다시 시도해주세요.',
+      1502: '서비스 일시 점검.',
+    }
+    const friendly = code && map[code as number] ? map[code as number] : msg
+    return `Kling ${status} (code ${code ?? '?'}): ${friendly}`
+  } catch {
+    return `Kling ${status}: ${body.slice(0, 300)}`
+  }
+}
+
 // ── Kling I2V ─────────────────────────────────────────────────────────────────
 async function generateKlingI2V(params: {
   sourceImageUrl: string
@@ -71,7 +114,7 @@ async function generateKlingI2V(params: {
   console.log('[I2V] Kling create response:', createRes.status, createText)
 
   if (!createRes.ok) {
-    throw new Error(`Kling create failed (${createRes.status}): ${createText}`)
+    throw new Error(formatKlingError(createRes.status, createText))
   }
 
   const createData = JSON.parse(createText)
@@ -181,11 +224,13 @@ export async function POST(req: NextRequest) {
         prompt, imageUrl: sourceImageUrl, endImageUrl: endFrameUrl ?? null,
         duration, aspectRatio, resolution, generateAudio,
       })
-    } else if (engine === 'kling3') {
-      videoUrl = await generateKlingI2V({ sourceImageUrl, endImageUrl: endFrameUrl ?? null, prompt, duration, aspectRatio, modelName: 'kling-v2' })
     } else {
-      // 기본 Kling (kling, kling-1.6 등)
-      videoUrl = await generateKlingI2V({ sourceImageUrl, endImageUrl: endFrameUrl ?? null, prompt, duration, aspectRatio, modelName: 'kling-v1-6' })
+      // engine 별 model_name 매핑 (kling3 → kling-v2-1-master, kling → kling-v1-6 등)
+      videoUrl = await generateKlingI2V({
+        sourceImageUrl, endImageUrl: endFrameUrl ?? null,
+        prompt, duration, aspectRatio,
+        modelName: mapKlingModelName(engine),
+      })
     }
 
     if (!videoUrl) throw new Error('No video URL returned')

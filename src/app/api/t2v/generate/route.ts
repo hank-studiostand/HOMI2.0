@@ -57,7 +57,8 @@ async function callKlingT2V(
   })
 
   if (!createRes.ok) {
-    throw new Error(`Kling T2V (${modelName}) create failed (${createRes.status}): ${await createRes.text()}`)
+    const errBody = await createRes.text()
+    throw new Error(`[${modelName}] ` + formatKlingError(createRes.status, errBody))
   }
 
   const createData = await createRes.json()
@@ -81,11 +82,32 @@ async function callKlingT2V(
 }
 
 // ─────────────────────────────────────────────────────────────────
-// engine → model_name 매핑
-// 실제 model_name은 Kling 공식 API 문서 확인 후 수정 가능
+// engine → model_name 매핑 (Kling 공식 API 가 받는 정확한 값)
+// 허용값: kling-v1, kling-v1-5, kling-v1-6, kling-v2-master, kling-v2-1-master
 const ENGINE_MODEL: Record<string, string> = {
-  'kling3':      'kling-v3',        // Kling 3.0
-  'kling3-omni': 'kling-v3-omni',  // Kling 3.0 Omni (모델명 확인 필요)
+  'kling3':      'kling-v2-1-master',  // UI 라벨 "Kling 3.0" → 실 API model: 2.1-master (Kling 최신)
+  'kling3-omni': 'kling-v2-1-master',  // Omni 별도 모델 없음 — 통합 사용
+  'kling2':      'kling-v2-master',    // Kling 2.0
+  'kling':       'kling-v1-6',         // Kling 1.6
+}
+
+// ── Kling 에러 코드 → 한국어 메시지 ──
+function formatKlingError(status: number, body: string): string {
+  try {
+    const j = JSON.parse(body)
+    const code = j.code
+    const msg = j.message ?? body
+    const map: Record<number, string> = {
+      1201: 'Kling 모델을 지원하지 않습니다 — 다른 엔진을 사용해주세요.',
+      1301: '컨텐츠 안전 검열 — 프롬프트에 부적절한 내용이 있어요.',
+      1401: '계정 잔액 부족.',
+      1501: '동시 작업 한도 초과 — 잠시 후 다시 시도.',
+    }
+    const friendly = code && map[code as number] ? map[code as number] : msg
+    return `Kling ${status} (code ${code ?? '?'}): ${friendly}`
+  } catch {
+    return `Kling ${status}: ${body.slice(0, 300)}`
+  }
 }
 // ─────────────────────────────────────────────────────────────────
 
