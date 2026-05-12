@@ -96,20 +96,39 @@ const ENGINE_MODEL: Record<string, string> = {
   'kling':       'kling-v1-6',         // Kling 1.6
 }
 
-// ── Kling 에러 코드 → 한국어 메시지 ──
+// ── Kling 에러 → 한국어 (message 우선 매칭) ──
 function formatKlingError(status: number, body: string): string {
   try {
     const j = JSON.parse(body)
     const code = j.code
-    const msg = j.message ?? body
-    const map: Record<number, string> = {
-      1201: 'Kling 모델을 지원하지 않습니다 — 다른 엔진을 사용해주세요.',
-      1301: '컨텐츠 안전 검열 — 프롬프트에 부적절한 내용이 있어요.',
-      1401: '계정 잔액 부족.',
-      1501: '동시 작업 한도 초과 — 잠시 후 다시 시도.',
+    const msg = String(j.message ?? body)
+    const msgLc = msg.toLowerCase()
+    if (/balance.*not enough|insufficient.*balance|insufficient.*credit/i.test(msgLc)) {
+      return `Kling: 잔액이 부족합니다. Kling 계정 크레딧을 충전해주세요. (status ${status})`
     }
-    const friendly = code && map[code as number] ? map[code as number] : msg
-    return `Kling ${status} (code ${code ?? '?'}): ${friendly}`
+    if (/model.*not.*support/i.test(msgLc)) {
+      return `Kling: 선택한 모델을 사용할 수 없어요. 다른 엔진을 사용해보세요. (status ${status})`
+    }
+    if (/risk|safety|content.*polic|sensitive/i.test(msgLc)) {
+      return `Kling: 안전 검열 — 프롬프트에 부적절한 내용이 포함됐을 수 있어요. (status ${status})`
+    }
+    if (/auth|unauthorized|invalid.*key/i.test(msgLc)) {
+      return `Kling: 인증 실패 — API 키 확인. (status ${status})`
+    }
+    if (/rate.*limit|too many|quota/i.test(msgLc)) {
+      return `Kling: 호출 한도 초과 — 잠시 후 다시 시도. (status ${status})`
+    }
+    const codeMap: Record<number, string> = {
+      1102: '잔액 부족 — Kling 계정 크레딧 충전 필요',
+      1201: '지원되지 않는 모델',
+      1301: '컨텐츠 안전 검열',
+      1401: '계정 잔액 부족',
+      1501: '동시 작업 한도 초과',
+    }
+    if (typeof code === 'number' && codeMap[code]) {
+      return `Kling (code ${code}): ${codeMap[code]}`
+    }
+    return `Kling ${status}${code ? ' (code ' + code + ')' : ''}: ${msg}`
   } catch {
     return `Kling ${status}: ${body.slice(0, 300)}`
   }

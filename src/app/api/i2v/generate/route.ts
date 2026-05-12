@@ -39,29 +39,51 @@ function mapKlingModelName(engine: string): string {
   }
 }
 
-// ── Kling 에러 코드 → 한국어 메시지 ──
+// ── Kling 에러 → 한국어 메시지 (message 우선) ──
+// Kling 응답 예: {"code":1102,"message":"Account balance not enough"}
+// code 가 동일해도 message 가 다른 경우가 있어 message 매칭 우선.
 function formatKlingError(status: number, body: string): string {
   try {
     const j = JSON.parse(body)
     const code = j.code
-    const msg = j.message ?? body
-    const map: Record<number, string> = {
-      1000: '인증 실패 — API 키를 확인해주세요.',
-      1001: '인증 만료 — JWT 토큰을 갱신해주세요.',
-      1101: '요청 형식 오류 — 파라미터를 확인해주세요.',
-      1102: '필수 파라미터 누락.',
-      1103: '파라미터 값이 허용 범위를 벗어남.',
-      1201: 'Kling 모델을 지원하지 않습니다 — 다른 엔진(Seedance 등)을 사용하거나 관리자에게 문의해주세요.',
-      1202: '이미지 형식 오류 — JPG/PNG 권장.',
-      1203: '이미지가 너무 크거나 작음 (해상도/용량).',
-      1301: '컨텐츠 안전 검열 — 프롬프트나 이미지에 부적절한 내용이 포함되어 있어요.',
-      1401: '계정 잔액 부족.',
-      1402: '월 한도 초과.',
-      1501: '동시 작업 한도 초과 — 잠시 후 다시 시도해주세요.',
-      1502: '서비스 일시 점검.',
+    const msg = String(j.message ?? body)
+    const msgLc = msg.toLowerCase()
+    // 1) message 키워드 우선 매칭
+    if (/balance.*not enough|insufficient.*balance|insufficient.*credit/i.test(msgLc)) {
+      return `Kling: 잔액이 부족합니다. Kling 계정에 크레딧을 충전해주세요. (status ${status})`
     }
-    const friendly = code && map[code as number] ? map[code as number] : msg
-    return `Kling ${status} (code ${code ?? '?'}): ${friendly}`
+    if (/model.*not.*support/i.test(msgLc)) {
+      return `Kling: 선택한 모델을 사용할 수 없어요. 다른 엔진(Seedance 등)을 사용해보세요. (status ${status})`
+    }
+    if (/risk|safety|content.*polic|sensitive/i.test(msgLc)) {
+      return `Kling: 안전 검열 — 프롬프트나 이미지에 부적절한 내용이 포함됐을 수 있어요. (status ${status})`
+    }
+    if (/auth|unauthorized|invalid.*key/i.test(msgLc)) {
+      return `Kling: 인증 실패 — API 키를 확인해주세요. (status ${status})`
+    }
+    if (/rate.*limit|too many|quota/i.test(msgLc)) {
+      return `Kling: 호출 한도 초과 — 잠시 후 다시 시도해주세요. (status ${status})`
+    }
+    if (/image.*format|invalid.*image|unsupported.*image/i.test(msgLc)) {
+      return `Kling: 이미지 형식 오류 — JPG/PNG 권장. (status ${status})`
+    }
+    if (/timeout|deadline/i.test(msgLc)) {
+      return `Kling: 응답 시간 초과 — 다시 시도해주세요. (status ${status})`
+    }
+    // 2) code fallback
+    const codeMap: Record<number, string> = {
+      1000: '인증 실패 — API 키 확인',
+      1102: '잔액 부족 — Kling 계정 크레딧 충전 필요',
+      1201: '지원되지 않는 모델',
+      1301: '컨텐츠 안전 검열',
+      1401: '계정 잔액 부족',
+      1501: '동시 작업 한도 초과',
+    }
+    if (typeof code === 'number' && codeMap[code]) {
+      return `Kling (code ${code}): ${codeMap[code]}`
+    }
+    // 3) raw message 반환
+    return `Kling ${status}${code ? ' (code ' + code + ')' : ''}: ${msg}`
   } catch {
     return `Kling ${status}: ${body.slice(0, 300)}`
   }
