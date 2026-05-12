@@ -1,6 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateViaOpenAI } from '@/lib/openai-images'
+import { markAttemptFailed } from '@/lib/attemptStatus'
+
+// ── NanoBanana (Gemini) 에러 코드 → 한국어 친화적 메시지 ──
+function formatNanobananaError(status: number, body: string): string {
+  try {
+    const j = JSON.parse(body)
+    const errStatus = j?.error?.status ?? ''
+    const errMsg = j?.error?.message ?? body
+    const map: Record<string, string> = {
+      UNAVAILABLE:        'Gemini 서비스가 일시적으로 사용 불가능합니다. 잠시 후 다시 시도해주세요.',
+      RESOURCE_EXHAUSTED: '호출 한도 초과 — 분당 호출량이 너무 많습니다. 잠시 후 다시 시도해주세요.',
+      DEADLINE_EXCEEDED:  '응답 시간 초과 — 다시 시도해주세요.',
+      INTERNAL:           'Gemini 내부 오류 — 잠시 후 다시 시도해주세요.',
+      INVALID_ARGUMENT:   '요청 형식 오류 — 프롬프트나 레퍼런스 이미지를 확인해주세요.',
+      PERMISSION_DENIED:  '권한 없음 — API 키 또는 결제 정보를 확인해주세요.',
+      FAILED_PRECONDITION:'프롬프트가 안전 정책에 위배되었을 수 있어요.',
+    }
+    const friendly = map[errStatus] ?? errMsg
+    return `NanoBanana ${status} (${errStatus || 'ERROR'}): ${friendly}`
+  } catch {
+    return `NanoBanana ${status}: ${body.slice(0, 300)}`
+  }
+}
 
 const ASPECT_RATIO_MAP: Record<string, string> = {
   '16:9': '16:9', '9:16': '9:16', '1:1': '1:1',
@@ -83,43 +106,58 @@ async function generateViaNanobanana(
     return supported.includes(aspectRatio) ? aspectRatio : '16:9'
   })()
 
-  // 나노바나나는 1회 호출에 이미지 1장 → count만큼 병렬 호출
-  const calls = Array.from({ length: count }, () =>
-    fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent',
-      {
-        method: 'POST',
-        headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts }],
-          generationConfig: {
-            responseModalities: ['TEXT', 'IMAGE'],
-            imageConfig: { aspectRatio: geminiRatio },
-          },
-        }),
-      }
-    )
-  )
-
-  const responses = await Promise.allSettled(calls)
-  const images: Array<{ b64: string; mimeType: string }> = []
-
-  for (const result of responses) {
-    if (result.status === 'rejected') continue
-    const res = result.value
-    if (!res.ok) {
-      const body = await res.text()
-      throw new Error(`NanoBanana ${res.status}: ${body}`)
-    }
-    const json = await res.json()
-    for (const cand of json.candidates ?? []) {
-      for (const part of cand.content?.parts ?? []) {
-        if (part.inlineData?.data) {
-          images.push({ b64: part.inlineData.data, mimeType: part.inlineData.mimeType ?? 'image/png' })
+  // 단일 호출 — 503/429/500 자동 재시도 (지수 백오프, 최대 3회)
+  const reqBody = JSON.stringify({
+    contents: [{ parts }],
+    generationConfig: {
+      responseModalities: ['TEXT', 'IMAGE'],
+      imageConfig: { aspectRatio: geminiRatio },
+    },
+  })
+  async function callOnce(callNo: number): Promise<{ b64: string; mimeType: string } | null> {
+    let lastError = ''
+    for (let retry = 0; retry < 3; retry++) {
+      const res = await fetch(
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent',
+        { method: 'POST', headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' }, body: reqBody },
+      )
+      if (res.ok) {
+        const json = await res.json()
+        for (const cand of json.candidates ?? []) {
+          for (const part of cand.content?.parts ?? []) {
+            if (part.inlineData?.data) {
+              return { b64: part.inlineData.data, mimeType: part.inlineData.mimeType ?? 'image/png' }
+            }
+          }
         }
+        return null  // 200 OK 인데 이미지 없음 — 빈 응답 (검열 가능성)
       }
+      const body = await res.text()
+      lastError = body
+      // 재시도 가능한 코드: 503 / 429 / 500
+      if (res.status === 503 || res.status === 429 || res.status === 500) {
+        const wait = 1500 * Math.pow(2, retry)  // 1.5s → 3s → 6s
+        console.warn(`[NanoBanana] call#${callNo} status=${res.status}, retry ${retry + 1}/3 in ${wait}ms`)
+        await new Promise(r => setTimeout(r, wait))
+        continue
+      }
+      throw new Error(formatNanobananaError(res.status, body))
     }
+    throw new Error(formatNanobananaError(503, lastError || '{}'))
   }
+
+  const results = await Promise.allSettled(
+    Array.from({ length: count }, (_, i) => callOnce(i + 1))
+  )
+  const images: Array<{ b64: string; mimeType: string }> = []
+  const errors: string[] = []
+  for (const r of results) {
+    if (r.status === 'fulfilled' && r.value) images.push(r.value)
+    else if (r.status === 'rejected') errors.push(r.reason instanceof Error ? r.reason.message : String(r.reason))
+  }
+  // 전부 실패면 첫 에러 throw, 부분 성공이면 진행
+  if (images.length === 0 && errors.length > 0) throw new Error(errors[0])
+  if (errors.length > 0) console.warn(`[NanoBanana] ${images.length}/${count} 성공 — 일부 실패: ${errors[0].slice(0, 150)}`)
   return images
 }
 
@@ -283,7 +321,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[T2I] generate 실패:', msg)
-    await admin.from('prompt_attempts').update({ status: 'failed' }).eq('id', attemptId)
+    await markAttemptFailed(admin, attemptId, msg)
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
