@@ -41,19 +41,24 @@ async function callKlingT2V(
 
   const jwt = generateKlingJWT(apiKey, apiSecret)
 
-  // 1) 생성 요청
+  // 1) 생성 요청 — Kling T2V API
+  //   duration: "5" | "10" STRING, mode: v2 계열은 'pro' 만
+  const isV2Model = /^kling-v2/.test(modelName)
+  const durStr = String(Math.max(5, Math.min(10, duration ?? 5)))
+  const safeDuration = durStr === '5' || durStr === '10' ? durStr : '5'
+  const body: Record<string, any> = {
+    model_name:   modelName,
+    prompt:       prompt.trim().slice(0, 2500),
+    duration:     safeDuration,
+    mode:         isV2Model ? 'pro' : mode,
+    cfg_scale:    cfgScale,
+    aspect_ratio: aspectRatio,
+  }
+  if (negativePrompt) body.negative_prompt = negativePrompt
   const createRes = await fetch(`${baseUrl}/v1/videos/text2video`, {
     method:  'POST',
     headers: { 'Authorization': `Bearer ${jwt}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model_name:      modelName,
-      prompt,
-      negative_prompt: negativePrompt || undefined,
-      cfg_scale:       cfgScale,
-      mode,
-      duration,
-      aspect_ratio:    aspectRatio,
-    }),
+    body: JSON.stringify(body),
   })
 
   if (!createRes.ok) {

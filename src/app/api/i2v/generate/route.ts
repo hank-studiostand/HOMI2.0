@@ -85,15 +85,29 @@ async function generateKlingI2V(params: {
   const jwt = generateKlingJWT(apiKey, apiSecret)
 
   // 1) 생성 요청 — 엔진 별 모델 매핑
-  // image: start frame (필수), image_tail: end frame (선택)
+  // Kling I2V API 필수 파라미터:
+  //   model_name (string), image (URL/base64),
+  //   duration ("5"|"10" STRING, 숫자 X), mode (v2계열은 'pro' 만)
+  // 선택: prompt (string, 빈 문자열 금지), negative_prompt, cfg_scale (0~1),
+  //   image_tail (end frame URL)
+  // 주의: aspect_ratio 는 I2V 에서는 무시됨 (image 가 비율 결정) — 보내면 1102 가능
+  const modelName = params.modelName ?? 'kling-v1-6'
+  const isV2Model = /^kling-v2/.test(modelName)
+  // duration 은 반드시 string. Kling 허용값: "5" | "10"
+  const durStr = String(Math.max(5, Math.min(10, params.duration ?? 5)))
+  const safeDuration = durStr === '5' || durStr === '10' ? durStr : '5'
+
   const body: Record<string, any> = {
-    model_name:   params.modelName ?? 'kling-v2',
-    image:        params.sourceImageUrl,
-    prompt:       params.prompt,
-    duration:     params.duration,
-    aspect_ratio: params.aspectRatio,
-    cfg_scale:    0.5,
-    mode:         'std',
+    model_name: modelName,
+    image:      params.sourceImageUrl,
+    duration:   safeDuration,
+    // v2 계열은 mode='pro' 만 지원, v1.6 은 'std' / 'pro' 둘 다
+    mode:       isV2Model ? 'pro' : 'std',
+    cfg_scale:  0.5,
+  }
+  // prompt 는 빈 문자열이면 보내지 않음 (1102 회피)
+  if (params.prompt && params.prompt.trim().length > 0) {
+    body.prompt = params.prompt.trim().slice(0, 2500)
   }
   if (params.endImageUrl) {
     body.image_tail = params.endImageUrl
