@@ -5,7 +5,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import {
   Plus, ChevronDown, Sparkles, History as HistoryIcon, X,
-  Image as ImageIcon, Pencil, RotateCw, Trash2, Loader2, AlertCircle, Check,
+  Image as ImageIcon, Pencil, RotateCw, Trash2, Loader2, AlertCircle, Check, Download,
 } from 'lucide-react'
 import AssetUploadButton from './AssetUploadButton'
 
@@ -31,6 +31,26 @@ const MODELS = [
   { value: 'midjourney', label: 'Midjourney',      initial: 'M' },
 ]
 const RATIOS = ['1:1', '3:4', '4:3', '16:9', '9:16']
+// '16:9' → '16/9' CSS aspect-ratio 변환
+function ratioToCss(r?: string): string {
+  if (!r) return '1/1'
+  const [w, h] = r.split(':')
+  return (w && h) ? `${w}/${h}` : '1/1'
+}
+// 다운로드 핸들러 — fetch 로 가져와 blob 다운로드 (CORS 우회 위해 프록시 사용 가능)
+async function downloadImage(url: string, filename: string) {
+  try {
+    const res = await fetch(url)
+    const blob = await res.blob()
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = filename
+    document.body.appendChild(a); a.click()
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 300)
+  } catch (err) {
+    alert('다운로드 실패: ' + (err instanceof Error ? err.message : String(err)))
+  }
+}
 const COUNTS = [1, 2, 3, 4] as const
 const QUALITIES = ['1K', '2K', '4K'] as const
 
@@ -173,9 +193,73 @@ export default function ImageStudio({
             onDelete={onDeleteLatest}
             onZoom={onZoomOutput}
             lastError={lastError}
+            ratio={ratio}
           />
         ) : (
           <Hero thumbs={heroThumbs} />
+        )}
+
+        {/* 인라인 히스토리 — 스크롤 가능한 그리드 (Hero 아래 / Result 아래 모두 표시) */}
+        {recentOutputs.length > 0 && (
+          <div style={{ marginTop: 32, maxWidth: 1180, margin: '32px auto 0', width: '100%' }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
+              paddingBottom: 8, borderBottom: '1px solid var(--line)',
+            }}>
+              <HistoryIcon size={14} style={{ color: 'var(--accent)' }} />
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-2)' }}>이미지 히스토리</span>
+              <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>{recentOutputs.length}장</span>
+            </div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+              gap: 12,
+            }}>
+              {recentOutputs.map(o => (
+                <div key={o.id} style={{ position: 'relative' }}>
+                  <button
+                    onClick={() => { if (o.url && onZoomOutput) onZoomOutput(o.id) }}
+                    style={{
+                      padding: 0, border: '1px solid var(--line)',
+                      borderRadius: 10, overflow: 'hidden',
+                      background: 'var(--bg-2)', cursor: 'pointer', display: 'block',
+                      width: '100%', aspectRatio: '1',
+                    }}
+                    title={o.prompt ?? ''}
+                  >
+                    {o.url ? (
+                      <img src={o.url} alt='' style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink-5)', fontSize: 12 }}>생성 중</div>
+                    )}
+                    {o.engine && (
+                      <span style={{
+                        position: 'absolute', bottom: 6, left: 6,
+                        padding: '2px 6px', borderRadius: 4,
+                        fontSize: 9, fontWeight: 600,
+                        background: 'rgba(0,0,0,0.6)', color: '#fff',
+                      }}>{o.engine}</span>
+                    )}
+                  </button>
+                  {o.url && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); downloadImage(o.url!, `image_${o.id}.png`) }}
+                      title='다운로드'
+                      style={{
+                        position: 'absolute', top: 6, right: 6,
+                        width: 26, height: 26, padding: 0, borderRadius: 999,
+                        background: 'rgba(0,0,0,0.6)', color: '#fff',
+                        border: 'none', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <Download size={12} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </div>
 
@@ -422,7 +506,7 @@ export default function ImageStudio({
 
 // ── 결과 영역 — 최근 attempt + 상태 + Retry/Delete ──
 function ResultArea({
-  attempt, outputs, isFailed, isGenerating, onRetry, onDelete, onZoom, lastError,
+  attempt, outputs, isFailed, isGenerating, onRetry, onDelete, onZoom, lastError, ratio,
 }: {
   attempt: LatestAttempt
   outputs: Array<{ id: string; url: string | null; archived: boolean }>
@@ -432,6 +516,7 @@ function ResultArea({
   onDelete?: () => void
   onZoom?: (id: string) => void
   lastError?: string | null
+  ratio?: string
 }) {
   return (
     <div style={{ flex: 1, display: 'flex', gap: 18, alignItems: 'flex-start', maxWidth: 1180, margin: '0 auto', width: '100%' }}>
@@ -500,25 +585,45 @@ function ResultArea({
             gap: 10,
           }}>
             {outputs.map(o => (
-              <button key={o.id}
-                onClick={() => o.url && onZoom?.(o.id)}
-                style={{
-                  padding: 0, border: '1px solid var(--line)',
-                  borderRadius: 14, overflow: 'hidden',
-                  background: 'var(--bg-2)', cursor: 'pointer', display: 'block',
-                  aspectRatio: outputs.length === 1 ? '4/5' : '1',
-                }}
-              >
-                {o.url ? (
-                  <img src={o.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  <div style={{
-                    width: '100%', height: '100%',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: 'var(--ink-5)', fontSize: 12,
-                  }}>생성 중</div>
+              <div key={o.id} style={{ position: 'relative' }}>
+                <button
+                  onClick={() => o.url && onZoom?.(o.id)}
+                  style={{
+                    padding: 0, border: '1px solid var(--line)',
+                    borderRadius: 14, overflow: 'hidden',
+                    background: 'var(--bg-2)', cursor: 'pointer', display: 'block',
+                    width: '100%', aspectRatio: ratioToCss(ratio),
+                  }}
+                  title="클릭 = 확대 보기"
+                >
+                  {o.url ? (
+                    <img src={o.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <div style={{
+                      width: '100%', height: '100%',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: 'var(--ink-5)', fontSize: 12,
+                    }}>생성 중</div>
+                  )}
+                </button>
+                {/* 다운로드 버튼 — 우상단 오버레이 */}
+                {o.url && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); downloadImage(o.url!, `image_${o.id}.png`) }}
+                    title="다운로드"
+                    style={{
+                      position: 'absolute', top: 8, right: 8,
+                      width: 32, height: 32, padding: 0, borderRadius: 999,
+                      background: 'rgba(0,0,0,0.6)', color: '#fff',
+                      border: 'none', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      backdropFilter: 'blur(4px)',
+                    }}
+                  >
+                    <Download size={14} />
+                  </button>
                 )}
-              </button>
+              </div>
             ))}
           </div>
         ) : (

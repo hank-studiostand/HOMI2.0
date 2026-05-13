@@ -33,6 +33,7 @@ export default function ImageStudioPage() {
   const [promptDraft, setPromptDraft] = useState('')
   const [engine, setEngine] = useState('nanobanana')
   const [ratio, setRatio] = useState('16:9')
+  const [lightboxOutputId, setLightboxOutputId] = useState<string | null>(null)
   const [count, setCount] = useState(4)
   const [quality, setQuality] = useState<'1K' | '2K' | '4K'>('1K')
   const [referenceUrls, setReferenceUrls] = useState<string[]>([])  // 업로드된 레퍼런스 URL
@@ -75,14 +76,15 @@ export default function ImageStudioPage() {
     const sceneIds = (sc ?? []).map((s: any) => s.id)
     // metadata.source='studio' 필터 — Studio 페이지 전용 라이브러리
     // project_id 로 필터 — Studio 결과만
+    // Studio 결과 + 프로젝트 전체 t2i 합쳐서 로드 — 오래된 attempt 도 보이도록
+    // (Z71 이전 attempt 는 metadata.source 가 없음 → 그것들도 표시)
     let q = supabase
       .from('prompt_attempts')
       .select('id, type, engine, prompt, status, created_at, scene_id, project_id, metadata, outputs:attempt_outputs(id, archived, asset:assets(url, type, name), created_at)')
       .eq('project_id', projectId)
       .eq('type', 't2i')
-      .eq('metadata->>source', 'studio')
       .order('created_at', { ascending: false })
-      .limit(60)
+      .limit(120)
     const { data: at, error } = await q
     if (error) {
       // metadata 미적용 환경 — 폴백 (스튜디오는 본 마이그레이션 후에만 정상)
@@ -293,8 +295,89 @@ export default function ImageStudioPage() {
           onRetry={() => void runGenerate()}
           onDeleteLatest={() => latestAttempt && deleteAttempt(latestAttempt.id)}
           lastError={lastError}
+          onZoomOutput={(id) => setLightboxOutputId(id)}
         />
       </div>
+
+      {/* Lightbox — 이미지 결과 확대 보기 */}
+      {lightboxOutputId && (() => {
+        const o = outputs.find(x => x.id === lightboxOutputId)
+        const a = attempts.find(x => x.id === o?.attempt_id)
+        if (!o?.url) return null
+        return (
+          <div onClick={() => setLightboxOutputId(null)} style={{
+            position: 'fixed', inset: 0, zIndex: 300,
+            background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(8px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 'clamp(16px, 4vw, 48px)',
+          }}>
+            <div onClick={e => e.stopPropagation()} style={{
+              display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(280px, 1fr)',
+              gap: 16, width: '100%', maxWidth: 1400, maxHeight: 'calc(100vh - 80px)',
+            }}>
+              <div style={{
+                background: '#000', borderRadius: 12, overflow: 'hidden',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                minHeight: 300, position: 'relative',
+              }}>
+                <img src={o.url} alt="" style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 120px)', objectFit: 'contain' }} />
+                <button
+                  onClick={async () => {
+                    if (!o.url) return
+                    try {
+                      const res = await fetch(o.url)
+                      const blob = await res.blob()
+                      const link = document.createElement('a')
+                      link.href = URL.createObjectURL(blob)
+                      link.download = `image_${o.id}.png`
+                      document.body.appendChild(link); link.click()
+                      setTimeout(() => { URL.revokeObjectURL(link.href); link.remove() }, 300)
+                    } catch (err) { alert('다운로드 실패: ' + (err instanceof Error ? err.message : String(err))) }
+                  }}
+                  style={{
+                    position: 'absolute', bottom: 12, right: 12,
+                    padding: '8px 14px', borderRadius: 999,
+                    background: 'rgba(0,0,0,0.7)', color: '#fff',
+                    border: '1px solid rgba(255,255,255,0.2)', fontSize: 12, fontWeight: 600,
+                    cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
+                  }}
+                >
+                  ⤓ Download
+                </button>
+              </div>
+              <div style={{
+                background: 'var(--bg)', borderRadius: 12,
+                border: '1px solid var(--line)',
+                padding: 18, overflowY: 'auto',
+                display: 'flex', flexDirection: 'column', gap: 16,
+                maxHeight: 'calc(100vh - 80px)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.05em' }}>
+                    {(o.engine ?? 'image').toUpperCase()}
+                  </span>
+                  <span style={{ flex: 1 }} />
+                  <button onClick={() => setLightboxOutputId(null)} style={{
+                    padding: 6, background: 'var(--bg-2)', border: '1px solid var(--line)',
+                    borderRadius: 999, color: 'var(--ink-3)', cursor: 'pointer', fontSize: 11,
+                  }}>×</button>
+                </div>
+                {a?.prompt && (
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink-4)', letterSpacing: '0.05em', marginBottom: 6 }}>PROMPT</div>
+                    <div style={{
+                      fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.6,
+                      background: 'var(--bg-2)', border: '1px solid var(--line)',
+                      borderRadius: 8, padding: 10, whiteSpace: 'pre-wrap',
+                      maxHeight: 320, overflowY: 'auto',
+                    }}>{a.prompt}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

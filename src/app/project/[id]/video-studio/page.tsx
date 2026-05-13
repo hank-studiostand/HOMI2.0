@@ -154,14 +154,14 @@ export default function VideoStudioPage() {
 
   // Studio 결과 로드 함수 — useEffect + Realtime 양쪽에서 호출
   const loadStudioData = async () => {
+      // Studio + 프로젝트 전체 i2v 합쳐 로드 — 오래된 attempt 도 보이도록 (Z71 이전 attempt 는 source 없음)
       const tryStudio = await supabase
         .from('prompt_attempts')
         .select('id, prompt, engine, scene_id, project_id, type, metadata, status, created_at, outputs:attempt_outputs(id, archived, asset:assets(url, type, name), created_at)')
         .eq('project_id', projectId)
         .in('type', ['i2v'])
-        .eq('metadata->>source', 'studio')
         .order('created_at', { ascending: false })
-        .limit(80)
+        .limit(120)
       let rows: any[] = []
       if (tryStudio.error) {
         // 폴백 — metadata/project_id 컬럼 미적용 환경 (마이그레이션 미적용)
@@ -218,9 +218,24 @@ export default function VideoStudioPage() {
       setOutputs(flat)
   }
 
-  // 마운트 시 1회 로드
+  // 마운트 시 1회 로드 + 묵힌 generating attempt 자동 정리
   useEffect(() => {
-    void loadStudioData()
+    void (async () => {
+      // 30분 이상 묵힌 'generating' attempt 를 자동으로 'failed' 표시
+      // (Vercel maxDuration timeout 으로 죽은 케이스 복구)
+      try {
+        const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+        await supabase
+          .from('prompt_attempts')
+          .update({ status: 'failed', metadata: { source: 'studio', failureReason: '서버 응답 시간 초과 — 5분 안에 완료되지 않았어요. 다시 시도해주세요.' } })
+          .eq('project_id', projectId)
+          .eq('status', 'generating')
+          .lt('created_at', cutoff)
+      } catch (err) {
+        console.warn('[video-studio] stuck attempt cleanup failed:', err)
+      }
+      await loadStudioData()
+    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
