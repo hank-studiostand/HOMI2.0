@@ -265,12 +265,23 @@ export default function VideoStudioPage() {
     if (!draft) { alert('프롬프트를 입력해주세요.'); return }
 
     // 업로드된 이미지 element 도 reference 로 함께 보냄
-    const uploadedImgPreview = uploadedAssets.filter(a => a.kind === 'image' && a.url).length
-    const hasAnyImgRef = refs.length > 0 || uploadedImgPreview > 0
-    // R2V 가능 조건: Seedance + (rootAsset refs 또는 업로드 이미지 elements) 가 1+
-    const isR2V = engine === 'seedance-2' && hasAnyImgRef && !sourceImageUrl
+    const uploadedImgUrlsAll = uploadedAssets.filter(a => a.kind === 'image' && a.url).map(a => a.url)
+    const hasAnyImgRef = refs.length > 0 || uploadedImgUrlsAll.length > 0
+    const isKling = engine === 'kling' || engine === 'kling3' || engine === 'kling3-omni'
+
+    // Kling 은 R2V 미지원 — elements 만 있을 때 첫 element 를 자동 startFrame 으로 승격
+    // (UI 에서는 startFrame 미설정처럼 보이지만 라우팅 시점에 보정)
+    let effectiveStartFrame: string | null = sourceImageUrl
+    let autoPromotedStartFrame = false
+    if (!effectiveStartFrame && isKling && uploadedImgUrlsAll.length > 0) {
+      effectiveStartFrame = uploadedImgUrlsAll[0]
+      autoPromotedStartFrame = true
+    }
+
+    // R2V 가능 조건: Seedance + (rootAsset refs 또는 업로드 이미지 elements) 가 1+ + startFrame 없음
+    const isR2V = engine === 'seedance-2' && hasAnyImgRef && !effectiveStartFrame
     // T2V — startFrame 없고 어떤 reference 도 없을 때만
-    const useT2V = !sourceImageUrl && !hasAnyImgRef
+    const useT2V = !effectiveStartFrame && !hasAnyImgRef
     const studioMode: 't2v' | 'r2v' | 'i2v' = useT2V ? 't2v' : isR2V ? 'r2v' : 'i2v'
 
     setGenerating(true)
@@ -285,7 +296,8 @@ export default function VideoStudioPage() {
           metadata: {
             source: 'studio', mode: studioMode,
             duration, ratio, resolution,
-            hasStartFrame: !!sourceImageUrl,
+            hasStartFrame: !!effectiveStartFrame,
+            autoPromotedStartFrame,
             hasEndFrame:   !!endFrameUrl,
             refCount: refs.length,
             // 결과 라이트박스에서 어떤 elements 가 쓰였는지 표시하기 위해 저장
@@ -338,7 +350,7 @@ export default function VideoStudioPage() {
             }
           : {
               attemptId: attempt.id, prompt: draft, engine,
-              sourceImageUrl,
+              sourceImageUrl: effectiveStartFrame,
               endFrameUrl: endFrameUrl ?? undefined,
               projectId, sceneId: null,
               duration, aspectRatio: ratio, resolution, generateAudio: audioOn,
