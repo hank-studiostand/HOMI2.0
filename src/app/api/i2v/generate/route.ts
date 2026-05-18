@@ -4,10 +4,10 @@ import crypto from 'crypto'
 import { generateSeedanceI2V, generateSeedanceT2V } from '@/lib/seedance'
 import { markAttemptFailed } from '@/lib/attemptStatus'
 
-// Seedance 15초 영상은 폴링이 2~4분 걸려서 Vercel 기본(10s/60s) 안에 안 끝남.
-// Pro plan 최대치 300s로 설정.
+// 영상 폴링 — 1080p 10s Kling/Seedance 는 5~8분 걸릴 수 있음.
+// Vercel Pro Node 함수 최대치 800s (13분 20초) 로 설정.
 export const runtime = 'nodejs'
-export const maxDuration = 300
+export const maxDuration = 800
 
 // ── Kling JWT (HS256) ─────────────────────────────────────────────────────────
 function generateKlingJWT(apiKey: string, apiSecret: string): string {
@@ -157,8 +157,8 @@ async function generateKlingI2V(params: {
   const taskId = createData.data?.task_id
   if (!taskId) throw new Error(`Kling: task_id not returned. Response: ${createText}`)
 
-  // 2) 폴링 (최대 5분, 10초 간격)
-  for (let i = 0; i < 30; i++) {
+  // 2) 폴링 — Vercel maxDuration 800s 한도 내 (70회 × 10초 = ~11분 40초, 마진 100s)
+  for (let i = 0; i < 70; i++) {
     await new Promise(r => setTimeout(r, 10_000))
 
     const pollJwt = generateKlingJWT(apiKey, apiSecret)
@@ -180,7 +180,7 @@ async function generateKlingI2V(params: {
     }
   }
 
-  throw new Error('Kling I2V: polling timeout after 5 minutes')
+  throw new Error('Kling I2V: polling timeout after ~11 minutes')
 }
 
 // ── Route Handler ─────────────────────────────────────────────────────────────

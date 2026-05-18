@@ -4,9 +4,9 @@ import crypto from 'crypto'
 import { generateSeedanceT2V } from '@/lib/seedance'
 import { markAttemptFailed } from '@/lib/attemptStatus'
 
-// Seedance 영상 폴링 길이 (15s 영상 ~ 3분) — Vercel Pro maxDuration 300s
+// 영상 폴링 — Vercel Pro Node 함수 800s (13분 20초) 로 설정
 export const runtime = 'nodejs'
-export const maxDuration = 300
+export const maxDuration = 800
 
 // ── Kling JWT (HS256) ──────────────────────────────────────────────
 function generateKlingJWT(apiKey: string, apiSecret: string): string {
@@ -70,8 +70,8 @@ async function callKlingT2V(
   const taskId     = createData.data?.task_id
   if (!taskId) throw new Error(`Kling (${modelName}): task_id not returned — ${JSON.stringify(createData)}`)
 
-  // 2) 폴링 (최대 5분, 10초 간격)
-  for (let i = 0; i < 30; i++) {
+  // 2) 폴링 — Vercel 800s 한도 내 (70회 × 10초)
+  for (let i = 0; i < 70; i++) {
     await new Promise(r => setTimeout(r, 10_000))
     const newJwt  = generateKlingJWT(apiKey, apiSecret)
     const pollRes = await fetch(`${baseUrl}/v1/videos/text2video/${taskId}`, {
@@ -83,7 +83,7 @@ async function callKlingT2V(
     if (status === 'succeed') return pollData.data?.task_result?.videos?.[0]?.url ?? ''
     if (status === 'failed')  throw new Error(`Kling (${modelName}) task failed: ${pollData.data?.task_status_msg ?? ''}`)
   }
-  throw new Error(`Kling (${modelName}): polling timeout after 5 minutes`)
+  throw new Error(`Kling (${modelName}): polling timeout after ~11 minutes`)
 }
 
 // ─────────────────────────────────────────────────────────────────
