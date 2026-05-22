@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { acceptPendingInvitations } from '@/lib/invitations'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, Film, Users, Clock, Layers, LogOut } from 'lucide-react'
@@ -11,6 +12,12 @@ export default async function DashboardPage() {
   if (!user) redirect('/auth')
 
   const admin = createAdminClient()
+
+  // 이메일로 초대받았지만 아직 합류 안 한 프로젝트 자동 수락 (catch-all)
+  // — 초대 메일 토큰을 거치지 않고 그냥 가입/로그인해도 멤버로 합류시킨다.
+  if (user.email) {
+    try { await acceptPendingInvitations(admin, user.id, user.email) } catch {}
+  }
 
   // 내가 멤버인 project_id 목록 조회
   const { data: memberships } = await admin

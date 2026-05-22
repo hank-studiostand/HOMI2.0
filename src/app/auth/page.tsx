@@ -15,6 +15,34 @@ export default function AuthPage() {
   const router = useRouter()
   const supabase = createClient()
 
+  // 로그인/가입 직후: 초대 토큰(또는 이메일 매칭) 수락 후 적절한 곳으로 이동
+  async function postAuthRedirect() {
+    let token: string | null = null
+    let projectParam: string | null = null
+    try {
+      const sp = new URLSearchParams(window.location.search)
+      token = sp.get('invitation')
+      projectParam = sp.get('project')
+    } catch {}
+
+    let redirectProjectId: string | null = projectParam
+    try {
+      const r = await fetch('/api/invitations/accept', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      })
+      if (r.ok) {
+        const j = await r.json()
+        redirectProjectId = j.redirectProjectId ?? projectParam ?? null
+      }
+    } catch {}
+
+    window.location.href = redirectProjectId
+      ? `/project/${redirectProjectId}/script`
+      : '/dashboard'
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
@@ -35,13 +63,13 @@ export default function AuthPage() {
         setLoading(false)
         return
       }
-      window.location.href = '/dashboard'
+      await postAuthRedirect()
     } else if (mode === 'signup') {
       const { data, error } = await supabase.auth.signUp({ email, password })
       if (error) { setError(error.message); setLoading(false); return }
       if (data.session) {
         // 자동 로그인됨 (이메일 확인 비활성)
-        window.location.href = '/dashboard'
+        await postAuthRedirect()
       } else {
         // 메일 확인 필요
         setError(null); setLoading(false)
