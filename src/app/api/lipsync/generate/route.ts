@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { markAttemptFailed } from '@/lib/attemptStatus'
 
 // 실패 시 공통 처리: DB에 failed 기록 + 에러 응답
 async function recordFailure(
@@ -9,10 +10,7 @@ async function recordFailure(
   detail: string,
 ) {
   console.error('[lipsync] ' + stage + ':', detail)
-  await supabase
-    .from('prompt_attempts')
-    .update({ status: 'failed' })
-    .eq('id', attemptId)
+  await markAttemptFailed(supabase, attemptId, stage + ': ' + detail)
   return NextResponse.json(
     { success: false, error: stage + ': ' + detail },
     { status: 500 },

@@ -25,17 +25,25 @@ function generateKlingJWT(apiKey: string, apiSecret: string): string {
 }
 
 // ── Kling 모델명 매핑 — Kling 공식 API model_name 형식 ──
-// API 가 받는 정확한 model_name: kling-v1, kling-v1-5, kling-v1-6, kling-v2-master, kling-v2-1-master
-// 코드 1201 "model is not supported" 방지
+// API 가 받는 model_name 예시:
+//   kling-v1 / kling-v1-5 / kling-v1-6  (1세대)
+//   kling-v2-master / kling-v2-1-master  (2.0/2.1)
+//   kling-v3-master / kling-v3            (3.0 — 신규)
+// ENV 변수로 override 가능 — 실제 Kling 응답 확인 후 조정 용
 function mapKlingModelName(engine: string): string {
   switch (engine) {
-    case 'kling3-omni': return 'kling-v2-1-master'  // 최신 Kling 2.1 (Omni 별도 모델 없음 — 통합 사용)
-    case 'kling3':      return 'kling-v2-1-master'  // 최신 Kling 2.1
-    case 'kling2':      return 'kling-v2-master'    // Kling 2.0
+    case 'kling3-omni':
+      return process.env.KLING_MODEL_V3_OMNI ?? process.env.KLING_MODEL_V3 ?? 'kling-v3-master'
+    case 'kling3':
+      return process.env.KLING_MODEL_V3 ?? 'kling-v3-master'
+    case 'kling2':
+      return process.env.KLING_MODEL_V2_1 ?? 'kling-v2-1-master'
     case 'kling1-6':
     case 'kling-1-6':
-    case 'kling':       return 'kling-v1-6'         // Kling 1.6
-    default:            return 'kling-v1-6'
+    case 'kling':
+      return 'kling-v1-6'
+    default:
+      return 'kling-v1-6'
   }
 }
 
@@ -114,7 +122,8 @@ async function generateKlingI2V(params: {
   //   image_tail (end frame URL)
   // 주의: aspect_ratio 는 I2V 에서는 무시됨 (image 가 비율 결정) — 보내면 1102 가능
   const modelName = params.modelName ?? 'kling-v1-6'
-  const isV2Model = /^kling-v2/.test(modelName)
+  // v2/v3 master 계열은 mode='pro' 만 지원, v1.6 은 std/pro 둘 다
+  const isNewModel = /^kling-v[23]/.test(modelName)
   // duration 은 반드시 string. Kling 허용값: "5" | "10"
   const durStr = String(Math.max(5, Math.min(10, params.duration ?? 5)))
   const safeDuration = durStr === '5' || durStr === '10' ? durStr : '5'
@@ -123,8 +132,7 @@ async function generateKlingI2V(params: {
     model_name: modelName,
     image:      params.sourceImageUrl,
     duration:   safeDuration,
-    // v2 계열은 mode='pro' 만 지원, v1.6 은 'std' / 'pro' 둘 다
-    mode:       isV2Model ? 'pro' : 'std',
+    mode:       isNewModel ? 'pro' : 'std',
     cfg_scale:  0.5,
   }
   // prompt 는 빈 문자열이면 보내지 않음 (1102 회피)

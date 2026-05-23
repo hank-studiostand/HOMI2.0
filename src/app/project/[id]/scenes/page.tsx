@@ -236,7 +236,7 @@ export default function ScenesPage() {
     setScenes(prev => prev.map(s => s.id === sceneId ? { ...s, selected_root_asset_image_ids: newSelection } : s))
   }
 
-  async function generateBulkMasterPrompts() {
+  async function generateBulkMasterPrompts(lang: 'en' | 'ko' = 'en') {
     setBulkGenerating(true)
     setBulkProgress(null)
     setBulkMessage(null)
@@ -247,7 +247,7 @@ export default function ScenesPage() {
       const res = await fetch('/api/prompts/master/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sceneIds, projectId }),
+        body: JSON.stringify({ sceneIds, projectId, lang }),
       })
       const data = await res.json()
 
@@ -568,7 +568,7 @@ export default function ScenesPage() {
             })}
           </div>
           <button
-            onClick={generateBulkMasterPrompts}
+            onClick={() => generateBulkMasterPrompts('en')}
             disabled={bulkGenerating || scenes.length === 0}
             className="flex items-center gap-1.5 disabled:opacity-50 transition-all"
             style={{
@@ -586,6 +586,25 @@ export default function ScenesPage() {
               : <Wand2 size={13} />
             }
             {bulkGenerating ? '생성 중...' : '마스터 프롬프트 일괄 생성'}
+          </button>
+          <button
+            onClick={() => generateBulkMasterPrompts('ko')}
+            disabled={bulkGenerating || scenes.length === 0}
+            className="flex items-center gap-1.5 disabled:opacity-50 transition-all"
+            style={{
+              padding: '7px 14px',
+              borderRadius: 'var(--r-md)',
+              fontSize: 13, fontWeight: 500,
+              background: 'var(--accent-soft)', color: 'var(--accent)',
+              border: '1px solid var(--accent-line)',
+            }}
+            title="씬 내용을 바탕으로 한국어 마스터 프롬프트를 일괄 생성"
+          >
+            {bulkGenerating
+              ? <Loader2 size={13} className="animate-spin" />
+              : <Wand2 size={13} />
+            }
+            {bulkGenerating ? '생성 중...' : '마스터 프롬프트 일괄 생성 (한글)'}
           </button>
           <button
             onClick={addScene}

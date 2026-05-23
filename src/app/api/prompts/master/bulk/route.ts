@@ -12,6 +12,7 @@ type SingleResult = { sceneId: string; ok: boolean; error?: string }
 async function generateOne(
   admin: ReturnType<typeof createAdminClient>,
   sceneId: string,
+  lang: 'en' | 'ko' = 'en',
 ): Promise<SingleResult> {
   // 1) scene + settings
   const { data: scene, error: sceneErr } = await admin
@@ -62,7 +63,7 @@ Technical settings:
 - Lighting: ${settings.lighting || 'natural'}
 - Notes: ${settings.notes || 'none'}
 
-Write a detailed image generation prompt in English.
+Write a detailed image generation prompt in ${lang === 'ko' ? 'Korean (한국어)' : 'English'}.${lang === 'ko' ? ' (서술 텍스트는 한국어로, 카메라/렌즈 전문 용어는 그대로 두세요.)' : ''}
 Requirements:
 - Describe exactly what is VISIBLE in the frame
 - Include camera angle, lens type, composition
@@ -132,13 +133,13 @@ async function runWithConcurrency<T>(
 }
 
 export async function POST(req: NextRequest) {
-  const { sceneIds, projectId } = await req.json() as { sceneIds: string[]; projectId: string }
+  const { sceneIds, projectId, lang = 'en' } = await req.json() as { sceneIds: string[]; projectId: string; lang?: 'en' | 'ko' }
   if (!Array.isArray(sceneIds) || sceneIds.length === 0) {
     return NextResponse.json({ error: 'sceneIds 필요' }, { status: 400 })
   }
   const admin = createAdminClient()
 
-  const results = await runWithConcurrency(sceneIds, (id) => generateOne(admin, id), CONCURRENCY)
+  const results = await runWithConcurrency(sceneIds, (id) => generateOne(admin, id, lang), CONCURRENCY)
 
   // 프로젝트 updated_at 갱신
   if (projectId) {

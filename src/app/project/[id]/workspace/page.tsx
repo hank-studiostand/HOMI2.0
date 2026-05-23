@@ -296,7 +296,7 @@ export default function WorkspacePage() {
 
   // 프롬프트 편집 상태 — 씬 진입 시 마스터 prefill, 사용자 편집 후엔 그대로 유지
   const [promptUserEdited, setPromptUserEdited] = useState(false)
-  const [optimizing, setOptimizing] = useState(false)
+  const [optimizing, setOptimizing] = useState<'en' | 'ko' | null>(null)
 
   // ── 마스터 프롬프트 인라인 편집/생성 ─────────────────
   const [mpEditing, setMpEditing] = useState(false)
@@ -1241,11 +1241,11 @@ export default function WorkspacePage() {
               await loadSceneData(active.id)
             }}
             optimizing={optimizing}
-            onOptimize={async () => {
+            onOptimize={async (lang?: 'en' | 'ko') => {
               if (!active) return
               const draft = genPromptDraft.trim()
               if (!draft) { alert('먼저 프롬프트를 입력하거나 마스터를 prefill 받아주세요.'); return }
-              setOptimizing(true)
+              setOptimizing(lang ?? 'en')
               try {
                 // 카메라 토큰
                 const camTokens: string[] = []
@@ -1291,6 +1291,7 @@ export default function WorkspacePage() {
                     type: genType,
                     engine: genEngine,
                     customEngineGuide: enginePresets[genEngine] ?? '',
+                    lang: lang ?? 'en',
                   }),
                 })
                 const j = await r.json()
@@ -1300,7 +1301,7 @@ export default function WorkspacePage() {
                   setPromptUserEdited(true)
                 }
               } finally {
-                setOptimizing(false)
+                setOptimizing(null)
               }
             }}
             onGenerate={async () => {
@@ -1459,7 +1460,17 @@ export default function WorkspacePage() {
                       requestBody: body,
                     })
                     alert(`생성 실패 (${r.status}):\n\n${errMsg}\n\n— 자세한 정보는 브라우저 콘솔을 확인하세요.`)
-                    await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attempt.id)
+                    // 서버가 markAttemptFailed 로 metadata.failureReason 머지함 — 클라는 fallback
+                    try {
+                      const { data: cur } = await supabase
+                        .from('prompt_attempts').select('metadata').eq('id', attempt.id).single()
+                      const prevMeta = (cur?.metadata && typeof cur.metadata === 'object') ? cur.metadata : {}
+                      await supabase.from('prompt_attempts')
+                        .update({ status: 'failed', metadata: { ...prevMeta, failureReason: `HTTP ${r.status}: ${errMsg.slice(0, 400)}` } })
+                        .eq('id', attempt.id)
+                    } catch {
+                      await supabase.from('prompt_attempts').update({ status: 'failed' }).eq('id', attempt.id)
+                    }
                     setOutputs(prev => prev.filter(o => o.attempt_id !== realAttemptId))
                     return
                   }
@@ -2425,8 +2436,8 @@ function GeneratePanel({
   onQuickDecide: (id: string, decision: 'approved' | 'revise_requested' | 'removed') => Promise<void> | void
   onQuickRate: (id: string, score: number) => Promise<void> | void
   onQuickReset?: (id: string) => Promise<void> | void
-  optimizing: boolean
-  onOptimize: () => Promise<void> | void
+  optimizing: 'en' | 'ko' | null
+  onOptimize: (lang?: 'en' | 'ko') => Promise<void> | void
   onSavePromptToDb?: (content: string) => Promise<void> | void
   onOpenLibPicker?: () => void
   onLocalBaseUpload?: (file: File) => Promise<void> | void
@@ -3441,24 +3452,44 @@ function GeneratePanel({
 
         {/* 액션 묶음 — 최적화 + 생성 */}
         <div className="flex flex-col" style={{ gap: 8, marginTop: 18 }}>
-          <button
-            onClick={() => onOptimize()}
-            disabled={optimizing || !promptDraft.trim()}
-            className="flex items-center justify-center gap-2"
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              borderRadius: 'var(--r-md)',
-              fontSize: 12, fontWeight: 500,
-              background: 'var(--accent-soft)', color: 'var(--accent)',
-              border: '1px solid var(--accent-line)',
-              opacity: (optimizing || !promptDraft.trim()) ? 0.5 : 1,
-            }}
-            title="현재 프롬프트 + 화면비 + 구도 + 레퍼런스를 합쳐 AI가 다듬어줍니다"
-          >
-            {optimizing ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-            {optimizing ? '최적화 중...' : '프롬프트 최적화 (옵션 통합)'}
-          </button>
+          <div className="flex" style={{ gap: 8 }}>
+            <button
+              onClick={() => onOptimize('en')}
+              disabled={!!optimizing || !promptDraft.trim()}
+              className="flex items-center justify-center gap-2"
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                borderRadius: 'var(--r-md)',
+                fontSize: 12, fontWeight: 500,
+                background: 'var(--accent-soft)', color: 'var(--accent)',
+                border: '1px solid var(--accent-line)',
+                opacity: (!!optimizing || !promptDraft.trim()) ? 0.5 : 1,
+              }}
+              title="현재 프롬프트 + 화면비 + 구도 + 레퍼런스를 합쳐 영어 프롬프트로 다듬어줍니다"
+            >
+              {optimizing === 'en' ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+              {optimizing === 'en' ? '최적화 중...' : '프롬프트 최적화'}
+            </button>
+            <button
+              onClick={() => onOptimize('ko')}
+              disabled={!!optimizing || !promptDraft.trim()}
+              className="flex items-center justify-center gap-2"
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                borderRadius: 'var(--r-md)',
+                fontSize: 12, fontWeight: 500,
+                background: 'var(--accent-soft)', color: 'var(--accent)',
+                border: '1px solid var(--accent-line)',
+                opacity: (!!optimizing || !promptDraft.trim()) ? 0.5 : 1,
+              }}
+              title="현재 프롬프트 + 화면비 + 구도 + 레퍼런스를 합쳐 한글 프롬프트로 다듬어줍니다"
+            >
+              {optimizing === 'ko' ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+              {optimizing === 'ko' ? '최적화 중...' : '한글 최적화'}
+            </button>
+          </div>
           <button
             onClick={() => onGenerate()}
             disabled={generating}

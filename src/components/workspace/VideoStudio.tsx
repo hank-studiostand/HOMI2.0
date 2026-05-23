@@ -111,8 +111,8 @@ export default function VideoStudio({
   onDeleteAttempt?: (attemptId: string) => void
   audioOn: boolean
   onAudioToggle: (next: boolean) => void
-  optimizing?: boolean
-  onOptimize?: () => Promise<void> | void
+  optimizing?: 'en' | 'ko' | null
+  onOptimize?: (lang?: 'en' | 'ko') => Promise<void> | void
   uploadedAssets?: Array<{ id: string; url: string; name: string; kind: 'image' | 'video' | 'audio'; token: string }>
   onUploadedAssetsChange?: (next: Array<{ id: string; url: string; name: string; kind: 'image' | 'video' | 'audio'; token: string }>) => void
 }) {
@@ -138,7 +138,24 @@ export default function VideoStudio({
       setInternalUploaded(updater)
     }
   }
-  const [rightTab, setRightTab] = useState<'guide' | 'history' | 'how'>('guide')
+  // rightTab 영속화 — 새로고침/페이지 이동 시에도 마지막 탭 유지
+  const [rightTab, _setRightTab] = useState<'guide' | 'history' | 'how'>(() => {
+    if (typeof window === 'undefined') return 'guide'
+    try {
+      const v = window.sessionStorage.getItem('vs:rightTab')
+      if (v === 'guide' || v === 'history' || v === 'how') return v
+    } catch {}
+    return 'guide'
+  })
+  const setRightTab = (t: 'guide' | 'history' | 'how') => {
+    _setRightTab(t)
+    try { window.sessionStorage.setItem('vs:rightTab', t) } catch {}
+  }
+  // generating attempt 가 들어오면 자동으로 history 탭으로 전환
+  useEffect(() => {
+    if (generating && rightTab !== 'history') setRightTab('history')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generating])
   const [modelOpen, setModelOpen] = useState(false)
   const [durationOpen, setDurationOpen] = useState(false)
   const [ratioOpen, setRatioOpen] = useState(false)
@@ -914,22 +931,40 @@ export default function VideoStudio({
           display: 'flex', flexDirection: 'column', gap: 8,
         }}>
           {onOptimize && (
-            <button
-              onClick={() => void onOptimize()}
-              disabled={!!optimizing}
-              title="현재 엔진에 맞게 프롬프트 최적화"
-              style={{
-                width: '100%', padding: '8px 12px', borderRadius: 'var(--r-md)',
-                fontSize: 12, fontWeight: 600,
-                background: 'var(--accent-soft)', color: 'var(--accent)',
-                border: '1px solid var(--accent-line)',
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer',
-                opacity: optimizing ? 0.6 : 1,
-              }}
-            >
-              <Sparkles size={12} />
-              {optimizing ? '최적화중...' : '프롬프트 최적화'}
-            </button>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                onClick={() => void onOptimize('en')}
+                disabled={!!optimizing}
+                title="현재 엔진에 맞게 영어 프롬프트로 최적화"
+                style={{
+                  flex: 1, padding: '8px 12px', borderRadius: 'var(--r-md)',
+                  fontSize: 12, fontWeight: 600,
+                  background: 'var(--accent-soft)', color: 'var(--accent)',
+                  border: '1px solid var(--accent-line)',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer',
+                  opacity: optimizing ? 0.6 : 1,
+                }}
+              >
+                {optimizing === 'en' ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                {optimizing === 'en' ? '최적화중...' : '프롬프트 최적화'}
+              </button>
+              <button
+                onClick={() => void onOptimize('ko')}
+                disabled={!!optimizing}
+                title="현재 엔진에 맞게 한글 프롬프트로 최적화"
+                style={{
+                  flex: 1, padding: '8px 12px', borderRadius: 'var(--r-md)',
+                  fontSize: 12, fontWeight: 600,
+                  background: 'var(--accent-soft)', color: 'var(--accent)',
+                  border: '1px solid var(--accent-line)',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer',
+                  opacity: optimizing ? 0.6 : 1,
+                }}
+              >
+                {optimizing === 'ko' ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                {optimizing === 'ko' ? '최적화중...' : '한글 최적화'}
+              </button>
+            </div>
           )}
           <button
             onClick={() => { setRightTab('history'); void onGenerate() }}

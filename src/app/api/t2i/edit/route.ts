@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { markAttemptFailed } from '@/lib/attemptStatus'
 
 // base64 이미지 → Supabase Storage 업로드 → public URL
 async function uploadBase64(
@@ -101,6 +102,7 @@ export async function POST(req: NextRequest) {
   }
   const admin = createAdminClient()
   const n = Math.max(1, Math.min(8, count))
+  let attemptId: string | null = null  // catch 블록에서도 접근 가능
 
   try {
     const apiKey = process.env.GEMINI_API_KEY
@@ -110,7 +112,6 @@ export async function POST(req: NextRequest) {
     const { b64: sourceb64, mimeType: sourceMimeType } = await fetchImageAsBase64(sourceImageUrl)
 
     // 씬 바운드인 경우 prompt_attempt 생성 (최근 결과 탭에 노출되도록)
-    let attemptId: string | null = null
     if (sceneId) {
       const { data: attempt } = await admin
         .from('prompt_attempts')
@@ -137,7 +138,7 @@ export async function POST(req: NextRequest) {
       .map(r => r.value)
 
     if (succeeded.length === 0) {
-      if (attemptId) await admin.from('prompt_attempts').update({ status: 'failed' }).eq('id', attemptId)
+      if (attemptId) await markAttemptFailed(admin, attemptId, '편집된 이미지를 생성하지 못했습니다 — Gemini 응답이 모두 실패했어요.')
       throw new Error('편집된 이미지를 생성하지 못했습니다.')
     }
 
@@ -179,6 +180,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, assets, attemptId })
   } catch (err) {
-    return NextResponse.json({ error: `편집 실패: ${err instanceof Error ? err.message : String(err)}` }, { status: 500 })
+    const msg = err instanceof Error ? err.message : String(err)
+    if (attemptId) await markAttemptFailed(admin, attemptId, msg)
+    return NextResponse.json({ error: `편집 실패: ${msg}` }, { status: 500 })
   }
 }

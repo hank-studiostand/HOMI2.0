@@ -87,7 +87,7 @@ export default function VideoStudioPage() {
   const [audioOn, _setAudioOn] = useState(() => readStore('audioOn', true))  // 기본값 ON
   const setAudioOn = (v: boolean) => { _setAudioOn(v); persist({ audioOn: v }) }
   const [generating, setGenerating] = useState(false)
-  const [optimizing, setOptimizing] = useState(false)
+  const [optimizing, setOptimizing] = useState<'en' | 'ko' | null>(null)
   const [lightboxOutputId, setLightboxOutputId] = useState<string | null>(null)
 
   // 큐 진행 = state 또는 DB attempt 중 generating 상태 — Realtime 으로 자동 갱신
@@ -111,15 +111,15 @@ export default function VideoStudioPage() {
     void runGenerate()
   }
 
-  async function runOptimize() {
+  async function runOptimize(lang: 'en' | 'ko' = 'en') {
     const draft = promptDraft.trim()
     if (!draft) { alert('먼저 프롬프트를 입력해주세요.'); return }
-    setOptimizing(true)
+    setOptimizing(lang)
     try {
       const r = await fetch('/api/prompts/optimize', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          draft, type: 'i2v', engine,
+          draft, type: 'i2v', engine, lang,
           aspectRatio: ratio,
         }),
       })
@@ -132,7 +132,7 @@ export default function VideoStudioPage() {
     } catch (err) {
       alert('최적화 오류: ' + (err instanceof Error ? err.message : String(err)))
     } finally {
-      setOptimizing(false)
+      setOptimizing(null)
     }
   }
 

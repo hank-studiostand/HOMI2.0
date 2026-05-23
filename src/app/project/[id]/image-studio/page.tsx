@@ -38,19 +38,19 @@ export default function ImageStudioPage() {
   const [quality, setQuality] = useState<'1K' | '2K' | '4K'>('1K')
   const [referenceUrls, setReferenceUrls] = useState<string[]>([])  // 업로드된 레퍼런스 URL
   const [generating, setGenerating] = useState(false)
-  const [optimizing, setOptimizing] = useState(false)
+  const [optimizing, setOptimizing] = useState<'en' | 'ko' | null>(null)
   const [lastError, setLastError] = useState<string | null>(null)
 
   // 엔진별 프롬프트 최적화 — /api/prompts/optimize 호출
-  async function runOptimize() {
+  async function runOptimize(lang: 'en' | 'ko' = 'en') {
     const draft = promptDraft.trim()
     if (!draft) { alert('먼저 프롬프트를 입력해주세요.'); return }
-    setOptimizing(true)
+    setOptimizing(lang)
     try {
       const r = await fetch('/api/prompts/optimize', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          draft, type: 't2i', engine,
+          draft, type: 't2i', engine, lang,
           aspectRatio: ratio,
           // sceneId 는 비독립이라 생략
         }),
@@ -64,7 +64,7 @@ export default function ImageStudioPage() {
     } catch (err) {
       alert('최적화 오류: ' + (err instanceof Error ? err.message : String(err)))
     } finally {
-      setOptimizing(false)
+      setOptimizing(null)
     }
   }
 

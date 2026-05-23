@@ -92,8 +92,8 @@ export default function ImageStudio({
   onRatioChange: (v: string) => void
   generating: boolean
   onGenerate: () => Promise<void> | void
-  optimizing?: boolean
-  onOptimize?: () => Promise<void> | void
+  optimizing?: 'en' | 'ko' | null
+  onOptimize?: (lang?: 'en' | 'ko') => Promise<void> | void
   recentOutputs: RecentItem[]
   onSelectOutput?: (id: string) => void
   onZoomOutput?: (id: string) => void
@@ -358,15 +358,26 @@ export default function ImageStudio({
               onPick={v => { onEngineChange(v); setModelOpen(false) }}
             />
             {onOptimize && (
-              <button
-                onClick={() => void onOptimize()}
-                disabled={!!optimizing}
-                title="현재 엔진에 맞게 프롬프트 최적화"
-                style={pillBtn(false)}
-              >
-                {optimizing ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
-                <span>{optimizing ? '최적화중...' : '프롬프트 최적화'}</span>
-              </button>
+              <>
+                <button
+                  onClick={() => void onOptimize('en')}
+                  disabled={!!optimizing}
+                  title="현재 엔진에 맞게 영어 프롬프트로 최적화"
+                  style={pillBtn(false)}
+                >
+                  {optimizing === 'en' ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+                  <span>{optimizing === 'en' ? '최적화중...' : '프롬프트 최적화'}</span>
+                </button>
+                <button
+                  onClick={() => void onOptimize('ko')}
+                  disabled={!!optimizing}
+                  title="현재 엔진에 맞게 한글 프롬프트로 최적화"
+                  style={pillBtn(false)}
+                >
+                  {optimizing === 'ko' ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+                  <span>{optimizing === 'ko' ? '최적화중...' : '한글 최적화'}</span>
+                </button>
+              </>
             )}
             <ChipDropdown open={ratioOpen} onToggle={() => setRatioOpen(o => !o)}
               label={ratio} mono

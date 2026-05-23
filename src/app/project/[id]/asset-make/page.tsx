@@ -79,6 +79,7 @@ export default function AssetMakePage() {
 
   // 생성 상태
   const [generating, setGenerating] = useState(false)
+  const [optimizing, setOptimizing] = useState<'en' | 'ko' | null>(null)
 
   // 결과 (이번 세션에서 만든 것 + 기존 asset-make 에셋)
   const [made, setMade] = useState<MadeAsset[]>([])
@@ -166,6 +167,32 @@ export default function AssetMakePage() {
       if (newUrls.length > 0) toast.success(`레퍼런스 ${newUrls.length}장 추가됨`)
     } finally {
       setUploading(false)
+    }
+  }
+
+  // ── 프롬프트 최적화 (영어 / 한글) ───────────────────────────
+  async function runOptimize(lang: 'en' | 'ko' = 'en') {
+    const draft = prompt.trim()
+    if (!draft) { toast.warning('먼저 프롬프트를 입력해주세요'); return }
+    if (optimizing) return
+    setOptimizing(lang)
+    try {
+      const camStr = buildCameraPrompt(camera)
+      const r = await fetch('/api/prompts/optimize', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          draft, type: 't2i', engine, aspectRatio: ratio, lang,
+          cameraTokens: camStr ? [camStr] : undefined,
+        }),
+      })
+      const data = await r.json()
+      if (!r.ok || !data?.optimized) { toast.error('최적화 실패', data?.error ?? r.statusText); return }
+      setPrompt(String(data.optimized))
+      toast.success(lang === 'ko' ? '한글 최적화 완료' : '프롬프트 최적화 완료')
+    } catch (err) {
+      toast.error('최적화 오류', err instanceof Error ? err.message : String(err))
+    } finally {
+      setOptimizing(null)
     }
   }
 
@@ -353,6 +380,30 @@ export default function AssetMakePage() {
               value={prompt}
               onChange={e => setPrompt(e.target.value)}
             />
+            <div className="flex" style={{ gap: 8, marginTop: 8 }}>
+              <button
+                type="button"
+                onClick={() => void runOptimize('en')}
+                disabled={!!optimizing || !prompt.trim()}
+                className="flex-1 flex items-center justify-center gap-1.5"
+                style={{ padding: '7px 10px', borderRadius: 'var(--r-md)', fontSize: 12, fontWeight: 500, background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--accent-line)', opacity: (!!optimizing || !prompt.trim()) ? 0.5 : 1 }}
+                title="현재 엔진에 맞게 영어 프롬프트로 최적화"
+              >
+                {optimizing === 'en' ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                {optimizing === 'en' ? '최적화중...' : '프롬프트 최적화'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void runOptimize('ko')}
+                disabled={!!optimizing || !prompt.trim()}
+                className="flex-1 flex items-center justify-center gap-1.5"
+                style={{ padding: '7px 10px', borderRadius: 'var(--r-md)', fontSize: 12, fontWeight: 500, background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--accent-line)', opacity: (!!optimizing || !prompt.trim()) ? 0.5 : 1 }}
+                title="현재 엔진에 맞게 한글 프롬프트로 최적화"
+              >
+                {optimizing === 'ko' ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                {optimizing === 'ko' ? '최적화중...' : '한글 최적화'}
+              </button>
+            </div>
           </Field>
 
           {/* 레퍼런스 이미지 */}

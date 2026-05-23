@@ -558,7 +558,11 @@ export default function RootAssetsPage() {
     const { data, error } = await supabase.from('root_asset_seeds')
       .insert({ project_id: projectId, category, name: '새 에셋', description: '' })
       .select().single()
-    if (!error && data) setSeeds(prev => [data as RootAssetSeed, ...prev])
+    if (error) { toast.error('루트 에셋 추가 실패', error.message); return }
+    if (data) {
+      setSeeds(prev => [data as RootAssetSeed, ...prev])
+      toast.success('루트 에셋 추가됨')
+    }
   }
   async function deleteSeed(id: string) {
     if (!confirm('정말 삭제하시겠습니까?')) return

@@ -114,6 +114,7 @@ export async function POST(req: NextRequest) {
     type = 't2i',
     engine,
     customEngineGuide,
+    lang = 'en',
   } = body as {
     sceneId: string
     draft: string
@@ -123,6 +124,7 @@ export async function POST(req: NextRequest) {
     type?: 't2i' | 'i2v'
     engine?: string
     customEngineGuide?: string
+    lang?: 'en' | 'ko'
   }
 
   if (!draft || !draft.trim()) {
@@ -148,7 +150,8 @@ export async function POST(req: NextRequest) {
   const needsWebSearch = guideSource === 'web-search-needed' && !!engine
 
   try {
-    const userMessage = `You are a senior cinematographer / prompt engineer. Optimize a draft AI ${type === 't2i' ? 'image' : 'video'} generation prompt by integrating user-selected technical options into a coherent, vivid English prompt that follows the target engine's best practices.
+    const langName = lang === 'ko' ? 'Korean (한국어)' : 'English'
+    const userMessage = `You are a senior cinematographer / prompt engineer. Optimize a draft AI ${type === 't2i' ? 'image' : 'video'} generation prompt by integrating user-selected technical options into a coherent, vivid ${langName} prompt that follows the target engine's best practices.
 
 User draft (may include "[인물: 이름]" / "[공간: ...]" identity blocks — preserve these as fixed identity descriptions):
 """
@@ -163,7 +166,7 @@ ${engineGuide ? `\n${engineGuide}\n` : ''}
 ${needsWebSearch ? `\nNo built-in guide is available for engine "${engine}". Use the web_search tool ONCE to look up best-practice prompt structure for "${engine} prompt engineering best practices", then apply the findings.\n` : ''}
 
 Output requirements:
-- One English prompt that strictly follows the engine guide above${needsWebSearch ? ' (or your web_search findings)' : ''}.
+- One ${langName} prompt that strictly follows the engine guide above${needsWebSearch ? ' (or your web_search findings)' : ''}.${lang === 'ko' ? '\n- 최종 프롬프트의 서술 텍스트는 자연스러운 한국어로 작성하세요. 단, 엔진 토큰(@image1, [SHOT N — ...])과 렌즈/카메라 용어(35mm 등)는 그대로 두세요.' : ''}
 - Preserve the user's intent, character identity blocks, and key nouns/actions from the draft.
 - Naturally weave in the camera tokens, reference subjects, and aspect ratio considerations.
 - For multi-shot video engines (Seedance/Kling-omni), structure as [SHOT N — framing, m:ss–m:ss] blocks if total duration is known.

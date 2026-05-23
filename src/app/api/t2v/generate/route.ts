@@ -42,15 +42,15 @@ async function callKlingT2V(
   const jwt = generateKlingJWT(apiKey, apiSecret)
 
   // 1) 생성 요청 — Kling T2V API
-  //   duration: "5" | "10" STRING, mode: v2 계열은 'pro' 만
-  const isV2Model = /^kling-v2/.test(modelName)
+  //   duration: "5" | "10" STRING, mode: v2/v3 master 계열은 'pro' 만
+  const isNewModel = /^kling-v[23]/.test(modelName)
   const durStr = String(Math.max(5, Math.min(10, duration ?? 5)))
   const safeDuration = durStr === '5' || durStr === '10' ? durStr : '5'
   const body: Record<string, any> = {
     model_name:   modelName,
     prompt:       prompt.trim().slice(0, 2500),
     duration:     safeDuration,
-    mode:         isV2Model ? 'pro' : mode,
+    mode:         isNewModel ? 'pro' : mode,
     cfg_scale:    cfgScale,
     aspect_ratio: aspectRatio,
   }
@@ -87,13 +87,14 @@ async function callKlingT2V(
 }
 
 // ─────────────────────────────────────────────────────────────────
-// engine → model_name 매핑 (Kling 공식 API 가 받는 정확한 값)
-// 허용값: kling-v1, kling-v1-5, kling-v1-6, kling-v2-master, kling-v2-1-master
+// engine → model_name 매핑
+// 허용값: kling-v1/v1-5/v1-6, kling-v2-master, kling-v2-1-master, kling-v3-master, kling-v3
+// ENV override 지원
 const ENGINE_MODEL: Record<string, string> = {
-  'kling3':      'kling-v2-1-master',  // UI 라벨 "Kling 3.0" → 실 API model: 2.1-master (Kling 최신)
-  'kling3-omni': 'kling-v2-1-master',  // Omni 별도 모델 없음 — 통합 사용
-  'kling2':      'kling-v2-master',    // Kling 2.0
-  'kling':       'kling-v1-6',         // Kling 1.6
+  'kling3':      process.env.KLING_MODEL_V3       ?? 'kling-v3-master',
+  'kling3-omni': process.env.KLING_MODEL_V3_OMNI  ?? process.env.KLING_MODEL_V3 ?? 'kling-v3-master',
+  'kling2':      process.env.KLING_MODEL_V2_1     ?? 'kling-v2-1-master',
+  'kling':       'kling-v1-6',
 }
 
 // ── Kling 에러 → 한국어 (message 우선 매칭) ──
