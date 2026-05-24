@@ -568,7 +568,7 @@ export default function ScenesPage() {
             })}
           </div>
           <button
-            onClick={() => generateBulkMasterPrompts('en')}
+            onClick={() => generateBulkMasterPrompts('ko')}
             disabled={bulkGenerating || scenes.length === 0}
             className="flex items-center gap-1.5 disabled:opacity-50 transition-all"
             style={{
@@ -578,6 +578,7 @@ export default function ScenesPage() {
               background: 'var(--accent)', color: '#fff',
               border: '1px solid var(--accent)',
             }}
+            title="씬 내용을 바탕으로 한국어 마스터 프롬프트를 일괄 생성"
             onMouseEnter={e => { if (!bulkGenerating && scenes.length > 0) { (e.currentTarget as HTMLElement).style.background = 'var(--accent-2)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent-2)' } }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--accent)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)' }}
           >
@@ -586,25 +587,6 @@ export default function ScenesPage() {
               : <Wand2 size={13} />
             }
             {bulkGenerating ? '생성 중...' : '마스터 프롬프트 일괄 생성'}
-          </button>
-          <button
-            onClick={() => generateBulkMasterPrompts('ko')}
-            disabled={bulkGenerating || scenes.length === 0}
-            className="flex items-center gap-1.5 disabled:opacity-50 transition-all"
-            style={{
-              padding: '7px 14px',
-              borderRadius: 'var(--r-md)',
-              fontSize: 13, fontWeight: 500,
-              background: 'var(--accent-soft)', color: 'var(--accent)',
-              border: '1px solid var(--accent-line)',
-            }}
-            title="씬 내용을 바탕으로 한국어 마스터 프롬프트를 일괄 생성"
-          >
-            {bulkGenerating
-              ? <Loader2 size={13} className="animate-spin" />
-              : <Wand2 size={13} />
-            }
-            {bulkGenerating ? '생성 중...' : '마스터 프롬프트 일괄 생성 (한글)'}
           </button>
           <button
             onClick={addScene}
