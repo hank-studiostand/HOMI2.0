@@ -79,12 +79,8 @@ export default function SceneBoardCard({
         }
       }
 
-      // 썸네일 선정 우선순위:
-      //  1순위) 가장 최근 [승인] 결정된 T2I output
-      //  2순위) archived T2I output (이전 동작 호환)
-      //  3순위) 아무 T2I output
+      // 썸네일 — [승인] 결정된 T2I output 만 사용. 그 외(보류/미정)는 null → 카드는 그레이.
       let thumbnail: string | null = null
-      // 1순위 — approvedOrder 순서대로 매칭되는 output 찾기
       if (approvedOrder.length > 0) {
         const outputByOutId = new Map<string, any>()
         for (const a of t2iAtt) {
@@ -95,16 +91,6 @@ export default function SceneBoardCard({
         for (const outId of approvedOrder) {
           const o = outputByOutId.get(outId)
           if (o?.asset?.url) { thumbnail = o.asset.url; break }
-        }
-      }
-      // 2~3순위 폴백
-      if (!thumbnail) {
-        for (const a of t2iAtt) {
-          const outputs = ((a.outputs ?? []) as any[])
-          const archived = outputs.find((o: any) => o.asset?.archived && o.asset?.url)
-          if (archived) { thumbnail = archived.asset.url; break }
-          const any = outputs.find((o: any) => o.asset?.url)
-          if (any && !thumbnail) thumbnail = any.asset.url
         }
       }
 
@@ -149,7 +135,7 @@ export default function SceneBoardCard({
       <div
         style={{
           aspectRatio: '16/9',
-          background: stats.thumbnail ? 'var(--bg-3)' : gradientFor(scene.scene_number),
+          background: 'var(--bg-3)',
           position: 'relative',
         }}
       >
@@ -159,10 +145,6 @@ export default function SceneBoardCard({
             alt=""
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
           />
-        )}
-        {/* 다크 오버레이 (프로토타입) */}
-        {!stats.thumbnail && (
-          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.25)' }} />
         )}
         <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', gap: 4 }}>
           <span
