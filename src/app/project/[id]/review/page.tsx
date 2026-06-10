@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Pill, { type PillVariant } from '@/components/ui/Pill'
-import { CheckCircle2, RotateCcw, Trash2, Eye, Loader2, Filter, Image as ImageIcon, Film } from 'lucide-react'
+import { CheckCircle2, RotateCcw, Trash2, Eye, Loader2, Filter, Image as ImageIcon, Film, GitBranch } from 'lucide-react'
 import { toast } from '@/components/ui/Toast'
 
 // Review & Decision — 칸반 4 컬럼 (검토 대기 / 수정 요청 / 승인 / 제거)
@@ -196,10 +196,10 @@ export default function ReviewPage() {
         <div className="flex items-end justify-between" style={{ gap: 16, marginBottom: 14 }}>
           <div>
             <h1 style={{ margin: 0, fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>
-              Review &amp; Decision
+              Decision Log
             </h1>
             <p style={{ marginTop: 4, fontSize: 13, color: 'var(--ink-3)' }}>
-              결과를 한눈에 살펴보고 승인 / 수정 요청 / 제거. 키보드: <kbd>A</kbd> 승인 · <kbd>R</kbd> 수정 · <kbd>X</kbd> 제거
+              샷별 버전 기록과 결정 이유를 한눈에 살펴보고 승인 / 수정 요청 / 제거. 키보드: <kbd>A</kbd> 승인 · <kbd>R</kbd> 수정 · <kbd>X</kbd> 제거
             </p>
           </div>
           <div className="flex items-center" style={{ gap: 16, fontSize: 11, color: 'var(--ink-3)' }}>
@@ -457,6 +457,17 @@ export default function ReviewPage() {
                               }}
                             >{decLabel}</span>
                             <span style={{ fontSize: 10, color: 'var(--ink-5)', minWidth: 56, textAlign: 'right' }} className="mono">{timeStr}</span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); router.push(`/project/${projectId}/version?scene=${c.scene_id}`) }}
+                              title="이 샷의 버전 기록 보기"
+                              style={{
+                                padding: '3px 6px', borderRadius: 3,
+                                background: 'transparent',
+                                color: 'var(--ink-3)',
+                                border: '1px solid var(--line)',
+                                fontSize: 10,
+                              }}
+                            ><GitBranch size={10} /></button>
                             <button
                               onClick={(e) => { e.stopPropagation(); quickDecide(c, 'approved') }}
                               title="승인으로 변경 (A)"

@@ -5,10 +5,10 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/components/theme/ThemeProvider'
 import {
-  FileText, Layers, Image as ImageIcon, Video, Mic, Archive,
-  FolderOpen, ChevronLeft, Settings, LogOut, Scissors,
-  Clapperboard, Package, Sparkles,
-  Home, Frame, CheckCircle2, GitBranch, Sun, Moon, Trash2 } from 'lucide-react'
+  FileText, Layers, Image as ImageIcon, Video,
+  ChevronLeft, Settings, LogOut, Scissors,
+  Package,
+  Home, Frame, CheckCircle2, Sun, Moon, Trash2 } from 'lucide-react'
 
 type IconCmp = React.ComponentType<{ size?: number | string; className?: string; style?: React.CSSProperties }>
 
@@ -42,42 +42,33 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'STRUCTURE',
     items: [
-      { href: 'asset-make',  label: '에셋 메이킹',          icon: Sparkles },
       { href: 'root-assets', label: '루트 에셋',             icon: Package },
-      { href: 'scenes',      label: '씬 분류 (Shot Board)', icon: Layers },
-      { href: 'assets',      label: '에셋 라이브러리',       icon: FolderOpen },
+      { href: 'scenes',      label: '샷 보드 (Shot Board)', icon: Layers },
     ],
   },
   {
     label: 'GENERATION',
     items: [
-      { href: 'workspace',     label: 'Shot Workspace',     icon: Frame },
-      { href: 'image-studio',  label: '이미지 생성',         icon: Sparkles },
-      { href: 'video-studio',  label: '영상 생성',           icon: Clapperboard },
-      { href: 'lipsync',       label: '립싱크',              icon: Mic },
+      { href: 'workspace', label: '샷 워크스페이스', icon: Frame },
     ],
   },
   {
     label: 'LIBRARY',
     items: [
-      { href: 't2i',                     label: '이미지 (Workspace)',  icon: ImageIcon },
-      { href: 'i2v',                     label: '영상 (Workspace)',    icon: Video },
-      { href: 'library/studio-image',    label: '이미지 (Studio)',     icon: ImageIcon },
-      { href: 'library/studio-video',    label: '영상 (Studio)',       icon: Video },
+      { href: 't2i', label: '이미지 라이브러리', icon: ImageIcon },
+      { href: 'i2v', label: '영상 라이브러리',   icon: Video },
     ],
   },
   {
     label: 'REVIEW',
     items: [
-      { href: 'review',  label: 'Review & Decision',     icon: CheckCircle2 },
-      { href: 'version', label: 'Version & Provenance',  icon: GitBranch },
+      { href: 'review', label: 'Decision Log', icon: CheckCircle2 },
     ],
   },
   {
-    label: 'DELIVERY',
+    label: 'EXPORT',
     items: [
-      { href: 'archive', label: '아카이브 / Export', icon: Archive },
-      { href: 'trash',   label: '휴지통',            icon: Trash2 },
+      { href: 'trash', label: '휴지통', icon: Trash2 },
     ],
   },
 ]

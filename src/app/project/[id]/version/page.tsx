@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
   GitBranch, Image as ImageIcon, Video, Loader2, Film,
@@ -30,7 +30,11 @@ const TOP_PAD = 14
 export default function VersionPage() {
   const { id: projectId } = useParams<{ id: string }>()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
+
+  // URL ?scene=<id> 로 진입 시 해당 씬을 우선 활성화
+  const initialSceneParam = searchParams.get('scene')
 
   const [scenes, setScenes] = useState<SceneRow[]>([])
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null)
@@ -76,11 +80,14 @@ export default function VersionPage() {
       }
       setAttemptCountByScene(counts)
       setDiag({ totalAttempts, totalScenes: list.length, queryError })
-      if (firstWithData) setActiveSceneId(firstWithData)
+      // URL 파라미터로 들어온 씬이 실제 존재하면 우선 활성화
+      const urlScene = initialSceneParam && list.some(s => s.id === initialSceneParam) ? initialSceneParam : null
+      if (urlScene) setActiveSceneId(urlScene)
+      else if (firstWithData) setActiveSceneId(firstWithData)
       else if (list.length > 0) setActiveSceneId(list[0].id)
       setLoading(false)
     })()
-  }, [projectId, supabase])
+  }, [projectId, supabase, initialSceneParam])
 
   // 데이터 로드 — realtime 변경에서도 재호출. sceneId === '__ALL__'이면 프로젝트 전체.
   const reloadScene = async (sceneId: string) => {
