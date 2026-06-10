@@ -160,7 +160,7 @@ export default function WorkspacePage() {
 
   // 타입 전환 시 엔진이 해당 타입 목록에 없으면 기본값으로 자동 변경
   useEffect(() => {
-    const t2iValues = ['nanobanana', 'gpt-image', 'midjourney']
+    const t2iValues = ['nanobanana', 'gpt-image']
     const i2vValues = ['seedance-2', 'kling3']
     if (genType === 't2i' && !t2iValues.includes(genEngine)) setGenEngine('nanobanana')
     if (genType === 'i2v' && !i2vValues.includes(genEngine)) setGenEngine('seedance-2')
@@ -613,7 +613,7 @@ export default function WorkspacePage() {
       })
       .select()
       .single()
-    if (error) { alert('코멘트 저장 실패: ' + error.message); setDraft(content); return }
+    if (error) { alert('샷 메모 저장 실패: ' + error.message); setDraft(content); return }
     if (data) setComments(prev => [...prev, data as any])
   }
 
@@ -1716,7 +1716,7 @@ export default function WorkspacePage() {
         {commentsCollapsed ? (
           <button
             onClick={toggleCommentsCollapsed}
-            title="코멘트 펼치기"
+            title="샷 메모 펼치기"
             style={{
               width: '100%', flex: 1, padding: '12px 0',
               background: 'transparent', border: 'none', cursor: 'pointer',
@@ -1729,17 +1729,17 @@ export default function WorkspacePage() {
             <span style={{
               fontSize: 10, fontWeight: 700, color: 'var(--ink-3)',
               writingMode: 'vertical-rl', textOrientation: 'mixed', letterSpacing: '0.1em',
-            }}>코멘트 {comments.length}</span>
+            }}>샷 메모 {comments.length}</span>
           </button>
         ) : (
         <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--line)' }} className="flex items-center gap-2">
           <MessageCircle size={13} style={{ color: 'var(--accent)' }} />
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>코멘트</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>샷 메모</span>
           <span style={{ flex: 1 }} />
           <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>{comments.length}</span>
           <button
             onClick={toggleCommentsCollapsed}
-            title="코멘트 접기"
+            title="샷 메모 접기"
             style={{
               padding: 4, background: 'transparent', border: 'none', cursor: 'pointer',
               color: 'var(--ink-4)', display: 'inline-flex', alignItems: 'center',
@@ -1752,7 +1752,7 @@ export default function WorkspacePage() {
         {!commentsCollapsed && (<>
         <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
           {comments.length === 0 ? (
-            <div className="empty" style={{ padding: 16, fontSize: 12 }}>아직 코멘트가 없어요</div>
+            <div className="empty" style={{ padding: 16, fontSize: 12 }}>아직 샷 메모가 없어요</div>
           ) : (
             <div className="flex flex-col" style={{ gap: 10 }}>
               {comments.map(c => (
@@ -1777,7 +1777,7 @@ export default function WorkspacePage() {
             onChange={e => setDraft(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void postComment() } }}
             rows={2}
-            placeholder="이 결과에 코멘트... (Enter로 전송)"
+            placeholder="이 결과에 샷 메모... (Enter로 전송)"
             style={{
               flex: 1,
               background: 'var(--bg-2)',
@@ -2249,7 +2249,6 @@ function DecisionModal({
 const T2I_ENGINES = [
   { value: 'nanobanana', label: '나노바나나' },
   { value: 'gpt-image',  label: 'GPT Image' },
-  { value: 'midjourney', label: 'Midjourney' },
 ]
 const I2V_ENGINES = [
   { value: 'seedance-2',label: 'Seedance 2.0' },
@@ -3454,24 +3453,6 @@ function GeneratePanel({
         <div className="flex flex-col" style={{ gap: 8, marginTop: 18 }}>
           <div className="flex" style={{ gap: 8 }}>
             <button
-              onClick={() => onOptimize('en')}
-              disabled={!!optimizing || !promptDraft.trim()}
-              className="flex items-center justify-center gap-2"
-              style={{
-                flex: 1,
-                padding: '8px 12px',
-                borderRadius: 'var(--r-md)',
-                fontSize: 12, fontWeight: 500,
-                background: 'var(--accent-soft)', color: 'var(--accent)',
-                border: '1px solid var(--accent-line)',
-                opacity: (!!optimizing || !promptDraft.trim()) ? 0.5 : 1,
-              }}
-              title="현재 프롬프트 + 화면비 + 구도 + 레퍼런스를 합쳐 영어 프롬프트로 다듬어줍니다"
-            >
-              {optimizing === 'en' ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-              {optimizing === 'en' ? '최적화 중...' : '프롬프트 최적화'}
-            </button>
-            <button
               onClick={() => onOptimize('ko')}
               disabled={!!optimizing || !promptDraft.trim()}
               className="flex items-center justify-center gap-2"
@@ -3484,10 +3465,28 @@ function GeneratePanel({
                 border: '1px solid var(--accent-line)',
                 opacity: (!!optimizing || !promptDraft.trim()) ? 0.5 : 1,
               }}
-              title="현재 프롬프트 + 화면비 + 구도 + 레퍼런스를 합쳐 한글 프롬프트로 다듬어줍니다"
+              title="현재 프롬프트 + 화면비 + 구도 + 레퍼런스를 합쳐 한글 프롬프트로 다듬어줍니다 (먼저 한글로 정리)"
             >
               {optimizing === 'ko' ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-              {optimizing === 'ko' ? '최적화 중...' : '한글 최적화'}
+              {optimizing === 'ko' ? '최적화 중...' : '1. 한글 라이팅'}
+            </button>
+            <button
+              onClick={() => onOptimize('en')}
+              disabled={!!optimizing || !promptDraft.trim()}
+              className="flex items-center justify-center gap-2"
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                borderRadius: 'var(--r-md)',
+                fontSize: 12, fontWeight: 500,
+                background: 'var(--accent-soft)', color: 'var(--accent)',
+                border: '1px solid var(--accent-line)',
+                opacity: (!!optimizing || !promptDraft.trim()) ? 0.5 : 1,
+              }}
+              title="현재 프롬프트 + 화면비 + 구도 + 레퍼런스를 합쳐 영어 프롬프트로 최적화 (엔진 입력에 최종 사용)"
+            >
+              {optimizing === 'en' ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+              {optimizing === 'en' ? '최적화 중...' : '2. 프롬프트 최적화 (영문)'}
             </button>
           </div>
           <button
