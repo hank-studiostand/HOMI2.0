@@ -51,25 +51,61 @@ export default function SceneBoardCard({
 
   useEffect(() => {
     void (async () => {
-      const [{ data: mp }, { data: attempts }] = await Promise.all([
+      const [{ data: mp }, { data: attempts }, { data: decRows }] = await Promise.all([
         supabase.from('master_prompts').select('id').eq('scene_id', scene.id).limit(1),
         supabase
           .from('prompt_attempts')
           .select('id, type, status, outputs:attempt_outputs(id, asset:assets(url, archived))')
           .eq('scene_id', scene.id),
+        // 승인 결정 — 최신 우선
+        supabase
+          .from('shot_decisions')
+          .select('output_id, decision_type, created_at')
+          .eq('scene_id', scene.id)
+          .eq('decision_type', 'approved')
+          .order('created_at', { ascending: false }),
       ])
 
       const t2iAtt = (attempts ?? []).filter(a => a.type === 't2i')
       const i2vAtt = (attempts ?? []).filter(a => a.type === 'i2v')
 
-      // 첫 번째 archived T2I output을 썸네일로
+      // 승인된 output_id 집합 + 가장 최근 승인 output_id
+      const approvedSet = new Set<string>()
+      const approvedOrder: string[] = []
+      for (const d of ((decRows ?? []) as any[])) {
+        if (d.output_id && !approvedSet.has(d.output_id)) {
+          approvedSet.add(d.output_id)
+          approvedOrder.push(d.output_id)
+        }
+      }
+
+      // 썸네일 선정 우선순위:
+      //  1순위) 가장 최근 [승인] 결정된 T2I output
+      //  2순위) archived T2I output (이전 동작 호환)
+      //  3순위) 아무 T2I output
       let thumbnail: string | null = null
-      for (const a of t2iAtt) {
-        const outputs = ((a.outputs ?? []) as any[])
-        const archived = outputs.find((o: any) => o.asset?.archived && o.asset?.url)
-        if (archived) { thumbnail = archived.asset.url; break }
-        const any = outputs.find((o: any) => o.asset?.url)
-        if (any && !thumbnail) thumbnail = any.asset.url
+      // 1순위 — approvedOrder 순서대로 매칭되는 output 찾기
+      if (approvedOrder.length > 0) {
+        const outputByOutId = new Map<string, any>()
+        for (const a of t2iAtt) {
+          for (const o of ((a.outputs ?? []) as any[])) {
+            if (o.id) outputByOutId.set(o.id, o)
+          }
+        }
+        for (const outId of approvedOrder) {
+          const o = outputByOutId.get(outId)
+          if (o?.asset?.url) { thumbnail = o.asset.url; break }
+        }
+      }
+      // 2~3순위 폴백
+      if (!thumbnail) {
+        for (const a of t2iAtt) {
+          const outputs = ((a.outputs ?? []) as any[])
+          const archived = outputs.find((o: any) => o.asset?.archived && o.asset?.url)
+          if (archived) { thumbnail = archived.asset.url; break }
+          const any = outputs.find((o: any) => o.asset?.url)
+          if (any && !thumbnail) thumbnail = any.asset.url
+        }
       }
 
       setStats({
